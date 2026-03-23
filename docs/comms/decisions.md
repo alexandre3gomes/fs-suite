@@ -280,7 +280,7 @@ The repository was revalidated after the corrections recorded in Decision 009.
 
 ---
 
-## Decision 010 — Expo Router route-group warning resolved; phase mapping documented
+## Decision 011 — Expo Router route-group warning resolved; phase mapping documented
 
 - Date: 2026-03-23
 - Participants: Arquiteto

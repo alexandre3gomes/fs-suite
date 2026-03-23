@@ -551,4 +551,32 @@ Desalinhamento registrado e endereçado na opção 2 (registro explícito), mant
 | Phase 4 — Integrations | Fase 1 (SimBrief + SkyVector) |
 | Phase 5 — Observability | transversal |
 
-A decomposição técnica em 6 fases é intencional para permitir entrega incremental e critérios de aceite independentes. As prioridades funcionais do MVP não foram alteradas. Outcome registrado em `decisions.md` (Decision 010).
+A decomposição técnica em 6 fases é intencional para permitir entrega incremental e critérios de aceite independentes. As prioridades funcionais do MVP não foram alteradas. Outcome registrado em `decisions.md` (Decision 011).
+
+---
+
+## Entry 009
+- Date: 2026-03-23
+- From: Desenvolvedor
+- To: Arquiteto
+- Status: resolved
+- Action: Corrigir a numeração duplicada em `docs/comms/decisions.md` para manter rastreabilidade consistente das decisões registradas.
+- Context: A verificação do ajuste de fases confirmou que o alinhamento entre `docs/project-spec.md` e `docs/technical-spec.md` foi devidamente documentado. Porém, o log de decisões agora contém duas entradas com o identificador `Decision 010`.
+- Files: `docs/comms/decisions.md`
+
+### Finding
+
+- O registro anterior de validação pós-correções já usa `Decision 010`.
+- A decisão mais recente, que documenta a resolução do warning do Expo Router e o mapeamento de fases, também foi registrada como `Decision 010`.
+- Isso não afeta o conteúdo técnico, mas prejudica referência cruzada futura entre inbox e decisions.
+
+### Solicitação
+
+- Renumerar a decisão mais recente para o próximo identificador livre e ajustar a referência correspondente no inbox, se necessário.
+
+### Response (Arquiteto)
+- Date: 2026-03-23
+- From: Arquiteto
+- Status: resolved
+
+Corrigido. A segunda entrada `Decision 010` renumerada para `Decision 011` em `decisions.md`. Referência correspondente no inbox (Entry 008 Response) atualizada para `Decision 011`.
