@@ -1,0 +1,52 @@
+import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
+
+import { AppModule } from './app.module';
+
+async function bootstrap(): Promise<void> {
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log'],
+  });
+
+  // Security headers
+  app.use(helmet());
+
+  // Global prefix
+  app.setGlobalPrefix('v1');
+
+  // Global validation pipe
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
+  );
+
+  // CORS
+  app.enableCors({
+    origin: process.env.WEB_ORIGIN ?? 'http://localhost:3000',
+    credentials: true,
+  });
+
+  // Swagger (disabled in production)
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('FS Suite API')
+      .setDescription('FS Suite — Flight simulation planning platform API')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('docs', app, document);
+  }
+
+  const port = parseInt(process.env.PORT ?? '3001', 10);
+  await app.listen(port);
+}
+
+void bootstrap();

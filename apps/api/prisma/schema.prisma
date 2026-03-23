@@ -1,0 +1,160 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String
+  avatarUrl String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // soft delete for LGPD
+
+  oauthAccounts          OAuthAccount[]
+  sessions               Session[]
+  flightPlans            FlightPlan[]
+  aircraftProfiles       AircraftProfile[]
+  activityLogs           ActivityLog[]
+  integrationConnections IntegrationConnection[]
+}
+
+model OAuthAccount {
+  id                String    @id @default(cuid())
+  provider          String // "google"
+  providerAccountId String
+  accessToken       String? // encrypted at rest (AES-256-GCM)
+  refreshToken      String? // encrypted at rest (AES-256-GCM)
+  expiresAt         DateTime?
+  createdAt         DateTime  @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id               String   @id @default(cuid())
+  refreshTokenHash String   @unique // bcrypt hash of the raw refresh token JWT
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  lastUsedAt       DateTime @default(now())
+  userAgent        String?
+  ipAddress        String? // disclosed in privacy policy; LGPD compliant
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AircraftProfile {
+  id          String   @id @default(cuid())
+  name        String
+  icaoType    String? // e.g. "B738"
+  cruiseSpeed Int? // knots
+  fuelUnit    String? // "kg" | "lbs" | "liters"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+  flightPlans FlightPlan[]
+}
+
+model Airport {
+  icao      String  @id
+  iata      String?
+  name      String
+  city      String?
+  country   String?
+  latitude  Float
+  longitude Float
+  elevation Int? // feet
+  raw       Json? // full source record (OurAirports) for future enrichment
+
+  originPlans      FlightPlan[] @relation("origin")
+  destinationPlans FlightPlan[] @relation("destination")
+}
+
+model FlightPlan {
+  id              String     @id @default(cuid())
+  status          PlanStatus @default(DRAFT)
+  flightType      FlightType // VFR | IFR
+  plannedAltitude Int? // feet
+  remarks         String?
+  simBriefOfpId   String? // SimBrief OFP ID reference after successful import
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime? // soft delete
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  originIcao String
+  origin     Airport @relation("origin", fields: [originIcao], references: [icao])
+
+  destinationIcao String
+  destination     Airport @relation("destination", fields: [destinationIcao], references: [icao])
+
+  aircraftProfileId String?
+  aircraftProfile   AircraftProfile? @relation(fields: [aircraftProfileId], references: [id])
+
+  routes FlightPlanRoute[]
+}
+
+model FlightPlanRoute {
+  id            String  @id @default(cuid())
+  sequence      Int
+  waypointIdent String
+  latitude      Float?
+  longitude     Float?
+  airway        String?
+
+  flightPlanId String
+  flightPlan   FlightPlan @relation(fields: [flightPlanId], references: [id], onDelete: Cascade)
+
+  @@index([flightPlanId, sequence])
+}
+
+model IntegrationConnection {
+  id         String   @id @default(cuid())
+  service    String // "simbrief"
+  externalId String? // SimBrief pilot ID (username)
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([userId, service])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  action    String // e.g. "flight_plan.created", "auth.login", "simbrief.import"
+  metadata  Json? // no PII beyond userId
+  createdAt DateTime @default(now())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+}
+
+enum PlanStatus {
+  DRAFT
+  SAVED
+  ARCHIVED
+}
+
+enum FlightType {
+  VFR
+  IFR
+}

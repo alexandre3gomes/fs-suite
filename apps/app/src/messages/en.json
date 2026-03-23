@@ -1,0 +1,44 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next"
+  },
+  "login": {
+    "title": "FS Suite",
+    "subtitle": "Flight planning for simulators",
+    "signInButton": "Sign in with Google",
+    "terms": "By signing in, you agree to our Terms of Service and Privacy Policy."
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome back",
+    "flightPlans": "Flight Plans",
+    "recentFlights": "Recent Flights"
+  },
+  "flightPlans": {
+    "title": "Flight Plans",
+    "newPlan": "New Plan",
+    "noPlan": "No flight plans found.",
+    "origin": "Origin",
+    "destination": "Destination",
+    "aircraft": "Aircraft",
+    "flightType": "Flight Type",
+    "route": "Route",
+    "save": "Save Plan",
+    "duplicate": "Duplicate",
+    "delete": "Delete"
+  },
+  "profile": {
+    "title": "Profile",
+    "name": "Name",
+    "email": "Email",
+    "simbriefPilotId": "SimBrief Pilot ID",
+    "save": "Save Profile",
+    "signOut": "Sign Out"
+  }
+}

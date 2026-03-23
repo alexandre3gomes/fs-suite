@@ -1,0 +1,47 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+dist/
+out/
+build/
+
+# Turbo
+.turbo/
+
+# Test coverage
+coverage/
+playwright-report/
+test-results/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Prisma
+apps/api/prisma/migrations/
+
+# Expo
+.expo/
+apps/app/dist/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Misc
+*.tsbuildinfo

@@ -1,0 +1,47 @@
+- Source of truth for product scope is `docs/project-spec.md`.
+- This repository is currently in planning/bootstrap stage.
+- The target product is FS Suite, a web-first flight simulation platform under the Simulando brand.
+- MVP priorities are authentication, dashboard, and flight planning.
+- Prefer a monorepo with Turborepo.
+- Use TypeScript across the stack.
+- Planned apps:
+  - `apps/web`: Next.js
+  - `apps/api`: NestJS
+  - `apps/mobile`: Expo React Native
+- Planned shared packages:
+  - `packages/ui`
+  - `packages/types`
+  - `packages/config`
+- Planned core infrastructure:
+  - PostgreSQL
+  - Prisma
+  - Redis
+- Build web-first, but keep architecture reusable for mobile.
+- Prioritize the flight planning flow before tracking or social features.
+- Initial external integrations:
+  - SimBrief for planning import/generation
+  - SkyVector for contextual route viewing
+- Do not scope FlightAware into the first delivery unless explicitly requested.
+- The interface should reflect aviation, navigation, precision, and Simulando branding.
+- Avoid generic dashboard patterns that feel like a default SaaS template.
+- Prefer responsive experiences that work well on desktop and tablet from the start.
+- Default language is Brazilian Portuguese unless a task explicitly requires another locale.
+- Keep changes small and aligned with the current stage of the repo.
+- Prefer documenting architecture decisions when introducing new structure.
+- When scaffolding, preserve clear separation between apps and shared packages.
+- Reuse contracts, types, and UI primitives instead of duplicating logic across apps.
+- Consider LGPD, secret handling, and observability in foundational decisions.
+- Before adding new services or packages, verify they support the planned web-to-mobile architecture.
+- When introducing folders or tooling, also update documentation that explains their purpose.
+- Run the most targeted available validation for the area you changed.
+- Do not expand scope into premium, social, multiplayer, or full real-time tracking work unless asked.
+- When reviewing technical specifications, always report the concrete issues or misalignments found and also provide a ready-to-send message addressed to the architect agent summarizing the required corrections.
+- Agent roles documented in `docs/comms/README.md`: `Analista de negocio`, `Arquiteto`, and `Desenvolvedor`.
+- Use `docs/comms/` as the asynchronous handoff channel between agents; read `docs/comms/inbox.md` before cross-agent review work and record relevant outcomes in `docs/comms/decisions.md`.
+- Product specification: `docs/project-spec.md`
+- Recommended next artifacts from the spec:
+  - detailed PRD for flight planning
+  - user journey map
+  - initial database model
+  - technical monorepo architecture
+  - dashboard and planning wireframes

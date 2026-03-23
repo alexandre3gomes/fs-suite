@@ -1,0 +1,18 @@
+{
+  "extends": "@fs-suite/config/typescript/expo",
+  "compilerOptions": {
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.d.ts",
+    "expo-env.d.ts",
+    "types.d.ts",
+    "nativewind-env.d.ts"
+  ]
+}

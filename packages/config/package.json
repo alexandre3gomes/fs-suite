@@ -1,0 +1,24 @@
+{
+  "name": "@fs-suite/config",
+  "version": "0.0.1",
+  "private": true,
+  "exports": {
+    "./typescript": "./typescript/base.json",
+    "./typescript/nextjs": "./typescript/nextjs.json",
+    "./typescript/nestjs": "./typescript/nestjs.json",
+    "./typescript/react-library": "./typescript/react-library.json",
+    "./eslint/base": "./eslint/base.js",
+    "./eslint/nextjs": "./eslint/nextjs.js",
+    "./eslint/nestjs": "./eslint/nestjs.js",
+    "./eslint/react-library": "./eslint/react-library.js",
+    "./tailwind": "./tailwind/tailwind.config.js"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.18.2",
+    "@typescript-eslint/parser": "^8.18.2",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.31.0",
+    "typescript": "^5.7.2"
+  }
+}

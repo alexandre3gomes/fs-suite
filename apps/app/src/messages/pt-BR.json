@@ -1,0 +1,44 @@
+{
+  "common": {
+    "loading": "Carregando...",
+    "error": "Erro",
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "back": "Voltar",
+    "next": "Próximo"
+  },
+  "login": {
+    "title": "FS Suite",
+    "subtitle": "Planejamento de voo para simuladores",
+    "signInButton": "Entrar com Google",
+    "terms": "Ao entrar, você concorda com nossos Termos de Uso e Política de Privacidade."
+  },
+  "dashboard": {
+    "title": "Painel",
+    "welcome": "Bem-vindo de volta",
+    "flightPlans": "Planos de Voo",
+    "recentFlights": "Voos Recentes"
+  },
+  "flightPlans": {
+    "title": "Planos de Voo",
+    "newPlan": "Novo Plano",
+    "noPlan": "Nenhum plano de voo encontrado.",
+    "origin": "Origem",
+    "destination": "Destino",
+    "aircraft": "Aeronave",
+    "flightType": "Tipo de Voo",
+    "route": "Rota",
+    "save": "Salvar Plano",
+    "duplicate": "Duplicar",
+    "delete": "Excluir"
+  },
+  "profile": {
+    "title": "Perfil",
+    "name": "Nome",
+    "email": "E-mail",
+    "simbriefPilotId": "SimBrief Pilot ID",
+    "save": "Salvar Perfil",
+    "signOut": "Sair"
+  }
+}

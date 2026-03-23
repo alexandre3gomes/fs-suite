@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "FS Suite",
+    "slug": "fs-suite",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "fssuite",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0d0f14"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.simulando.fssuite"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0d0f14"
+      },
+      "package": "com.simulando.fssuite"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
