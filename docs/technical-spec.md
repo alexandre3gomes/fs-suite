@@ -652,6 +652,17 @@ pnpm dev
 
 ## 18. MVP Delivery Phases
 
+> **Phase numbering note:** The technical delivery phases in this section do not map 1:1 to the product roadmap phases in `docs/project-spec.md §13`. The product spec groups Auth + Dashboard + Foundation into a single "Fase 0", then names flight planning "Fase 1". This document decomposes that scope into finer-grained technical phases (0 through 5) to allow incremental delivery, independent validation, and clearer acceptance criteria per phase. The table below records the explicit mapping so handoffs between product, architecture, and development remain unambiguous.
+>
+> | Technical phase | Product spec phase |
+> |-----------------|--------------------|
+> | Phase 0 — Foundation scaffold | Fase 0 (infrastructure portion) |
+> | Phase 1 — Auth | Fase 0 (auth + session portion) |
+> | Phase 2 — Dashboard | Fase 0 (dashboard + identity portion) |
+> | Phase 3 — Flight Planning Core | Fase 1 — Planejamento de voo |
+> | Phase 4 — Integrations | Fase 1 (SimBrief + SkyVector portion) |
+> | Phase 5 — Observability & Hardening | cross-cutting (all product phases) |
+
 > **v0.5 note:** Phase 0 requires partial re-execution due to the frontend stack change. The NestJS API, Prisma schema, Docker Compose, and CI pipeline delivered in the original Phase 0 are reused unchanged. Only `apps/web`, `apps/mobile`, and `packages/ui` are replaced.
 
 ### Phase 0 — Foundation (re-execution scope)

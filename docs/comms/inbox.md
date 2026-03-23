@@ -484,3 +484,71 @@ Todos os 6 findings corrigidos. Validação executada após as correções:
 - As correções acima são untracked/unstaged. Um commit consolidando `apps/web` + `apps/mobile` (deletados) + `apps/app` (novo) + todas as correções deve ser feito antes de abrir Phase 1.
 
 Outcome registrado em `decisions.md` (Decision 009).
+
+---
+
+## Entry 007
+- Date: 2026-03-23
+- From: Desenvolvedor
+- To: Arquiteto
+- Status: resolved
+- Action: Encaminhar ao Desenvolvedor uma correção de limpeza no roteamento do Expo Router antes da expansão do fluxo de autenticação.
+- Context: A revalidação pós-correções confirmou que `lint`, `typecheck`, `test`, `build` e `build:web` passam, então não há bloqueios para seguir para a Fase 1. No entanto, o export web ainda emite warnings repetidos de roteamento no layout raiz.
+- Files: `apps/app/app/_layout.tsx`, `docs/comms/decisions.md`
+
+### Observação
+
+- Durante `pnpm run build` e `pnpm --filter @fs-suite/app run build:web`, o Expo Router emite warnings do tipo `No route named "(public)" exists in nested children`.
+- A origem aparente está em `apps/app/app/_layout.tsx`, que declara `Stack.Screen name="(public)"`, enquanto a árvore atual do build expõe `(public)/login/index`.
+- O build continua passando e o export estático é gerado, então isso não é bloqueador imediato.
+
+### Solicitação
+
+- Pedir ao Desenvolvedor para normalizar a declaração dos route groups no layout raiz do Expo Router antes de ampliar o fluxo de auth da Fase 1.
+
+### Response (Arquiteto)
+- Date: 2026-03-23
+- From: Arquiteto
+- Status: resolved
+
+Correção aplicada. `apps/app/app/(public)/_layout.tsx` criado com Stack pass-through, espelhando a estrutura já existente em `(auth)/_layout.tsx`. O Expo Router agora resolve `(public)` como um grupo com layout próprio e o warning foi eliminado. Build validado sem warnings de rota.
+
+---
+
+## Entry 008
+- Date: 2026-03-23
+- From: Desenvolvedor
+- To: Arquiteto
+- Status: resolved
+- Action: Alinhar a nomenclatura e a ordem das fases entre a especificação de produto e a especificação técnica para evitar handoff confuso nas próximas entregas.
+- Context: A revisão atual confirmou que a especificação técnica já detalha suficientemente a implementação de autenticação, mas há um desalinhamento de fase entre `docs/project-spec.md` e `docs/technical-spec.md`.
+- Files: `docs/project-spec.md`, `docs/technical-spec.md`
+
+### Finding
+
+- `docs/project-spec.md` define `Fase 1` como `Planejamento de voo`.
+- `docs/technical-spec.md` define `Phase 1` como `Auth`.
+- O escopo técnico de autenticação está detalhado e implementável, mas a nomenclatura atual pode gerar handoff incorreto entre produto, arquitetura e desenvolvimento.
+
+### Solicitação
+
+- Normalizar a ordem/nome das fases entre os documentos, ou
+- Registrar explicitamente na `technical-spec` que a decomposição técnica reordenou as fases de execução sem alterar as prioridades funcionais do MVP.
+
+### Response (Arquiteto)
+- Date: 2026-03-23
+- From: Arquiteto
+- Status: resolved
+
+Desalinhamento registrado e endereçado na opção 2 (registro explícito), mantendo `docs/project-spec.md` intacto (read-only). `docs/technical-spec.md` §18 recebeu nota de mapeamento com tabela explícita:
+
+| Fase técnica | Fase de produto |
+|---|---|
+| Phase 0 — Foundation | Fase 0 (infraestrutura) |
+| Phase 1 — Auth | Fase 0 (auth + sessão) |
+| Phase 2 — Dashboard | Fase 0 (dashboard + identidade) |
+| Phase 3 — Flight Planning Core | Fase 1 — Planejamento de voo |
+| Phase 4 — Integrations | Fase 1 (SimBrief + SkyVector) |
+| Phase 5 — Observability | transversal |
+
+A decomposição técnica em 6 fases é intencional para permitir entrega incremental e critérios de aceite independentes. As prioridades funcionais do MVP não foram alteradas. Outcome registrado em `decisions.md` (Decision 010).

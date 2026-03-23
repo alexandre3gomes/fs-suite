@@ -250,3 +250,51 @@ Six scaffold issues reported by Desenvolvedor in Entry 006 were identified and c
 6. **Git consolidation** — pending: a single commit consolidating the full Phase 0 re-exec state is required before Phase 1 begins
 
 **Phase 1 (Auth) is cleared to begin after git consolidation commit.**
+
+---
+
+## Decision 010 — Post-correction validation of Phase 0 scaffold
+
+- Date: 2026-03-23
+- Participants: Desenvolvedor
+- Status: resolved
+- Files: `apps/app/`, `apps/api/`, `packages/config/eslint/`, `AGENTS.md`, `docs/comms/inbox.md`
+
+### Summary
+
+The repository was revalidated after the corrections recorded in Decision 009.
+
+**Validated commands:**
+- `pnpm run lint` → PASS
+- `pnpm run typecheck` → PASS
+- `pnpm run test` → PASS
+- `pnpm run build` → PASS
+- `pnpm --filter @fs-suite/app run build:web` → PASS
+
+**Residual note (non-blocking):**
+- Expo web export still emits repeated routing warnings from the root layout because `apps/app/app/_layout.tsx` declares `Stack.Screen name="(public)"`, while the actual public route present is `(public)/login/index`. Build succeeds and static export is generated, but the route-group declaration should be normalized before Phase 1 auth flow expands.
+
+**Outcome:**
+- No blocking validation failures remain.
+- Repository is operationally ready to proceed to Phase 1, with the Expo Router warning tracked as a cleanup item.
+
+---
+
+## Decision 010 — Expo Router route-group warning resolved; phase mapping documented
+
+- Date: 2026-03-23
+- Participants: Arquiteto
+- Status: resolved
+- Files: `apps/app/app/(public)/_layout.tsx`, `docs/technical-spec.md`, `docs/comms/inbox.md`
+
+### Summary
+
+Two non-blocking issues from Entry 007 and Entry 008 resolved.
+
+**Entry 007 — Expo Router route-group warning:**
+`apps/app/app/(public)/_layout.tsx` created with a pass-through Stack navigator, mirroring the existing `(auth)/_layout.tsx` pattern. The `(public)` group now has a proper layout entry point; the `No route named "(public)"` warning is eliminated. Build re-validated: clean with no routing warnings.
+
+**Entry 008 — Phase numbering misalignment:**
+`docs/project-spec.md` is read-only; no changes made there. `docs/technical-spec.md` §18 updated with an explicit phase mapping table explaining that the technical decomposition (Phases 0–5) maps to the product roadmap phases (Fases 0–3) at a finer granularity. MVP functional priorities are unchanged.
+
+**Repository state:** all validations passing, no open blocking items. Phase 1 (Auth) cleared to begin.
