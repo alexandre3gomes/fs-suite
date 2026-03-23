@@ -9,21 +9,22 @@
     "./tokens": "./src/tokens.ts"
   },
   "scripts": {
-    "lint": "eslint src --ext .ts,.tsx",
+    "lint": "eslint src",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
+    "nativewind": ">=4.1.0",
     "react": ">=18.0.0",
-    "react-dom": ">=18.0.0"
+    "react-native": ">=0.74.0"
   },
   "devDependencies": {
     "@fs-suite/config": "workspace:*",
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.5.1",
-    "react": "^18.3.1",
-    "tailwindcss": "^3.4.17",
+    "@types/react": "~18.2.79",
+    "@types/react-native": "~0.73.0",
+    "nativewind": "~4.1.23",
+    "react": "18.2.0",
+    "react-native": "0.74.5",
+    "tailwindcss": "^3.4.3",
     "typescript": "^5.7.2"
   }
 }

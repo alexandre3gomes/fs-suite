@@ -1,9 +1,9 @@
 # FS Suite — Technical Specification
 
-> **Status:** Reviewed v0.4 — Cleared for implementation
-> **Version:** 0.4
+> **Status:** v0.5 — Cleared for implementation (approved by Analista de negocio, 2026-03-23)
+> **Version:** 0.5
 > **Derived from:** `docs/project-spec.md`
-> **Changelog:** v0.4 — Section 19 BA decisions resolved: SimBrief import-only confirmed, aircraft source policy updated, SkyVector validation classified as pre-Phase-4 QA gate, branding source set to Simulando channel, and `next-intl` confirmed with `pt-BR` + `en`. v0.3 — fixed refresh token session lookup: refresh token is now a signed JWT containing sessionId, removing dependency on access token during rotation. v0.2 — addressed BA review feedback: SimBrief scope, refresh token policy, endpoint contract, branding requirements, optional infra classification, airport data sourcing
+> **Changelog:** v0.5 — Frontend stack revision approved in principle by BA (Entry 004, 2026-03-23): replace `apps/web` (Next.js) + `apps/mobile` (Expo scaffold) with a single `apps/app` (Expo Router SDK 51+ targeting iOS, Android, and Web from one codebase). NestJS API, Prisma schema, packages/types, and Docker/CI infrastructure unchanged. packages/ui rewritten to React Native primitives + NativeWind. i18n library replaced: `next-intl` → `expo-localization + i18next` (same locales: pt-BR + en). SSR/SSG trade-off formally registered in §20. packages/ui migration plan added to §12. Phase 0 re-execution scope defined in §18. v0.4 — Section 19 BA decisions resolved: SimBrief import-only confirmed, aircraft source policy updated, SkyVector validation classified as pre-Phase-4 QA gate, branding source set to Simulando channel, and `next-intl` confirmed with `pt-BR` + `en`. v0.3 — fixed refresh token session lookup: refresh token is now a signed JWT containing sessionId, removing dependency on access token during rotation. v0.2 — addressed BA review feedback: SimBrief scope, refresh token policy, endpoint contract, branding requirements, optional infra classification, airport data sourcing
 > **Language:** English (code and technical docs); Portuguese pt-BR (user-facing content)
 
 ---
@@ -18,16 +18,17 @@ Functional requirements are owned by the product/business team and **must not be
 
 ## 2. Monorepo Structure
 
+> **v0.5 change:** `apps/web` and `apps/mobile` are replaced by a single `apps/app` (Expo Router). See §20 for rationale and trade-offs.
+
 ```
 fs-suite/
 ├── apps/
-│   ├── web/                   # Next.js 14 (App Router)
-│   ├── api/                   # NestJS 10
-│   └── mobile/                # Expo SDK 51 (React Native) — scaffolded, not implemented in MVP
+│   ├── app/                   # Expo Router SDK 51+ — iOS, Android, and Web from one codebase
+│   └── api/                   # NestJS 10
 ├── packages/
-│   ├── ui/                    # Shared component library (React + Tailwind)
+│   ├── ui/                    # Shared component library (React Native + NativeWind)
 │   ├── types/                 # Shared TypeScript types and Zod schemas
-│   └── config/                # Shared ESLint, TypeScript, Tailwind, and Prettier configs
+│   └── config/                # Shared ESLint, TypeScript, and Prettier configs
 ├── docs/
 │   ├── project-spec.md        # Functional specification (do not modify)
 │   └── technical-spec.md      # This document
@@ -42,25 +43,27 @@ fs-suite/
 
 | Concern              | Technology                    | Version   | MVP Required | Rationale                                                         |
 |----------------------|-------------------------------|-----------|--------------|-------------------------------------------------------------------|
-| Web framework        | Next.js (App Router)          | 14.x      | Yes          | SSR, RSC, file-based routing, good DX for dashboards             |
+| App framework        | Expo Router                   | SDK 51+   | Yes          | Single codebase for iOS, Android, and Web; file-based routing; replaces Next.js + Expo separately |
 | API framework        | NestJS                        | 10.x      | Yes          | Modular, decorator-based, DI container, good for domain isolation |
-| Mobile (future)      | Expo React Native             | SDK 51    | Scaffold only| Managed workflow, shared types with web                           |
 | Language             | TypeScript                    | 5.x       | Yes          | Strict mode across all packages                                   |
 | ORM                  | Prisma                        | 5.x       | Yes          | Type-safe queries, migration management, good Postgres support    |
 | Database             | PostgreSQL                    | 16        | Yes          | Relational, JSONB support for flexible route data                 |
 | Cache                | Redis                         | 7.x       | Yes          | Rate limiting, short-TTL airport data cache, refresh token rotation|
 | Auth                 | Passport.js (NestJS)          | —         | Yes          | Google OAuth 2.0 strategy; JWT for stateless API tokens           |
 | Monorepo             | Turborepo                     | 2.x       | Yes          | Task caching, pipeline orchestration                              |
-| Component styling    | Tailwind CSS                  | 3.x       | Yes          | Utility-first, consistent design tokens across web and mobile     |
-| Schema validation    | Zod                           | 3.x       | Yes          | Shared between `packages/types`, API DTOs, and web form schemas   |
-| Testing (unit)       | Vitest                        | 1.x       | Yes          | Fast, ESM-native, compatible with both Next.js and NestJS         |
-| Testing (e2e)        | Playwright                    | 1.x       | Yes          | Browser-level e2e for critical auth and planning flows            |
-| Error tracking       | Sentry                        | —         | Yes          | Browser + Node.js SDK; required from first deploy per spec        |
+| Component styling    | NativeWind                    | 4.x       | Yes          | Tailwind CSS utility classes for React Native; works on web and native |
+| Schema validation    | Zod                           | 3.x       | Yes          | Shared between `packages/types`, API DTOs, and app form schemas   |
+| i18n                 | expo-localization + i18next   | —         | Yes          | Device locale detection (Expo) + translation management (i18next); replaces `next-intl` which is Next.js-only. Locales: `pt-BR` (default) + `en` |
+| Testing (unit)       | Vitest                        | 1.x       | Yes          | Fast, ESM-native, compatible with Expo and NestJS                 |
+| Testing (e2e)        | Playwright                    | 1.x       | Yes          | Browser-level e2e for web target; Detox considered for native (post-MVP) |
+| Error tracking       | Sentry                        | —         | Yes          | React Native + Node.js SDK; required from first deploy per spec   |
 | Event logging        | Posthog (self-hosted optional)| —         | Recommended  | Product analytics; LGPD opt-out required. Not a blocker for MVP launch |
 | Component docs       | Storybook                     | —         | Recommended  | Useful once design system matures; not required to ship MVP       |
 | Container            | Docker + Docker Compose       | —         | Yes (local)  | Local dev environment (Postgres, Redis)                           |
 
 > **Note on "Recommended" items:** Posthog and Storybook are proposed as infrastructure improvements, not functional requirements. They can be added post-MVP-launch without affecting user-facing features.
+
+> **v0.5 i18n substitution:** `next-intl` was approved in Decision 003 / Section 19 item 6. That decision is superseded by this revision. `next-intl` is a Next.js-specific library and does not run in React Native. `expo-localization + i18next` provides equivalent functionality (locale detection, translation keys, pluralization) and is the standard cross-platform solution for Expo projects. The approved locales (`pt-BR` default + `en`) are unchanged.
 
 ---
 
@@ -93,30 +96,40 @@ src/
 
 **API contract style:** REST, JSON. Versioned under `/v1/`. OpenAPI spec auto-generated via `@nestjs/swagger`.
 
-### 4.2 `apps/web` — Next.js
+### 4.2 `apps/app` — Expo Router
 
-Route structure:
+> **v0.5 change:** replaces `apps/web` (Next.js) and `apps/mobile` (Expo scaffold). Single codebase runs on iOS, Android, and Web.
+
+Route structure (Expo Router file-based, mirrors the previous Next.js App Router layout):
 
 ```
 app/
 ├── (public)/
 │   └── login/          # Google OAuth entry point
 ├── (auth)/
+│   ├── _layout.tsx      # Auth shell with navigation
 │   ├── dashboard/       # Authenticated home
 │   ├── flight-plans/
 │   │   ├── new/         # New flight plan form
 │   │   ├── [id]/        # View/edit saved plan
-│   │   └── page.tsx     # History list
+│   │   └── index.tsx    # History list
 │   └── profile/         # User profile and preferences
-└── api/
-    └── auth/            # Next.js API route for token relay (if needed)
+└── _layout.tsx          # Root layout (fonts, theme, providers)
 ```
 
-**State management:** React Server Components for data fetching where possible; Zustand for client-side UI state (form steps, modal state). No Redux.
+**Rendering target:**
+- **Web:** Expo Router renders via `react-native-web` as real HTML elements (`div`, `span`, `input`) — not canvas. Native browser behaviors (scroll, text selection, copy-paste, deep links, accessibility) are preserved.
+- **Native (iOS/Android):** Standard React Native rendering via Hermes.
 
-**Data fetching:** Server Components fetch from NestJS API directly via internal network in production. Client Components use SWR for revalidation.
+**State management:** Zustand for client-side UI state (form steps, modal state, auth token in memory). No Redux. Server-side data fetching via React Query (replaces SWR — better React Native support).
 
-**Auth on web:** JWT stored in memory (access token); refresh token in `httpOnly` cookie managed by NestJS. Next.js middleware validates session on protected routes.
+**Data fetching:** All data fetching via NestJS API REST calls. React Query manages caching and revalidation across both web and native targets.
+
+**Auth on web:** JWT stored in memory (access token); refresh token in `httpOnly` cookie managed by NestJS. Expo Router middleware (via `expo-router/server`) validates session on protected routes.
+
+**Auth on native:** JWT access token stored in memory; refresh token stored in `expo-secure-store` (iOS Keychain / Android Keystore). Token refresh logic shared via a common auth service module.
+
+**Responsive layout:** Expo Router on web supports CSS media queries via NativeWind. Components use responsive breakpoint utilities (`sm:`, `md:`, `lg:`) to adapt layout for desktop (≥1024px), tablet (≥768px), and mobile (<768px). Dashboard layout validated on all three breakpoints before Phase 2 is considered done.
 
 ### 4.3 `packages/types`
 
@@ -128,10 +141,14 @@ Single source of truth for:
 
 ### 4.4 `packages/ui`
 
-- React components built with Tailwind CSS
-- Aviation-themed design tokens (colors, typography, spacing) — see Section 9 for branding requirements
-- Compatible with both Next.js and Expo (web-only components initially; native variants added in mobile phase)
+> **v0.5 change:** Components migrated from React DOM primitives to React Native primitives. `react-native-web` renders them as HTML on web — no separate web/native variants required for MVP components.
+
+- Components built with **React Native primitives** (`View`, `Text`, `TextInput`, `Pressable`, `ScrollView`) + **NativeWind** for styling
+- Aviation-themed design tokens (colors, typography, spacing) — see Section 9 and Section 12 for branding requirements
+- Works on iOS, Android, and Web from the same component source — no `.native.tsx` / `.web.tsx` splits for MVP components
+- `tokens.ts` preserved; values consumed via NativeWind theme config instead of Tailwind web config
 - Storybook integration is **recommended** but not required to ship MVP
+- See Section 12 for migration plan from the Phase 0 React DOM scaffold
 
 ---
 
@@ -489,7 +506,7 @@ On `POST /v1/auth/refresh`:
 
 ---
 
-## 12. Branding and Design System Requirements
+## 12. Branding, Design System, and packages/ui Migration
 
 The functional spec requires the product to reflect the Simulando channel visual identity with an aviation/cockpit aesthetic. This section translates that into technical requirements.
 
@@ -522,7 +539,33 @@ The functional spec requires the product to reflect the Simulando channel visual
 
 ### Dark mode
 
-Dark mode is noted in the spec as a future option, not a current requirement. MVP ships with a single theme. The token structure must support theming (CSS custom properties), but dark mode values are not required at MVP.
+Dark mode is noted in the spec as a future option, not a current requirement. MVP ships with a single theme. The token structure must support theming (NativeWind dark mode via `colorScheme`), but dark mode values are not required at MVP.
+
+### packages/ui Migration Plan (Phase 0 re-execution)
+
+The Phase 0 scaffold delivered 5 components using React DOM primitives (`div`, `span`, `className`). These must be rewritten before Phase 1 begins.
+
+| Component | Migration effort | Notes |
+|---|---|---|
+| `Button` | Low | `div` → `Pressable`, `className` → NativeWind `className` (NativeWind v4 supports JSX className) |
+| `Card` | Low | `div` → `View`, style props preserved via NativeWind |
+| `Badge` | Low | `span` → `View` + `Text`, variant logic unchanged |
+| `Input` | Medium | `input` → `TextInput`; label/error layout needs `View` wrapper |
+| `Spinner` | Low | Replace CSS animation with `Animated` API or `react-native-reanimated` |
+
+**New components required for MVP (built natively from the start):**
+- `Select` — use `@react-native-picker/picker` with NativeWind styling
+- `Combobox` — airport search: `TextInput` + `FlatList` dropdown; custom implementation
+- `Avatar` — `Image` + `View` fallback with initials
+- `Skeleton` — `react-native-reanimated` shimmer animation
+
+**Acceptance criteria for packages/ui re-execution:**
+- All 5 existing components render correctly on iOS simulator, Android emulator, and Chrome (web)
+- NativeWind v4 configured and Tailwind tokens from `tokens.ts` consumed via theme extension
+- No `div`, `span`, or `className` (string-based) remaining in component source (NativeWind `className` prop is acceptable — it is the NativeWind API, not raw HTML)
+- TypeScript types unchanged — consumers of `packages/ui` require no import changes
+
+**Estimated effort:** 2–3 days for the 5 existing components + NativeWind setup. New components (Select, Combobox, Avatar, Skeleton) are built during Phase 2 (Dashboard).
 
 ---
 
@@ -541,7 +584,7 @@ Dark mode is noted in the spec as a future option, not a current requirement. MV
 ## 14. Observability
 
 **Required for MVP:**
-- **Sentry:** installed in `apps/api` (Node.js SDK) and `apps/web` (Next.js SDK) from first deploy — per functional spec non-functional requirement
+- **Sentry:** installed in `apps/api` (Node.js SDK) and `apps/app` (React Native + web SDK via `@sentry/react-native`) from first deploy — per functional spec non-functional requirement
 - **Structured logging:** NestJS uses `pino` logger with JSON output; log level configurable via `LOG_LEVEL` env var
 - **ActivityLog:** DB writes for domain events (`auth.login`, `auth.logout`, `flight_plan.created`, `flight_plan.duplicated`, `simbrief.import`)
 - **Health check:** `GET /v1/health` returns DB + Redis connectivity status
@@ -558,20 +601,22 @@ MVP target: single-region deployment.
 | Component    | Service                        | Notes                                           |
 |--------------|--------------------------------|-------------------------------------------------|
 | API          | Railway / Render               | Docker container, auto-deploy from `main` branch|
-| Web          | Vercel                         | Next.js native platform                         |
+| Web (app)    | EAS Hosting / Netlify          | Expo Router static export or server output; replaces Vercel (Next.js-specific). EAS Hosting is the managed option; Netlify is the fallback for static export. |
+| iOS          | Expo EAS Build + App Store     | OTA updates via EAS Update; native build on EAS |
+| Android      | Expo EAS Build + Play Store    | OTA updates via EAS Update; native build on EAS |
 | Database     | Railway Postgres / Supabase DB | Managed Postgres 16                             |
 | Redis        | Railway Redis / Upstash        | Managed Redis 7                                 |
 | File storage | Not required in MVP            | —                                               |
-| CI/CD        | GitHub Actions                 | lint → typecheck → test → build → deploy        |
+| CI/CD        | GitHub Actions                 | lint → typecheck → test → build; EAS Build triggered on release tags |
 
-**Local dev:** Docker Compose spins up Postgres + Redis. `apps/api` and `apps/web` run natively via `turbo dev`.
+**Local dev:** Docker Compose spins up Postgres + Redis. `apps/app` runs via `npx expo start --web` (web) or Expo Go / simulator (native). `apps/api` runs via NestJS dev server. Both orchestrated via `turbo dev`.
 
 ---
 
 ## 16. Development Environment Setup
 
 ```bash
-# Prerequisites: Node 20 LTS, pnpm 9, Docker
+# Prerequisites: Node 20 LTS, pnpm 9, Docker, Expo CLI (npm i -g expo-cli)
 
 # 1. Install dependencies
 pnpm install
@@ -582,7 +627,7 @@ docker compose up -d
 # 3. Copy env files
 cp .env.example .env
 cp apps/api/.env.example apps/api/.env
-cp apps/web/.env.example apps/web/.env
+cp apps/app/.env.example apps/app/.env
 
 # 4. Run DB migrations and seed airports
 pnpm --filter api prisma migrate dev
@@ -590,6 +635,8 @@ pnpm --filter api prisma db seed
 
 # 5. Start all services
 pnpm dev
+# apps/app: Expo dev server (web at localhost:8081, native via Expo Go)
+# apps/api: NestJS at localhost:3000
 ```
 
 ---
@@ -605,23 +652,44 @@ pnpm dev
 
 ## 18. MVP Delivery Phases
 
-### Phase 0 — Foundation
-- [ ] Turborepo monorepo scaffold
-- [ ] `packages/config`: shared TypeScript, ESLint, Tailwind configs
-- [ ] `packages/types`: base Zod schemas and enums
-- [ ] Docker Compose for local infra
-- [ ] CI pipeline (lint + typecheck + build)
+> **v0.5 note:** Phase 0 requires partial re-execution due to the frontend stack change. The NestJS API, Prisma schema, Docker Compose, and CI pipeline delivered in the original Phase 0 are reused unchanged. Only `apps/web`, `apps/mobile`, and `packages/ui` are replaced.
+
+### Phase 0 — Foundation (re-execution scope)
+
+**Reused from original Phase 0 (no changes needed):**
+- `apps/api` — NestJS scaffold, Prisma schema, `nest-cli.json`
+- Docker Compose — PostgreSQL 16 + Redis 7
+- CI pipeline — GitHub Actions (lint → typecheck → build → test)
+- `packages/types` — Zod schemas and enums
+- `packages/config` — TypeScript strict, ESLint, Prettier configs
+- `.env.example` files (root + api)
+
+**New / replaced items:**
+- [ ] Remove `apps/web` and `apps/mobile`; scaffold `apps/app` with Expo Router SDK 51+
+- [ ] Configure Expo Router for web + native targets (metro, babel, app.json)
+- [ ] Configure NativeWind v4 in `apps/app`
+- [ ] Rewrite `packages/ui` components (Button, Card, Badge, Input, Spinner) to React Native primitives + NativeWind — see §12 migration plan
+- [ ] Configure `expo-localization + i18next` in `apps/app` with `pt-BR` (default) and `en`
+- [ ] Scaffold route structure: `(public)/login`, `(auth)/dashboard`, `(auth)/flight-plans`, `(auth)/profile`
+- [ ] Update `packages/config/tailwind` to NativeWind theme config consuming `tokens.ts`
+- [ ] Update `turbo.json` globalEnv: remove `NEXTAUTH_URL`, `NEXTAUTH_SECRET`; add `EXPO_PUBLIC_API_URL`
+- [ ] Update `.env.example` for `apps/app`
+- [ ] Verify typecheck passing on all packages and `apps/app`
+
+**Estimated effort:** 3–5 days.
 
 ### Phase 1 — Auth
 - [ ] NestJS `auth` module: Google OAuth, JWT (RS256), session management
 - [ ] Refresh token rotation with reuse detection (DB-based bcrypt mismatch, no Redis required)
 - [ ] `User`, `OAuthAccount`, `Session` Prisma models + migrations
-- [ ] Next.js login page and auth middleware
+- [ ] Login screen in `apps/app` (web: OAuth redirect; native: in-app browser via `expo-web-browser`)
+- [ ] Route protection middleware in Expo Router (`(auth)` group guard)
+- [ ] Access token stored in memory; refresh token in `httpOnly` cookie (web) / `expo-secure-store` (native)
 - [ ] `/v1/users/me` endpoint
 
 ### Phase 2 — Dashboard
-- [ ] Design tokens + minimum component set in `packages/ui` (blocked on branding assets)
-- [ ] Authenticated dashboard layout in Next.js
+- [ ] Design tokens + complete component set in `packages/ui` (Select, Combobox, Avatar, Skeleton) — blocked on branding assets
+- [ ] Authenticated dashboard layout in `apps/app` — validated on desktop ≥1024px, tablet ≥768px, mobile native
 - [ ] Module cards (Flight Planning highlighted, others as placeholders)
 - [ ] Recent flight plans widget (empty state for now)
 
@@ -629,25 +697,69 @@ pnpm dev
 - [ ] OurAirports seed script + search endpoint with `pg_trgm`
 - [ ] `AircraftProfile` CRUD
 - [ ] `FlightPlan` + `FlightPlanRoute` CRUD
-- [ ] Multi-step flight plan form on web
+- [ ] Multi-step flight plan form in `apps/app`
 - [ ] Flight plan history list + reopen + duplicate
 
 ### Phase 4 — Integrations
 - [ ] SimBrief pilot ID connection save/update
 - [ ] SimBrief OFP import adapter (fetch + normalize)
-- [ ] SkyVector URL builder (pending QA validation of deep-link format)
+- [ ] SkyVector URL builder (pending QA validation of deep-link format; opens in `expo-web-browser` on native)
 - [ ] Integration UI on flight plan form
 
 ### Phase 5 — Observability & Hardening
-- [ ] Sentry integration (web + api)
+- [ ] Sentry integration (`apps/app` React Native SDK + `apps/api` Node.js SDK)
 - [ ] ActivityLog writes on all key domain events
 - [ ] Rate limiting on auth and integration endpoints
-- [ ] e2e tests (Playwright) for auth flow and flight plan creation
+- [ ] e2e tests (Playwright) for web target; Detox setup considered for native (post-MVP)
 - [ ] `GET /v1/health` endpoint
 
 ---
 
-## 19. Business Analyst Resolution Log (2026-03-22)
+## 19. Formal Trade-off Register (v0.5)
+
+This section documents the formally accepted trade-offs introduced by the v0.5 stack revision. Each trade-off was evaluated against the MVP functional requirements and is considered acceptable for the product scope.
+
+### Trade-off 1 — No SSR/SSG on the web target
+
+**What is lost:** Expo Router Web does not provide mature server-side rendering or static site generation. Pages are rendered client-side (SPA model) on the web target.
+
+**Why it is acceptable:** The product is a dashboard for authenticated users. There are no public content pages requiring SEO or pre-rendering. The login page is the only public-facing route and works correctly as a client-rendered SPA. If a fully public landing page is required in a future phase, it can be served as a separate lightweight static page (outside `apps/app`) without affecting the core product.
+
+**Condition for revisiting:** If the product introduces SEO-dependent public pages (e.g., marketing landing, public route sharing), this trade-off must be re-evaluated and may require a separate Next.js or Astro static site.
+
+---
+
+### Trade-off 2 — NativeWind CSS coverage vs. full Tailwind
+
+**What is lost:** Some Tailwind CSS features that rely on browser pseudo-selectors or complex cascading (`:hover` with state variants, arbitrary CSS properties) are not available in NativeWind's React Native target. They are available on the web target only.
+
+**Why it is acceptable:** The aviation/cockpit design aesthetic targets visual hierarchy, spacing, and color — all fully supported by NativeWind. Hover states on native use `Pressable`'s `pressed` state instead of CSS `:hover`. The design system in `packages/ui` must be authored with NativeWind's cross-platform constraints as a first-class concern.
+
+---
+
+### Trade-off 3 — React Native Web rendering differences
+
+**What is delivered:** `react-native-web` renders React Native primitives as real HTML elements on web (`View` → `div`, `Text` → `span`, `TextInput` → `input`). Browser native behaviors (text selection, scroll, deep links, accessibility tree) are preserved.
+
+**Known limitation:** Some browser-specific CSS behaviors (e.g., `position: sticky`, complex `grid` layouts) require wrapping with `react-native-web`'s `StyleSheet` or platform-specific files (`.web.tsx`). MVP components are designed to avoid these edge cases. If they arise, platform-specific variants will be introduced per component, documented in `packages/ui`.
+
+---
+
+### Note on `docs/project-spec.md` alignment
+
+`docs/project-spec.md` currently names `apps/web` (Next.js) and `apps/mobile` (Expo React Native) explicitly in sections §10 and §17. This document is owned by the product/business team and cannot be modified by the Arquiteto.
+
+The Business Analyst must either:
+- Update `docs/project-spec.md` §10 and §17 to reflect the single `apps/app` (Expo Router) decision, or
+- Append an addendum to `docs/project-spec.md` with a dated note superseding the stack recommendation in those sections.
+
+Suggested addendum text for BA use:
+
+> **Addendum (2026-03-23):** Stack recommendation in §10 and §17 superseded by product decision to maintain a single frontend codebase for web and mobile, with near-term native mobile delivery. `apps/web` (Next.js) and `apps/mobile` (Expo React Native) are replaced by `apps/app` (Expo Router SDK 51+), which targets iOS, Android, and Web from a single TypeScript codebase. All other stack decisions (NestJS, PostgreSQL, Prisma, Redis, Turborepo) are unchanged.
+
+---
+
+## 20. Business Analyst Resolution Log (2026-03-22)
 
 1. **SimBrief generation vs import:** MVP remains **import-only** (fetch latest OFP by pilot ID). OFP generation stays out of initial delivery.
 
@@ -659,4 +771,4 @@ pnpm dev
 
 5. **Branding source:** Until expanded brand assets are delivered, product UI should use Simulando channel branding as baseline (`https://www.youtube.com/@SimulandoMSFS`).
 
-6. **i18n framework at scaffold time:** `next-intl` is approved for Phase 0 with both Portuguese (`pt-BR`) and English (`en`) implemented from the start.
+6. **i18n framework at scaffold time:** ~~`next-intl` approved for Phase 0~~ — **superseded by v0.5 revision.** `next-intl` is a Next.js-specific library incompatible with React Native. Replaced by `expo-localization + i18next`. Locales unchanged: `pt-BR` (default) + `en` active from Phase 0 re-execution. See §3 for rationale.

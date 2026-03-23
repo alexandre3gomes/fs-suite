@@ -1,4 +1,7 @@
 import * as React from 'react';
+import { ActivityIndicator, View } from 'react-native';
+
+import { colors } from '../../tokens';
 
 export interface SpinnerProps {
   size?: 'sm' | 'md' | 'lg';
@@ -6,22 +9,24 @@ export interface SpinnerProps {
   'aria-label'?: string;
 }
 
-const sizeClasses = {
-  sm: 'h-4 w-4',
-  md: 'h-6 w-6',
-  lg: 'h-8 w-8',
+const sizeMap: Record<'sm' | 'md' | 'lg', 'small' | 'large'> = {
+  sm: 'small',
+  md: 'small',
+  lg: 'large',
 };
 
-export function Spinner({ size = 'md', className = '', 'aria-label': ariaLabel = 'Loading' }: SpinnerProps) {
+export function Spinner({
+  size = 'md',
+  className = '',
+  'aria-label': ariaLabel = 'Loading',
+}: SpinnerProps) {
   return (
-    <span
-      role="status"
-      aria-label={ariaLabel}
-      className={[
-        'inline-block animate-spin rounded-full border-2 border-current border-t-transparent',
-        sizeClasses[size],
-        className,
-      ].join(' ')}
-    />
+    <View
+      accessibilityRole="progressbar"
+      accessibilityLabel={ariaLabel}
+      className={className}
+    >
+      <ActivityIndicator size={sizeMap[size]} color={colors.primary} />
+    </View>
   );
 }

@@ -1,5 +1,5 @@
 {
-  "extends": "@fs-suite/config/typescript/react-library",
+  "extends": "@fs-suite/config/typescript/expo",
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src"

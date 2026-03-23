@@ -1,35 +1,33 @@
 import * as React from 'react';
+import { View, Text, TextInput, type TextInputProps } from 'react-native';
 
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+export interface InputProps extends TextInputProps {
   label?: string;
   error?: string;
   hint?: string;
+  className?: string;
 }
 
-export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, className = '', id, ...props }, ref) => {
-    const inputId = id ?? label?.toLowerCase().replace(/\s+/g, '-');
-
+export const Input = React.forwardRef<TextInput, InputProps>(
+  ({ label, error, hint, className = '', ...props }, ref) => {
     return (
-      <div className="space-y-1.5">
+      <View className="gap-1.5">
         {label && (
-          <label htmlFor={inputId} className="block text-sm font-medium text-foreground">
-            {label}
-          </label>
+          <Text className="text-sm font-medium text-foreground">{label}</Text>
         )}
-        <input
+        <TextInput
           ref={ref}
-          id={inputId}
           className={[
-            'block w-full rounded-[var(--radius-button)] border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+            'w-full rounded-button border bg-input px-3 py-2 text-sm text-foreground',
             error ? 'border-destructive' : 'border-border',
             className,
           ].join(' ')}
+          placeholderTextColor="#8892a4"
           {...props}
         />
-        {error && <p className="text-xs text-destructive">{error}</p>}
-        {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
-      </div>
+        {error && <Text className="text-xs text-destructive">{error}</Text>}
+        {hint && !error && <Text className="text-xs text-muted-foreground">{hint}</Text>}
+      </View>
     );
   },
 );

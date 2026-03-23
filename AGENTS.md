@@ -5,9 +5,8 @@
 - Prefer a monorepo with Turborepo.
 - Use TypeScript across the stack.
 - Planned apps:
-  - `apps/web`: Next.js
+  - `apps/app`: Expo Router (iOS, Android, and Web from one codebase)
   - `apps/api`: NestJS
-  - `apps/mobile`: Expo React Native
 - Planned shared packages:
   - `packages/ui`
   - `packages/types`
@@ -19,7 +18,7 @@
 - Build web-first, but keep architecture reusable for mobile.
 - Prioritize the flight planning flow before tracking or social features.
 - Initial external integrations:
-  - SimBrief for planning import/generation
+  - SimBrief for planning import (import-only in MVP)
   - SkyVector for contextual route viewing
 - Do not scope FlightAware into the first delivery unless explicitly requested.
 - The interface should reflect aviation, navigation, precision, and Simulando branding.

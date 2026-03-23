@@ -269,6 +269,16 @@ Entidades iniciais previstas:
 - MVP focado em login, dashboard e planejamento de voo
 - SimBrief e SkyVector entram no primeiro modulo; FlightAware fica para a fase seguinte
 
+### Adendo de stack - 2026-03-23
+Por decisao de produto posterior a esta versao inicial, a recomendacao de stack das secoes 10 e 17 fica parcialmente substituida para atender ao requisito de manter um unico codebase frontend entre web e mobile e antecipar a prontidao mobile nativa.
+
+Atualizacao:
+- `apps/web` (Next.js) e `apps/mobile` (Expo React Native) sao substituidos por `apps/app` com Expo Router
+- o novo app deve atender Web, iOS e Android a partir do mesmo codebase TypeScript
+- `apps/api` (NestJS), `packages/types`, `packages/config`, PostgreSQL, Prisma, Redis e Turborepo permanecem como decisoes vigentes
+
+Essa mudanca nao altera as prioridades do MVP, que continuam sendo autenticacao, dashboard e planejamento de voo.
+
 ## 18. Proximos Artefatos Recomendados
 Depois desta especificacao macro, os proximos documentos ideais sao:
 - PRD detalhado do modulo de planejamento de voo

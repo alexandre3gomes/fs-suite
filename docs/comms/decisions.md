@@ -162,3 +162,91 @@ Arquiteto performed a full content-level validation of Phase 0 deliverables agai
 2. CI `test` job may fail with no tests present — add `--passWithNoTests` flag to Vitest config in Phase 1 when test infrastructure is wired
 
 **Phase 1 (Auth) is cleared to begin.**
+
+---
+
+## Decision 007 — Frontend stack revision approved for single app codebase
+
+- Date: 2026-03-23
+- Participants: Analista de negocio, Arquiteto
+- Status: resolved
+- Files: `docs/technical-spec.md`, `docs/project-spec.md`, `docs/comms/inbox.md`
+
+### Summary
+
+The frontend stack revision proposed in Inbox Entry 004 is approved. The repository technical reference moves from the previous dual-frontend plan (`apps/web` in Next.js + `apps/mobile` in Expo scaffold) to a single `apps/app` based on Expo Router targeting iOS, Android, and Web from one TypeScript codebase.
+
+**Approved outcomes:**
+- `docs/technical-spec.md` v0.5 becomes the active technical reference
+- `packages/ui` migration to React Native primitives + NativeWind is accepted with explicit effort, acceptance criteria, and migration scope
+- `next-intl` is formally superseded by `expo-localization + i18next`, keeping `pt-BR` and `en`
+- SSR/SSG, NativeWind coverage, and `react-native-web` behavior trade-offs are formally recorded
+
+**Business alignment recorded:**
+- `docs/project-spec.md` received an addendum superseding the previous stack recommendation in sections §10 and §17
+- Product direction remains web-first, but with a single reusable frontend codebase and near-term native mobile readiness
+- MVP priorities remain unchanged: authentication, dashboard, and flight planning
+
+**Execution impact acknowledged:**
+- Phase 0 frontend scaffold is partially re-executed
+- `apps/web` and `apps/mobile` are replaced by `apps/app`
+- `apps/api`, `packages/types`, infrastructure, and backend direction remain unchanged
+
+---
+
+## Decision 008 — Phase 0 re-exec completed (Expo Router scaffold)
+
+- Date: 2026-03-23
+- Participants: Desenvolvedor
+- Status: resolved
+- Files: `apps/app/`, `packages/ui/`, `packages/config/`, `turbo.json`, `docs/comms/inbox.md`
+
+### Summary
+
+Phase 0 re-execution completed per Entry 005 scope and `docs/technical-spec.md` v0.5. All checklist items delivered.
+
+**Delivered artifacts:**
+- `apps/web` and `apps/mobile` deleted
+- `apps/app` created: Expo Router SDK 51+, targets web/iOS/Android, file-based routing with `(public)/login` and `(auth)` group (dashboard, flight-plans, flight-plans/new, flight-plans/[id], profile)
+- `apps/app/app.json`: scheme `fssuite`, web bundler metro, static output, plugins expo-router + expo-secure-store, typed routes enabled
+- `apps/app/src/i18n`: `expo-localization + i18next + react-i18next`, locales `pt-BR` (default) + `en`, translation keys for all routes
+- `apps/app/metro.config.js` + `babel.config.js`: NativeWind v4 integration
+- `apps/app/tailwind.config.js`: extends base config with NativeWind preset
+- `packages/ui`: all 5 components rewritten with React Native primitives (View, Text, Pressable, TextInput, ActivityIndicator) + NativeWind className. Zero React DOM imports or HTML elements.
+- `packages/config/typescript/expo.json`: new tsconfig profile (jsx: react-native, moduleResolution: bundler, noEmit: true)
+- `packages/config/package.json`: export for `./typescript/expo` and `./tailwind/tailwind.config` added
+- `packages/config/tailwind/tailwind.config.js`: NativeWind preset added, CSS custom properties replaced with literal color values
+- `turbo.json`: `NEXTAUTH_URL` and `NEXTAUTH_SECRET` removed; `EXPO_PUBLIC_API_URL` added
+
+**Typecheck status:** packages/types PASS, packages/ui PASS, apps/api PASS, apps/app PASS — all zero errors.
+
+**Phase 1 (Auth) is cleared to begin.**
+
+---
+
+## Decision 009 — Phase 0 scaffold corrections applied
+
+- Date: 2026-03-23
+- Participants: Arquiteto, Desenvolvedor
+- Status: resolved
+- Files: `packages/config/eslint/`, `apps/api/`, `apps/app/`, `packages/types/`, `packages/ui/`, `AGENTS.md`, `docs/technical-spec.md`, `.npmrc`
+
+### Summary
+
+Six scaffold issues reported by Desenvolvedor in Entry 006 were identified and corrected. All monorepo validation commands now pass.
+
+**Validation after corrections:**
+- `pnpm run lint` → PASS
+- `pnpm run typecheck` → PASS
+- `pnpm run test` → PASS
+- `pnpm run build` → PASS (apps/api + apps/app)
+
+**Changes applied:**
+1. **ESLint 9 flat config** — `packages/config/eslint/{base,nestjs,react-library}.js` rewritten as flat config arrays; `eslint.config.js` added to all linted workspaces; `--ext` flags removed from lint scripts
+2. **Frontend build coverage** — `"build"` script added to `apps/app/package.json` so Turbo includes it in the build pipeline
+3. **Expo build fix** — placeholder PNG assets created in `apps/app/assets/`; `metro.config.js` updated with `watchFolders` and `resolver.nodeModulesPaths` for pnpm monorepo symlink resolution; `.npmrc` added with `node-linker=hoisted`
+4. **Test CI fix** — `vitest run --passWithNoTests` in `apps/api` prevents exit code 1 with no test files
+5. **Docs aligned** — `AGENTS.md` updated to reference `apps/app`; `technical-spec.md` §14 updated to reference `@sentry/react-native` instead of Next.js SDK
+6. **Git consolidation** — pending: a single commit consolidating the full Phase 0 re-exec state is required before Phase 1 begins
+
+**Phase 1 (Auth) is cleared to begin after git consolidation commit.**

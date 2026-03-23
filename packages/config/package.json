@@ -7,11 +7,13 @@
     "./typescript/nextjs": "./typescript/nextjs.json",
     "./typescript/nestjs": "./typescript/nestjs.json",
     "./typescript/react-library": "./typescript/react-library.json",
+    "./typescript/expo": "./typescript/expo.json",
     "./eslint/base": "./eslint/base.js",
     "./eslint/nextjs": "./eslint/nextjs.js",
     "./eslint/nestjs": "./eslint/nestjs.js",
     "./eslint/react-library": "./eslint/react-library.js",
-    "./tailwind": "./tailwind/tailwind.config.js"
+    "./tailwind": "./tailwind/tailwind.config.js",
+    "./tailwind/tailwind.config": "./tailwind/tailwind.config.js"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.18.2",

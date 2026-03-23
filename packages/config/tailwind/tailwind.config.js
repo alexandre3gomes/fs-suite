@@ -1,48 +1,51 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  presets: [require('nativewind/preset')],
   content: [],
   theme: {
     extend: {
       colors: {
         // Aviation-themed palette — tokens defined in packages/ui/src/tokens.ts
-        // These CSS custom properties are injected by packages/ui theme setup
+        background: '#0d0f14',
+        foreground: '#e8eaf0',
+        surface: {
+          DEFAULT: '#161a24',
+          muted: '#1e2333',
+        },
+        muted: {
+          DEFAULT: '#2a3048',
+          foreground: '#8892a4',
+        },
+        border: '#2a3048',
+        input: '#1e2333',
+        ring: '#4a90e2',
         primary: {
-          DEFAULT: 'var(--color-primary)',
-          foreground: 'var(--color-primary-foreground)',
+          DEFAULT: '#4a90e2',
+          foreground: '#ffffff',
         },
         accent: {
-          DEFAULT: 'var(--color-accent)',
-          foreground: 'var(--color-accent-foreground)',
+          DEFAULT: '#00d4ff',
+          foreground: '#0d0f14',
         },
-        surface: {
-          DEFAULT: 'var(--color-surface)',
-          muted: 'var(--color-surface-muted)',
-        },
-        background: 'var(--color-background)',
-        foreground: 'var(--color-foreground)',
-        muted: {
-          DEFAULT: 'var(--color-muted)',
-          foreground: 'var(--color-muted-foreground)',
-        },
-        border: 'var(--color-border)',
-        input: 'var(--color-input)',
-        ring: 'var(--color-ring)',
         destructive: {
-          DEFAULT: 'var(--color-destructive)',
-          foreground: 'var(--color-destructive-foreground)',
+          DEFAULT: '#e05c5c',
+          foreground: '#ffffff',
         },
         success: {
-          DEFAULT: 'var(--color-success)',
-          foreground: 'var(--color-success-foreground)',
+          DEFAULT: '#4caf7d',
+          foreground: '#ffffff',
         },
       },
       fontFamily: {
-        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
-        mono: ['var(--font-mono)', 'monospace'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
       },
       borderRadius: {
-        card: 'var(--radius-card)',
-        button: 'var(--radius-button)',
+        card: '8px',
+        button: '6px',
+        sm: '4px',
+        lg: '12px',
+        full: '9999px',
       },
       spacing: {
         // 4px base grid

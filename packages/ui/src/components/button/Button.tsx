@@ -1,27 +1,39 @@
 import * as React from 'react';
+import { Pressable, Text, ActivityIndicator, type PressableProps } from 'react-native';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
-export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonProps extends PressableProps {
   variant?: ButtonVariant;
   size?: ButtonSize;
   isLoading?: boolean;
+  className?: string;
+  children?: React.ReactNode;
 }
 
-const variantClasses: Record<ButtonVariant, string> = {
-  primary:
-    'bg-primary text-primary-foreground hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring',
-  secondary:
-    'bg-surface border border-border text-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring',
-  ghost:
-    'text-foreground hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-ring',
+const variantContainerClass: Record<ButtonVariant, string> = {
+  primary: 'bg-primary',
+  secondary: 'bg-surface border border-border',
+  ghost: 'bg-transparent',
 };
 
-const sizeClasses: Record<ButtonSize, string> = {
-  sm: 'px-3 py-1.5 text-sm',
-  md: 'px-4 py-2 text-sm',
-  lg: 'px-6 py-3 text-base',
+const variantTextClass: Record<ButtonVariant, string> = {
+  primary: 'text-primary-foreground',
+  secondary: 'text-foreground',
+  ghost: 'text-foreground',
+};
+
+const sizeContainerClass: Record<ButtonSize, string> = {
+  sm: 'px-3 py-1.5',
+  md: 'px-4 py-2',
+  lg: 'px-6 py-3',
+};
+
+const sizeTextClass: Record<ButtonSize, string> = {
+  sm: 'text-sm',
+  md: 'text-sm',
+  lg: 'text-base',
 };
 
 export function Button({
@@ -33,24 +45,32 @@ export function Button({
   children,
   ...props
 }: ButtonProps) {
+  const isDisabled = disabled ?? isLoading;
+
   return (
-    <button
-      disabled={disabled ?? isLoading}
+    <Pressable
+      disabled={isDisabled}
       className={[
-        'inline-flex items-center justify-center gap-2 rounded-[var(--radius-button)] font-medium transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50',
-        variantClasses[variant],
-        sizeClasses[size],
+        'flex-row items-center justify-center gap-2 rounded-button font-medium',
+        variantContainerClass[variant],
+        sizeContainerClass[size],
+        isDisabled ? 'opacity-50' : '',
         className,
-      ].join(' ')}
+      ]
+        .filter(Boolean)
+        .join(' ')}
       {...props}
     >
-      {isLoading && (
-        <span
-          className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
-          aria-hidden="true"
-        />
-      )}
-      {children}
-    </button>
+      {isLoading && <ActivityIndicator size="small" color="currentColor" />}
+      <Text
+        className={[
+          'font-medium',
+          variantTextClass[variant],
+          sizeTextClass[size],
+        ].join(' ')}
+      >
+        {children}
+      </Text>
+    </Pressable>
   );
 }
