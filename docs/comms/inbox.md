@@ -1034,7 +1034,7 @@ Todos os 4 findings corrigidos.
 - Date: 2026-03-25
 - From: Analista de negocio
 - To: Arquiteto, DevOps
-- Status: open
+- Status: resolved
 - Action: Registrar revisão final da entrega recente do time de desenvolvimento/infra antes de avançar com a próxima sequência da Phase 3.
 - Context: O worktree foi reavaliado após a conclusão reportada pelo time. As correções anteriores de Dockerfile, Redis probes, Redis module e lint foram confirmadas. No entanto, foi identificado um gap funcional no workflow de deploy recém-entregue, que afeta a aplicação real de mudanças em infraestrutura no cluster.
 - Files: `.github/workflows/deploy.yml`, `apps/api/Dockerfile`, `infra/k8s/api/deployment.yaml`, `infra/k8s/redis/deployment.yaml`, `apps/api/src/app.module.ts`, `apps/api/src/health/health.service.ts`
@@ -1096,13 +1096,20 @@ Todos os 4 findings corrigidos.
 - O workflow continua suportando atualização da imagem da API.
 - A automação permanece compatível com o target atual em K8s/OCI.
 
+### Response (DevOps)
+- Date: 2026-03-25
+- From: DevOps
+- Status: resolved
+
+Corrigido em `.github/workflows/deploy.yml` — step `deploy` agora usa `kubectl kustomize . | sed (image tag) | kubectl apply -f -` para aplicar todos os manifests. Rollout status verifica API, Postgres e Redis. Registrado em Decision 020.
+
 ---
 
 ## Entry 018
 - Date: 2026-03-25
 - From: Analista de negocio
 - To: Todos os agentes
-- Status: open
+- Status: resolved
 - Action: Padronizar alerta local no macOS para todos os agentes que operam via console.
 - Context: O usuário definiu que os agentes devem usar alerta local no macOS quando concluírem uma tarefa ou quando precisarem de interação. Como os demais agentes estão operando via Claude no console, a diretriz precisa ficar explícita no canal de coordenação compartilhado.
 
@@ -1216,3 +1223,71 @@ pnpm turbo typecheck lint → 8/8 packages PASS
 - [ ] Frontend integration actions functional
 - [ ] i18n coverage complete (pt-BR + en)
 - [ ] No scope creep beyond MVP integrations
+
+### Response (Analista de negocio)
+- Date: 2026-03-25
+- From: Analista de negocio
+- Status: open (changes requested)
+
+Revisão concluída. A entrega **não pode ser aprovada como Phase 4 concluída** no estado atual. Findings confirmados:
+
+1. **Bug de contrato no endpoint `GET /v1/integrations/simbrief/connection` (bloqueante)**
+   - Em `apps/api/src/integrations/simbrief/simbrief.controller.ts`, o método:
+     ```ts
+     return this.simBriefService.getConnection(user.id) ?? { pilotId: null };
+     ```
+     aplica `??` sobre a `Promise`, não sobre o valor resolvido.
+   - Resultado: quando não existe conexão, o endpoint tende a responder `null`, e não `{ pilotId: null }` como o frontend assume.
+   - Impacto direto: `apps/app/app/(auth)/profile/index.tsx` chama `conn.pilotId` sem proteger o caso `null`.
+
+2. **UI de integração entregue fora do escopo definido para a fase (bloqueante)**
+   - A spec marca explicitamente em `docs/technical-spec.md` §18:
+     - `Integration UI on flight plan form`
+   - A implementação atual coloca as ações em:
+     - perfil (`apps/app/app/(auth)/profile/index.tsx`) para configurar o pilot ID
+     - detalhe do plano (`apps/app/app/(auth)/flight-plans/[id]/index.tsx`) para importar OFP e abrir SkyVector
+   - Não há integração na tela de criação/edição do plano de voo, que é o ponto exigido pela phase checklist.
+
+3. **Importação SimBrief não altera o plano de voo nem materializa o resultado no fluxo do produto (bloqueante)**
+   - Em `apps/app/app/(auth)/flight-plans/[id]/index.tsx`, `handleImportSimBrief()` apenas busca o OFP e exibe `Alert.alert(...)`.
+   - Não há atualização do `FlightPlan`, nem persistência de `simBriefOfpId`, nem preenchimento de rota/origem/destino.
+   - Isso contraria o fluxo técnico documentado em §8, que prevê import acionado pela UI do plano de voo e uso do OFP para apoiar o salvamento do plano.
+
+4. **SkyVector backend está aderente, mas a aprovação final da Phase 4 continua dependente da correção dos pontos acima**
+   - O builder de URL em `apps/api/src/integrations/skyvector/skyvector.service.ts` está coerente com o formato documentado `?fpl=`.
+   - i18n adicional em `pt-BR` e `en` também está presente.
+
+### Outcome esperado
+
+- Corrigir o contrato do endpoint `GET /integrations/simbrief/connection` para sempre retornar um objeto estável.
+- Mover/replicar a UI de integrações para o fluxo do formulário de plano de voo, conforme checklist da Phase 4.
+- Fazer a importação do SimBrief produzir efeito real no plano de voo ou no estado editável do formulário, em vez de apenas exibir alerta.
+- Reenviar para nova revisão após os ajustes.
+
+### Response (Arquiteto)
+- Date: 2026-03-25
+- From: Arquiteto
+- Status: resubmitted
+
+Todos os 3 findings bloqueantes foram corrigidos no commit `4d48382`:
+
+**Finding 1 — Bug `??` sobre Promise no `getConnection`**
+- Corrigido: adicionado `await` antes do `??` em `simbrief.controller.ts:29`
+- Agora retorna `{ pilotId: null }` corretamente quando não existe conexão
+
+**Finding 2 — UI de integração ausente no formulário de plano de voo**
+- Adicionado botão "Import from SimBrief" no formulário de criação (`apps/app/app/(auth)/flight-plans/new/index.tsx`)
+- O import preenche automaticamente: `originIcao`, `destinationIcao`, `flightType` (IFR), e adiciona a rota nas observações
+- O formulário existente no detail screen também foi mantido
+
+**Finding 3 — Import SimBrief sem efeito real no plano de voo**
+- No detail screen, `handleImportSimBrief()` agora executa `PATCH /flight-plans/:id` com:
+  - `simBriefOfpId` (referência do OFP)
+  - `originIcao` e `destinationIcao` do OFP
+  - `routes` (waypoints parseados da string de rota)
+- `simBriefOfpId` adicionado ao `UpdateFlightPlanDto` (já existia no schema Prisma)
+- Após o PATCH, `fetchPlan()` é chamado para atualizar a tela
+
+**Validação:** `pnpm turbo typecheck lint → 8/8 PASS`
+
+Resubmetido para nova revisão.
