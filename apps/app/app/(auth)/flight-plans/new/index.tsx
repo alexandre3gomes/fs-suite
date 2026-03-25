@@ -13,6 +13,15 @@ interface AircraftProfile {
   icaoType: string | null;
 }
 
+interface SimBriefOfp {
+  ofpId: string;
+  originIcao: string;
+  destinationIcao: string;
+  route: string | null;
+  aircraftIcaoType: string | null;
+  fuelPlanned: number | null;
+}
+
 const FLIGHT_TYPE_OPTIONS = [
   { label: 'VFR', value: 'VFR' },
   { label: 'IFR', value: 'IFR' },
@@ -28,6 +37,7 @@ export default function NewFlightPlanScreen() {
   const [plannedAltitude, setPlannedAltitude] = useState('');
   const [remarks, setRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [importingSimbrief, setImportingSimbrief] = useState(false);
 
   // Airport search
   const [originOptions, setOriginOptions] = useState<ComboboxOption[]>([]);
@@ -72,6 +82,38 @@ export default function NewFlightPlanScreen() {
       // ignore
     }
   }, [aircraftLoaded]);
+
+  const handleImportSimBrief = async () => {
+    setImportingSimbrief(true);
+    try {
+      const ofp = await apiClient.get<SimBriefOfp>('/integrations/simbrief/ofp');
+
+      // Apply OFP data to form fields
+      if (ofp.originIcao) {
+        setOriginIcao(ofp.originIcao);
+        setOriginOptions([{ label: ofp.originIcao, value: ofp.originIcao }]);
+      }
+      if (ofp.destinationIcao) {
+        setDestinationIcao(ofp.destinationIcao);
+        setDestOptions([{ label: ofp.destinationIcao, value: ofp.destinationIcao }]);
+      }
+      if (ofp.route) {
+        setRemarks((prev) => prev ? `${prev}\n${t('flightPlans.route')}: ${ofp.route}` : `${t('flightPlans.route')}: ${ofp.route}`);
+      }
+
+      // SimBrief flights are typically IFR
+      setFlightType('IFR');
+
+      Alert.alert(
+        t('flightPlans.detail.simbriefImported'),
+        `${ofp.originIcao} → ${ofp.destinationIcao}${ofp.route ? `\n${ofp.route}` : ''}`,
+      );
+    } catch (err) {
+      Alert.alert(t('common.error'), err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setImportingSimbrief(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!originIcao || !destinationIcao) {
@@ -191,6 +233,17 @@ export default function NewFlightPlanScreen() {
               numberOfLines={3}
             />
           </View>
+
+          {/* Import from SimBrief */}
+          <Pressable
+            className="flex-row items-center rounded-button border border-accent px-4 py-3"
+            onPress={() => { void handleImportSimBrief(); }}
+            disabled={importingSimbrief}
+          >
+            <Text className="flex-1 text-center font-medium text-accent">
+              {importingSimbrief ? t('common.loading') : t('flightPlans.detail.importSimbrief')}
+            </Text>
+          </Pressable>
 
           {/* Submit */}
           <Button

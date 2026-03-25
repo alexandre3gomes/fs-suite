@@ -66,9 +66,35 @@ export default function FlightPlanDetailScreen() {
         fuelPlanned: number | null;
       }>('/integrations/simbrief/ofp');
 
+      // Build update payload from OFP data
+      const updatePayload: Record<string, unknown> = {
+        simBriefOfpId: ofp.ofpId,
+      };
+
+      if (ofp.originIcao) updatePayload.originIcao = ofp.originIcao;
+      if (ofp.destinationIcao) updatePayload.destinationIcao = ofp.destinationIcao;
+
+      // Parse route string into waypoints
+      if (ofp.route) {
+        const waypoints = ofp.route
+          .split(/\s+/)
+          .map((w) => w.trim().toUpperCase())
+          .filter((w) => w.length > 0);
+        updatePayload.routes = waypoints.map((wpt, idx) => ({
+          sequence: idx,
+          waypointIdent: wpt,
+        }));
+      }
+
+      // Apply OFP data to the flight plan
+      await apiClient.patch(`/flight-plans/${id}`, updatePayload);
+
+      // Refresh plan data to reflect changes
+      await fetchPlan();
+
       Alert.alert(
         t('flightPlans.detail.simbriefImported'),
-        `${ofp.originIcao} → ${ofp.destinationIcao}\n${ofp.route ?? ''}${ofp.aircraftIcaoType ? `\n${t('flightPlans.aircraft')}: ${ofp.aircraftIcaoType}` : ''}`,
+        `${ofp.originIcao} → ${ofp.destinationIcao}${ofp.route ? `\n${ofp.route}` : ''}`,
       );
     } catch (err) {
       Alert.alert(t('common.error'), err instanceof Error ? err.message : t('common.error'));

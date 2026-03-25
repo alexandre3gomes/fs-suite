@@ -26,7 +26,7 @@ export class SimBriefController {
   @Get('connection')
   @ApiOperation({ summary: "Get user's SimBrief connection status" })
   async getConnection(@CurrentUser() user: User): Promise<unknown> {
-    return this.simBriefService.getConnection(user.id) ?? { pilotId: null };
+    return (await this.simBriefService.getConnection(user.id)) ?? { pilotId: null };
   }
 
   @Get('ofp')
