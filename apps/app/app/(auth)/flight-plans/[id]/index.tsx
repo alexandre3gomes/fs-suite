@@ -1,24 +1,192 @@
+import { Badge, Card, Spinner } from '@fs-suite/ui';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, View, Text, Pressable } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+
+import { apiClient } from '../../../../src/services/api.client';
+
+interface Route {
+  id: string;
+  sequence: number;
+  waypointIdent: string;
+  latitude: number | null;
+  longitude: number | null;
+  airway: string | null;
+}
+
+interface FlightPlanDetail {
+  id: string;
+  status: string;
+  flightType: string;
+  originIcao: string;
+  destinationIcao: string;
+  plannedAltitude: number | null;
+  remarks: string | null;
+  simBriefOfpId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  origin: { icao: string; name: string; city: string | null; country: string | null };
+  destination: { icao: string; name: string; city: string | null; country: string | null };
+  aircraftProfile: { id: string; name: string; icaoType: string | null } | null;
+  routes: Route[];
+}
 
 export default function FlightPlanDetailScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const [plan, setPlan] = useState<FlightPlanDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchPlan = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await apiClient.get<FlightPlanDetail>(`/flight-plans/${id}`);
+      setPlan(result);
+    } catch {
+      Alert.alert(t('common.error'), t('flightPlans.detail.loadError'));
+    } finally {
+      setLoading(false);
+    }
+  }, [id, t]);
+
+  useEffect(() => {
+    void fetchPlan();
+  }, [fetchPlan]);
+
+  const handleDuplicate = async () => {
+    try {
+      const newPlan = await apiClient.post<{ id: string }>(`/flight-plans/${id}/duplicate`);
+      router.replace(`/(auth)/flight-plans/${newPlan.id}` as never);
+    } catch (err) {
+      Alert.alert(t('common.error'), err instanceof Error ? err.message : t('common.error'));
+    }
+  };
+
+  const handleDelete = () => {
+    Alert.alert(t('flightPlans.delete'), t('flightPlans.detail.deleteConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('flightPlans.delete'),
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await apiClient.delete(`/flight-plans/${id}`);
+            router.back();
+          } catch (err) {
+            Alert.alert(t('common.error'), err instanceof Error ? err.message : t('common.error'));
+          }
+        },
+      },
+    ]);
+  };
+
+  if (loading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-background">
+        <Spinner size="lg" />
+      </View>
+    );
+  }
+
+  if (!plan) {
+    return (
+      <View className="flex-1 items-center justify-center bg-background">
+        <Text className="text-muted-foreground">{t('flightPlans.detail.notFound')}</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView className="flex-1 bg-background">
       <View className="px-4 py-6">
+        {/* Header */}
         <View className="mb-6 flex-row items-center gap-3">
           <Pressable onPress={() => router.back()}>
             <Text className="text-primary">{t('common.back')}</Text>
           </Pressable>
-          <Text className="text-2xl font-bold text-foreground">{t('flightPlans.title')}</Text>
+          <Text className="flex-1 text-2xl font-bold text-foreground">
+            {plan.originIcao} → {plan.destinationIcao}
+          </Text>
+          <Badge variant={plan.status === 'SAVED' ? 'success' : 'outline'}>{plan.status}</Badge>
         </View>
 
-        {/* TODO: Phase 3 — Load flight plan detail by id */}
-        <Text className="text-muted-foreground">Plan ID: {id}</Text>
+        {/* Info card */}
+        <Card className="mb-4 p-4">
+          <View className="gap-3">
+            <InfoRow label={t('flightPlans.flightType')} value={plan.flightType} />
+            <InfoRow
+              label={t('flightPlans.origin')}
+              value={`${plan.origin.icao} — ${plan.origin.name}${plan.origin.city ? ` (${plan.origin.city})` : ''}`}
+            />
+            <InfoRow
+              label={t('flightPlans.destination')}
+              value={`${plan.destination.icao} — ${plan.destination.name}${plan.destination.city ? ` (${plan.destination.city})` : ''}`}
+            />
+            {plan.aircraftProfile ? (
+              <InfoRow
+                label={t('flightPlans.aircraft')}
+                value={
+                  plan.aircraftProfile.icaoType
+                    ? `${plan.aircraftProfile.name} (${plan.aircraftProfile.icaoType})`
+                    : plan.aircraftProfile.name
+                }
+              />
+            ) : null}
+            {plan.plannedAltitude ? (
+              <InfoRow label={t('flightPlans.form.altitude')} value={`FL${Math.round(plan.plannedAltitude / 100)}`} />
+            ) : null}
+            {plan.remarks ? <InfoRow label={t('flightPlans.form.remarks')} value={plan.remarks} /> : null}
+            <InfoRow
+              label={t('flightPlans.detail.created')}
+              value={new Date(plan.createdAt).toLocaleString()}
+            />
+          </View>
+        </Card>
+
+        {/* Route */}
+        {plan.routes.length > 0 ? (
+          <Card className="mb-4 p-4">
+            <Text className="mb-3 text-base font-semibold text-foreground">{t('flightPlans.route')}</Text>
+            <View className="gap-2">
+              {plan.routes.map((r) => (
+                <View key={r.id} className="flex-row items-center gap-2">
+                  <Text className="w-8 text-right text-xs text-muted-foreground">{r.sequence}</Text>
+                  <Text className="font-mono text-foreground">{r.waypointIdent}</Text>
+                  {r.airway ? (
+                    <Text className="text-xs text-muted-foreground">via {r.airway}</Text>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          </Card>
+        ) : null}
+
+        {/* Actions */}
+        <View className="flex-row gap-3">
+          <Pressable
+            className="flex-1 rounded-button border border-primary px-4 py-3"
+            onPress={() => { void handleDuplicate(); }}
+          >
+            <Text className="text-center font-medium text-primary">{t('flightPlans.duplicate')}</Text>
+          </Pressable>
+          <Pressable
+            className="flex-1 rounded-button border border-destructive px-4 py-3"
+            onPress={handleDelete}
+          >
+            <Text className="text-center font-medium text-destructive">{t('flightPlans.delete')}</Text>
+          </Pressable>
+        </View>
       </View>
     </ScrollView>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View>
+      <Text className="text-xs uppercase tracking-wide text-muted-foreground">{label}</Text>
+      <Text className="text-foreground">{value}</Text>
+    </View>
   );
 }

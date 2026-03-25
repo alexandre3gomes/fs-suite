@@ -40,7 +40,22 @@
     "route": "Rota",
     "save": "Salvar Plano",
     "duplicate": "Duplicar",
-    "delete": "Excluir"
+    "delete": "Excluir",
+    "form": {
+      "searchAirport": "Buscar aeroporto (ICAO ou nome)",
+      "selectAircraft": "Selecionar aeronave (opcional)",
+      "altitude": "Altitude de Cruzeiro (ft)",
+      "altitudePlaceholder": "ex: 35000",
+      "remarks": "Observações",
+      "remarksPlaceholder": "Notas opcionais...",
+      "missingAirports": "Selecione os aeroportos de origem e destino."
+    },
+    "detail": {
+      "created": "Criado em",
+      "loadError": "Não foi possível carregar o plano de voo.",
+      "notFound": "Plano de voo não encontrado.",
+      "deleteConfirm": "Tem certeza que deseja excluir este plano de voo?"
+    }
   },
   "profile": {
     "title": "Perfil",
