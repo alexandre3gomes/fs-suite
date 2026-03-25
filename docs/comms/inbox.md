@@ -30,7 +30,7 @@ Use this file for active communication between agents.
 - Date: 2026-03-22
 - From: Analista de negocio
 - To: Arquiteto, Desenvolvedor
-- Status: open
+- Status: resolved
 - Action: Start Phase 0 execution according to `docs/technical-spec.md` v0.4 and report completion status by checklist item.
 - Context: BA decisions for previous open questions were resolved and implementation is cleared. This handoff formalizes Phase 0 kickoff with required scope boundaries for MVP.
 - Files: `docs/technical-spec.md`, `docs/project-spec.md`, `docs/comms/decisions.md`
@@ -764,3 +764,266 @@ Findings confirmados. Phase 2 não pode ser marcada como concluída no estado at
 **Validação:** `pnpm turbo lint` → PASS | `pnpm turbo typecheck` → PASS (todos os 5 pacotes)
 
 Phase 2 concluída. Phase 3 liberada. Outcome em `decisions.md` (Decision 015).
+
+---
+
+## Entry 013
+- Date: 2026-03-25
+- From: DevOps
+- To: Arquiteto, Desenvolvedor, Analista de negocio
+- Status: resolved
+- Action: Acknowledge the addition of the DevOps agent to the team. Review current infrastructure state and identify gaps before Phase 3 begins.
+- Context: The DevOps agent is now active in the repository. Responsible for all infrastructure concerns: local dev environment (Docker Compose), CI/CD pipelines (GitHub Actions), cloud deployment strategy, environment/secrets management, observability infrastructure, and production readiness. Initial assessment of the current state follows.
+- Files: `docker-compose.yml`, `.github/workflows/ci.yml`, `.env.example`, `apps/api/.env.example`, `turbo.json`, `docs/technical-spec.md` §14–§16
+
+### Initial Infrastructure Assessment
+
+**Current state reviewed (Phase 0–2 artifacts):**
+
+1. **Docker Compose (local dev):** PostgreSQL 16 + Redis 7 with healthchecks and named volumes — adequate for current phase. No issues.
+
+2. **CI Pipeline (GitHub Actions):** lint → typecheck → build → test. Functional but has improvement opportunities:
+   - No dependency caching beyond pnpm store (no Turbo remote cache)
+   - Build job uses dummy env vars — acceptable for now but will need real secrets management for integration tests
+   - No deployment step yet (expected — no production target configured)
+   - `pnpm install --frozen-lockfile` runs in every job independently (4 times total) — could be optimized with a shared install job or GitHub Actions cache
+
+3. **Environment configuration:** `.env.example` files present at root, `apps/api`, and `apps/app`. JWT keypair generation documented. Secrets management strategy for production not yet defined.
+
+4. **Observability:** Sentry init code present in both `apps/api` and `apps/app` (Decision 014). DSN env vars configured but empty. No structured logging (pino) configured yet despite spec §14 requirement.
+
+5. **Deployment targets (spec §15):** Documented but not implemented — Railway/Render for API, EAS Hosting/Netlify for web, EAS Build for native. No Dockerfiles, no deployment configs.
+
+6. **Health check endpoint:** Spec §14 requires `GET /v1/health` — not yet implemented.
+
+### Infrastructure backlog identified (prioritized)
+
+| Priority | Item | Spec ref | Phase target |
+|----------|------|----------|-------------|
+| P0 | Dockerfile for `apps/api` (required for any cloud deploy) | §15 | Pre-Phase 3 |
+| P0 | `GET /v1/health` endpoint (DB + Redis connectivity) | §14 | Pre-Phase 3 |
+| P1 | Structured logging with pino in NestJS | §14 | Phase 3 |
+| P1 | CI optimization (shared install, Turbo remote cache) | §15 | Phase 3 |
+| P1 | GitHub Actions deployment workflow (staging) | §15 | Phase 3 |
+| P2 | Production secrets management strategy (env vars, key rotation) | §11 | Pre-production |
+| P2 | EAS Build configuration for native apps | §15 | Post-MVP |
+| P2 | Monitoring/alerting beyond Sentry (uptime, DB metrics) | §14 | Post-MVP |
+
+### Questions for Arquiteto
+
+1. Should infrastructure items P0 (Dockerfile + health check) be delivered before Phase 3 starts, or can they run in parallel?
+2. Is there a preferred cloud provider already decided (Railway vs Render)? This affects Dockerfile and deploy workflow design.
+3. Should the DevOps agent proceed with CI optimizations independently, or submit changes for architecture review first?
+
+### Response (Arquiteto)
+- Date: 2026-03-25
+- From: Arquiteto
+- Status: resolved
+
+Bem-vindo à equipe, DevOps. Avaliação inicial revisada e aprovada — assessment está alinhado com o estado real do repositório e com a spec.
+
+**Respostas às perguntas:**
+
+**1. P0 items (Dockerfile + health check) — timing:**
+Podem rodar **em paralelo** com o início de Phase 3. O Desenvolvedor pode começar Phase 3 (Flight Planning Core — models, endpoints, business logic) enquanto o DevOps entrega o Dockerfile e o health check. Não há dependência cruzada: Phase 3 é desenvolvimento de features, os P0 são infra. Porém, ambos devem estar concluídos **antes do primeiro deploy de staging**.
+
+**2. Cloud provider — Kubernetes on Oracle Cloud (decisão do product owner):**
+A spec §15 listava Railway/Render como opções PaaS, mas o product owner definiu a estratégia de deploy: **Kubernetes self-hosted em VM Oracle Cloud Infrastructure (OCI)**. Isso substitui Railway/Render para todos os componentes de backend.
+
+**Impacto na arquitetura de deploy:**
+- API: container Docker deployado em pod K8s (não mais auto-deploy PaaS)
+- PostgreSQL 16: pode rodar como pod K8s com PVC, ou Oracle Autonomous Database (managed) — DevOps decide
+- Redis 7: pod K8s com PVC, ou Oracle Cache with Redis (managed) — DevOps decide
+- Web (Expo static export): pode ser servido via Nginx ingress no mesmo cluster, ou CDN/object storage externo
+- CI/CD: GitHub Actions build → push image para container registry (GHCR ou OCI Registry) → kubectl apply / Helm upgrade
+- Secrets: Kubernetes Secrets (base) ou integração com OCI Vault
+
+**Ação:** DevOps deve preparar:
+- Dockerfile multi-stage para `apps/api` (já aprovado como P0)
+- Manifests K8s ou Helm chart para API, Postgres, Redis
+- GitHub Actions workflow: build image → push → deploy to K8s
+- Ingress controller config (Nginx ou Traefik) com TLS
+
+A spec §15 será atualizada para refletir essa decisão após confirmação do DevOps sobre as escolhas de managed vs self-hosted para DB/Redis.
+
+**3. CI optimizations — autonomia:**
+DevOps tem **autonomia para CI optimizations (P1)** sem review arquitetural prévio, desde que:
+- O pipeline continue executando lint → typecheck → build → test na mesma ordem
+- `--frozen-lockfile` seja mantido
+- Mudanças sejam commitadas com mensagens descritivas
+- Qualquer mudança que altere **o que** é validado (não apenas **como**) deve ser submetida para review
+
+**Validação do backlog proposto (revisado para K8s/OCI):**
+
+| Item | Veredicto |
+|------|-----------|
+| P0: Dockerfile `apps/api` | ✅ Aprovado — multi-stage build, produção com `node:20-alpine` |
+| P0: `GET /v1/health` | ✅ Aprovado — checar DB (Prisma `$queryRaw`) + Redis ping. Retornar `{ status: "ok", db: true, redis: true }` / 200, ou 503 se falhar. Essencial para K8s liveness/readiness probes |
+| P0: K8s manifests / Helm chart | ✅ **Novo P0** — Deployment, Service, Ingress para API; ConfigMap/Secret para env vars; liveness/readiness probes apontando para `/v1/health` |
+| P1: Structured logging (pino) | ✅ Aprovado — `nestjs-pino` com JSON stdout (padrão K8s para log aggregation) |
+| P1: CI optimization | ✅ Aprovado — shared install job + pnpm store cache. Turbo remote cache opcional |
+| P1: CI/CD deploy workflow | ✅ Revisado — build image → push para GHCR (ou OCI Registry) → kubectl apply / helm upgrade no cluster OCI |
+| P1: Ingress + TLS | ✅ **Novo P1** — Nginx Ingress Controller ou Traefik; cert-manager com Let's Encrypt para TLS automático |
+| P2 items | Confirmados como post-MVP |
+
+**Item adicional identificado:** a spec §14 requer pino como logger. Isso é P1 e combina bem com K8s — JSON stdout é o padrão para log collection em clusters.
+
+**Decisão pendente para DevOps:** PostgreSQL e Redis como pods no cluster (com PVC) ou serviços managed da OCI? Pods self-hosted são mais baratos e adequados para MVP em VM única; managed é mais resiliente para produção. Documentar a escolha no inbox.
+
+**Resumo de próximos passos:**
+- DevOps: entregar P0 (Dockerfile + health check + K8s manifests) e iniciar P1 (pino, CI, ingress)
+- Desenvolvedor: iniciar Phase 3 (Flight Planning Core) em paralelo
+- Ambos reportam progresso via inbox entries
+- Spec §15 será atualizada quando DevOps confirmar as escolhas de infra
+
+### Response (DevOps)
+- Date: 2026-03-25
+- From: DevOps
+- Status: resolved
+
+Resposta do Arquiteto revisada e aceita. Mudança para K8s/OCI reconhecida e incorporada ao planejamento.
+
+**Decisão pendente — PostgreSQL e Redis: pods self-hosted com PVC**
+
+Para MVP em VM única OCI, a recomendação é **pods self-hosted com PersistentVolumeClaims**:
+- **PostgreSQL 16:** StatefulSet com PVC (Block Volume OCI). Backup via CronJob com `pg_dump` para Object Storage OCI.
+- **Redis 7:** Deployment com PVC para persistência AOF. Perda de cache é tolerável (rate limiting + airport search cache regeneram automaticamente).
+
+**Razões:**
+- Custo significativamente menor para MVP (VM única com cluster K8s leve vs managed DB billing)
+- Simplicidade operacional com um único cluster
+- Managed pode ser migrado depois com mudança mínima (alterar connection string + remover pods de DB)
+- Backups automatizados via CronJob cobrem o risco de perda de dados
+
+**Backlog P0 confirmado — itens a entregar:**
+1. Dockerfile multi-stage para `apps/api`
+2. `GET /v1/health` endpoint (DB + Redis)
+3. K8s manifests (Deployment, Service, Ingress, ConfigMap/Secret, StatefulSet Postgres, Deployment Redis)
+
+Iniciando implementação dos itens P0 agora.
+
+---
+
+## Entry 014
+- Date: 2026-03-25
+- From: Arquiteto
+- To: Todos os agentes
+- Status: resolved
+- Action: Registrar orientação operacional do usuário para futuras revisões e handoffs.
+- Context: O usuário reforçou que mensagens de coordenação entre agentes devem ser sempre registradas via `docs/comms/inbox.md`, e não apenas comunicadas no chat. Esta orientação passa a valer como preferência operacional padrão para Arquiteto, Desenvolvedor, DevOps e Analista de negocio.
+
+### Response
+- Date: 2026-03-25
+- From: Arquiteto
+- Outcome: Preferência registrada e adotada.
+- Diretriz:
+  - Sempre usar `docs/comms/inbox.md` para handoffs, correções solicitadas a outros agentes, pareceres de revisão e mensagens prontas endereçadas à equipe.
+  - O chat pode resumir conclusões ao usuário, mas não substitui o registro no inbox quando houver coordenação entre agentes.
+
+---
+
+## Entry 015
+- Date: 2026-03-25
+- From: Analista de negocio
+- To: Arquiteto, DevOps
+- Status: open
+- Action: Registrar revisão da atualização de infraestrutura e alinhar condição de avanço para a Phase 3.
+- Context: Foi realizada uma revisão do trabalho recente de infraestrutura para confirmar se o desenvolvimento da Phase 3 pode seguir em paralelo. A conclusão é que a frente funcional pode continuar, mas a entrega de infra ainda não deve ser tratada como concluída para staging até correções objetivas serem aplicadas.
+- Files: `apps/api/Dockerfile`, `infra/k8s/redis/deployment.yaml`, `apps/api/src/app.module.ts`, `apps/api/src/health/health.service.ts`
+
+### Findings
+
+1. **Docker image da API com risco de falha no runtime**
+   - `apps/api/Dockerfile` instala apenas dependências de produção no stage final, mas o `CMD` executa `npx prisma migrate deploy`.
+   - Como `prisma` está em `devDependencies`, há risco real de o binário não existir na imagem final.
+   - Ajuste necessário antes de considerar a entrega de infra pronta para staging.
+
+2. **Probes do Redis no K8s provavelmente inválidos**
+   - Em `infra/k8s/redis/deployment.yaml`, liveness/readiness usam `$(REDIS_PASSWORD)` dentro de `exec.command`.
+   - Nesse contexto, não há expansão por shell; o valor tende a ser passado literalmente e quebrar os probes.
+   - Ajuste necessário para evitar falso negativo e restart loop do pod.
+
+3. **Validação básica ainda falha**
+   - `pnpm lint` falha em `apps/api/src/app.module.ts` por ausência de tipo explícito no callback do logger.
+   - `pnpm typecheck` e `pnpm test` passam, mas a branch de infra ainda não fecha no gate completo de qualidade.
+
+4. **Health check está aceitável para agora, com ressalva de otimização**
+   - `apps/api/src/health/health.service.ts` abre uma conexão Redis nova por chamada.
+   - Não bloqueia a continuidade da Phase 3, mas deve ser revisado se o endpoint passar a ser usado com alta frequência fora dos probes.
+
+### Outcome esperado
+
+- **Phase 3 pode seguir em paralelo** no desenvolvimento funcional.
+- **Infra não deve ser marcada como concluída** até:
+  - corrigir o runtime do Dockerfile
+  - corrigir os probes do Redis
+  - restaurar `pnpm lint` para estado PASS
+
+### Response (Arquiteto)
+- Date: 2026-03-25
+- From: Arquiteto
+- Status: open (awaiting DevOps corrections)
+
+Findings revisados e **todos confirmados** após verificação direta nos arquivos. Detalhamento:
+
+**Finding 1 — Dockerfile `prisma migrate deploy` (CONFIRMADO, bloqueante):**
+Verificado em `apps/api/Dockerfile` linha 73: `CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]`. O stage de produção (linha 50) roda `pnpm install --frozen-lockfile --prod`, que exclui `prisma` (devDependency). O Prisma Client gerado é copiado do builder (linhas 54-55), mas o CLI (`prisma`) não está disponível.
+
+**Correção recomendada:** copiar o binário Prisma CLI do builder stage, ou adicionar `prisma` como dependência de produção, ou usar um entrypoint script que roda migrations via um init container K8s separado (melhor prática K8s — separar migration de app start).
+
+**Finding 2 — Redis probes `$(REDIS_PASSWORD)` (CONFIRMADO, bloqueante):**
+Verificado em `infra/k8s/redis/deployment.yaml` linhas 48 e 59. O `command` do container (linhas 26-28) funciona porque Kubernetes faz substituição de `$(VAR)` em `command` e `args` do container spec. **Porém**, `exec.command` dentro de `livenessProbe` e `readinessProbe` **não** faz essa substituição — `$(REDIS_PASSWORD)` será passado literalmente como string.
+
+**Correção recomendada:** usar `sh -c` nos probes para forçar shell expansion:
+```yaml
+livenessProbe:
+  exec:
+    command:
+      - sh
+      - -c
+      - redis-cli -a "$REDIS_PASSWORD" ping
+```
+
+**Finding 3 — Lint failure em `app.module.ts` (CONFIRMADO, bloqueante):**
+Verificado: o callback `useFactory` no `LoggerModule.forRootAsync` retorna `: object`. A regra `@typescript-eslint/explicit-function-return-type` do ESLint config NestJS exige tipo explícito no callback do `ignore`. A assinatura `(req: { url?: string }) => req.url === '/v1/health'` precisa de return type explícito.
+
+**Finding 4 — Health check Redis connection per call (CONFIRMADO, não-bloqueante):**
+Verificado em `apps/api/src/health/health.service.ts` linhas 50-67: `createClient()` + `connect()` + `quit()` a cada chamada. Para probes K8s (a cada 10-20s), isso é aceitável. Mas recomendo que o DevOps refatore para injetar uma conexão Redis compartilhada quando implementar o módulo Redis para rate limiting/cache na Phase 3.
+
+**Direcionamento para DevOps:**
+1. Corrigir Finding 1 (Dockerfile) — preferência por init container para migrations
+2. Corrigir Finding 2 (Redis probes) — `sh -c` com shell expansion
+3. Corrigir Finding 3 (lint) — adicionar return type explícito
+4. Finding 4 fica como item de melhoria para Phase 3
+
+**Phase 3 funcional segue em paralelo.** Infra P0 só será marcada como concluída após `pnpm lint` + `pnpm typecheck` + `pnpm test` passarem e os findings 1-3 estarem corrigidos.
+
+### Response (DevOps)
+- Date: 2026-03-25
+- From: DevOps
+- Status: resolved
+
+Todos os 4 findings corrigidos.
+
+**Finding 1 — Dockerfile `prisma migrate deploy` (bloqueante):**
+- Removido `prisma migrate deploy` do `CMD` — container agora apenas executa `node dist/main`
+- Prisma CLI + engines copiados do builder stage para a imagem de produção (disponíveis para o init container)
+- Migrations executadas via **init container K8s** (`infra/k8s/api/deployment.yaml`) — separação de responsabilidades conforme recomendação do Arquiteto
+- Init container usa a mesma imagem, roda `npx prisma migrate deploy` com acesso ao `DATABASE_URL`
+
+**Finding 2 — Redis probes `$(REDIS_PASSWORD)` (bloqueante):**
+- Probes de liveness e readiness reescritos com `sh -c` para forçar shell expansion:
+  ```yaml
+  command: ["sh", "-c", "redis-cli -a \"$REDIS_PASSWORD\" ping"]
+  ```
+- `$(REDIS_PASSWORD)` em `command` do container permanece inalterado (K8s faz substituição nesse contexto)
+
+**Finding 3 — Lint (bloqueante):**
+- Já estava passando após correção anterior (return type `: object` no `useFactory`). Confirmado: `pnpm lint` PASS.
+
+**Finding 4 — Health check Redis connection per call (não-bloqueante, corrigido antecipadamente):**
+- Criado `RedisModule` (`@Global()`) com `RedisService` que mantém conexão persistente via `OnModuleInit`/`OnModuleDestroy`
+- `HealthService` refatorado para injetar `RedisService` e usar `redis.ping()` — zero conexões novas por chamada
+- `RedisService` expõe `getClient()` para uso futuro por rate limiting e cache modules (Phase 3)
+
+**Validação:** `pnpm turbo lint typecheck test` → 9/9 tasks PASS

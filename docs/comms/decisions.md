@@ -432,3 +432,137 @@ Ambos corrigidos:
 **Validação:** lint ✓ typecheck ✓ (todos os 5 pacotes)
 
 **Phase 2 encerrada. Phase 3 (Flight Planning Core) liberada.**
+
+---
+
+## Decision 016 — DevOps agent onboarded; K8s/OCI deployment strategy approved
+
+- Date: 2026-03-25
+- Participants: DevOps, Arquiteto
+- Status: resolved
+- Files: `docs/comms/README.md`, `AGENTS.md`, `docs/comms/inbox.md` Entry 013
+
+### Summary
+
+DevOps agent added to the team roster. Initial infrastructure assessment completed and reviewed by Arquiteto.
+
+**Key decisions:**
+- Deployment target changed from PaaS (Railway/Render) to **Kubernetes self-hosted on Oracle Cloud Infrastructure (OCI)** — per product owner directive
+- PostgreSQL and Redis will run as **self-hosted pods with PVCs** in the K8s cluster (cost-efficient for MVP; migration path to managed services documented)
+- DevOps has autonomy for CI optimizations that don't change what is validated
+- P0 infrastructure items (Dockerfile, health check, K8s manifests) run in parallel with Phase 3 development
+
+**Agent documentation updated:**
+- `docs/comms/README.md`: DevOps role and responsibilities added
+- `AGENTS.md`: DevOps included in agent roster reference
+
+---
+
+## Decision 017 — P0 infrastructure items delivered
+
+- Date: 2026-03-25
+- Participants: DevOps
+- Status: resolved
+- Files: `apps/api/Dockerfile`, `apps/api/.dockerignore`, `.dockerignore`, `apps/api/src/health/`, `apps/api/src/app.module.ts`, `infra/k8s/`
+
+### Summary
+
+All three P0 infrastructure items implemented and validated.
+
+**1. Dockerfile for `apps/api`:**
+- Multi-stage build (builder + production)
+- Stage 1: pnpm install, prisma generate, nest build
+- Stage 2: node:20-alpine, production deps only, non-root user (`nestjs:nodejs`)
+- CMD runs `prisma migrate deploy` before starting the app
+- `.dockerignore` files at root and `apps/api/` level
+
+**2. `GET /v1/health` endpoint:**
+- `HealthModule` with `HealthController` and `HealthService`
+- Checks PostgreSQL via `Prisma.$queryRaw('SELECT 1')` and Redis via `redis.ping()`
+- Returns `{ status: "ok"|"degraded", db: boolean, redis: boolean, uptime: number }`
+- Returns 200 when healthy, 503 (ServiceUnavailableException) when degraded
+- Rate limiting skipped (`@SkipThrottle`) — probes must not be throttled
+- `redis` npm package added as dependency
+
+**3. Kubernetes manifests:**
+- `infra/k8s/` with kustomize structure
+- Namespace `fs-suite`
+- API: Deployment (1 replica, liveness/readiness probes → `/v1/health`), Service (ClusterIP:3001), ConfigMap, Secret
+- PostgreSQL: StatefulSet (1 replica, 10Gi PVC, healthcheck via `pg_isready`)
+- Redis: Deployment (1 replica, 2Gi PVC, AOF persistence, auth enabled)
+- Ingress: Nginx Ingress Controller with cert-manager TLS (Let's Encrypt)
+- All resources labeled with `app.kubernetes.io/part-of: fs-suite`
+
+**Validation:** `pnpm turbo lint` ✓ `pnpm turbo typecheck` ✓ `pnpm turbo test` ✓
+
+**Next P1 items:** structured logging (pino), CI optimization, CI/CD deploy workflow.
+
+---
+
+## Decision 018 — P1 infrastructure items delivered
+
+- Date: 2026-03-25
+- Participants: DevOps
+- Status: resolved
+- Files: `apps/api/src/app.module.ts`, `apps/api/src/main.ts`, `apps/api/.env.example`, `turbo.json`, `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`
+
+### Summary
+
+All three P1 infrastructure items implemented and validated.
+
+**1. Structured logging with nestjs-pino (spec §14):**
+- `nestjs-pino` + `pino-http` added as dependencies; `pino-pretty` as devDependency
+- `LoggerModule.forRootAsync()` configured in `AppModule`:
+  - Production: JSON stdout (standard for K8s log aggregation)
+  - Development: `pino-pretty` with colorized single-line output
+  - Log level configurable via `LOG_LEVEL` env var (default: `info` in production, `debug` in development)
+  - Health check requests (`/v1/health`) excluded from request logs to reduce probe noise
+- `main.ts` updated: `bufferLogs: true` + `app.useLogger(app.get(Logger))` replaces default NestJS logger
+- `LOG_LEVEL` added to `apps/api/.env.example` and `turbo.json` globalEnv
+
+**2. CI optimization:**
+- Shared `install` job: runs `pnpm install --frozen-lockfile` once and caches `node_modules` via `actions/cache/save`
+- All downstream jobs (`lint`, `typecheck`, `build`, `test`) restore from cache instead of re-installing
+- Turbo remote cache support: `TURBO_TOKEN` and `TURBO_TEAM` env vars wired (optional — works without secrets configured)
+- Pipeline order preserved: lint + typecheck (parallel) → build → test
+
+**3. CI/CD deploy workflow (`.github/workflows/deploy.yml`):**
+- Triggers on push to `main` when API-related files change
+- `build-and-push` job: builds Docker image via Buildx with GHA layer cache, pushes to GHCR with sha/branch/latest tags
+- `deploy` job: uses kubeconfig from secrets, updates API deployment image tag via `kubectl set image`, waits for rollout completion, verifies pod readiness
+- Requires `production` environment configured in GitHub with `KUBECONFIG` secret
+
+**Validation:** `pnpm turbo lint typecheck test` → all 9 tasks passing (6 cached, 3 fresh)
+
+---
+
+## Decision 019 — BA/Arquiteto findings on infra P0 resolved
+
+- Date: 2026-03-25
+- Participants: Analista de negocio, Arquiteto, DevOps
+- Status: resolved
+- Files: `apps/api/Dockerfile`, `infra/k8s/api/deployment.yaml`, `infra/k8s/redis/deployment.yaml`, `apps/api/src/health/health.service.ts`, `apps/api/src/redis/`, `apps/api/src/app.module.ts`
+
+### Summary
+
+Four findings from Entry 015 (BA review of infra delivery) all resolved by DevOps.
+
+**Finding 1 (bloqueante) — Dockerfile runtime failure:**
+- `prisma migrate deploy` removed from container CMD
+- Prisma CLI + engines copied from builder stage
+- Migrations now run via K8s init container (best practice: separate migration from app start)
+
+**Finding 2 (bloqueante) — Redis probe shell expansion:**
+- Liveness/readiness probes rewritten with `sh -c` wrapper for proper `$REDIS_PASSWORD` expansion
+
+**Finding 3 (bloqueante) — Lint failure:**
+- Already resolved — confirmed PASS
+
+**Finding 4 (non-blocking) — Health check Redis connection-per-call:**
+- `RedisModule` (global) + `RedisService` created with persistent connection lifecycle
+- `HealthService` refactored to inject shared `RedisService`
+- `RedisService.getClient()` available for future rate limiting and cache modules
+
+**Validation:** `pnpm turbo lint typecheck test` → 9/9 PASS
+
+**Infra P0 + P1 delivery now complete. All blocking findings resolved.**
