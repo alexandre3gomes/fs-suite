@@ -54,7 +54,11 @@
       "created": "Created",
       "loadError": "Could not load flight plan.",
       "notFound": "Flight plan not found.",
-      "deleteConfirm": "Are you sure you want to delete this flight plan?"
+      "deleteConfirm": "Are you sure you want to delete this flight plan?",
+      "integrations": "Integrations",
+      "importSimbrief": "Import from SimBrief",
+      "simbriefImported": "SimBrief OFP Imported",
+      "openSkyvector": "Open in SkyVector"
     }
   },
   "profile": {
@@ -62,6 +66,9 @@
     "name": "Name",
     "email": "Email",
     "simbriefPilotId": "SimBrief Pilot ID",
+    "simbriefSection": "SimBrief Integration",
+    "simbriefPlaceholder": "Enter your SimBrief username",
+    "simbriefSaved": "SimBrief Pilot ID saved successfully.",
     "save": "Save Profile",
     "signOut": "Sign Out"
   }

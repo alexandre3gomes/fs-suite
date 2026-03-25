@@ -1,15 +1,51 @@
-import { Avatar, Spinner } from '@fs-suite/ui';
+import { Avatar, Button, Input, Spinner } from '@fs-suite/ui';
 import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
+import { apiClient } from '../../../src/services/api.client';
 import { signOut } from '../../../src/services/auth.service';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const { user, isLoading } = useCurrentUser();
+
+  const [pilotId, setPilotId] = useState('');
+  const [pilotIdSaved, setPilotIdSaved] = useState('');
+  const [savingPilotId, setSavingPilotId] = useState(false);
+
+  const loadSimBriefConnection = useCallback(async () => {
+    try {
+      const conn = await apiClient.get<{ pilotId: string | null }>('/integrations/simbrief/connection');
+      if (conn.pilotId) {
+        setPilotId(conn.pilotId);
+        setPilotIdSaved(conn.pilotId);
+      }
+    } catch {
+      // ignore — user may not have a connection yet
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSimBriefConnection();
+  }, [loadSimBriefConnection]);
+
+  const handleSavePilotId = async () => {
+    if (!pilotId.trim()) return;
+    setSavingPilotId(true);
+    try {
+      await apiClient.patch('/integrations/simbrief/connection', { pilotId: pilotId.trim() });
+      setPilotIdSaved(pilotId.trim());
+      Alert.alert(t('common.save'), t('profile.simbriefSaved'));
+    } catch (err) {
+      Alert.alert(t('common.error'), err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setSavingPilotId(false);
+    }
+  };
 
   const handleSignOut = async (): Promise<void> => {
     await signOut();
@@ -38,7 +74,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* Info rows */}
-        <View className="mb-8 overflow-hidden rounded-card border border-border bg-surface">
+        <View className="mb-6 overflow-hidden rounded-card border border-border bg-surface">
           <View className="border-b border-border px-4 py-3">
             <Text className="mb-0.5 text-xs uppercase tracking-wide text-muted-foreground">
               {t('profile.name')}
@@ -51,6 +87,32 @@ export default function ProfileScreen() {
               {t('profile.email')}
             </Text>
             <Text className="font-mono text-foreground">{user?.email ?? '—'}</Text>
+          </View>
+        </View>
+
+        {/* SimBrief Pilot ID */}
+        <View className="mb-8 overflow-hidden rounded-card border border-border bg-surface p-4">
+          <Text className="mb-3 text-base font-semibold text-foreground">
+            {t('profile.simbriefSection')}
+          </Text>
+          <Text className="mb-2 text-xs text-muted-foreground">
+            {t('profile.simbriefPilotId')}
+          </Text>
+          <View className="flex-row gap-2">
+            <View className="flex-1">
+              <Input
+                value={pilotId}
+                onChangeText={setPilotId}
+                placeholder={t('profile.simbriefPlaceholder')}
+              />
+            </View>
+            <Button
+              onPress={() => { void handleSavePilotId(); }}
+              disabled={savingPilotId || pilotId.trim() === pilotIdSaved}
+              variant="primary"
+            >
+              {savingPilotId ? t('common.loading') : t('common.save')}
+            </Button>
           </View>
         </View>
 

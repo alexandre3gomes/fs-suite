@@ -1,8 +1,9 @@
 import { Badge, Card, Spinner } from '@fs-suite/ui';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { apiClient } from '../../../../src/services/api.client';
 
@@ -53,6 +54,50 @@ export default function FlightPlanDetailScreen() {
   useEffect(() => {
     void fetchPlan();
   }, [fetchPlan]);
+
+  const handleImportSimBrief = async () => {
+    try {
+      const ofp = await apiClient.get<{
+        ofpId: string;
+        originIcao: string;
+        destinationIcao: string;
+        route: string | null;
+        aircraftIcaoType: string | null;
+        fuelPlanned: number | null;
+      }>('/integrations/simbrief/ofp');
+
+      Alert.alert(
+        t('flightPlans.detail.simbriefImported'),
+        `${ofp.originIcao} → ${ofp.destinationIcao}\n${ofp.route ?? ''}${ofp.aircraftIcaoType ? `\n${t('flightPlans.aircraft')}: ${ofp.aircraftIcaoType}` : ''}`,
+      );
+    } catch (err) {
+      Alert.alert(t('common.error'), err instanceof Error ? err.message : t('common.error'));
+    }
+  };
+
+  const handleOpenSkyVector = async () => {
+    if (!plan) return;
+    try {
+      const routeStr = plan.routes.map((r) => r.waypointIdent).join(' ');
+      const params = new URLSearchParams({
+        originIcao: plan.originIcao,
+        destinationIcao: plan.destinationIcao,
+      });
+      if (routeStr) params.set('route', routeStr);
+
+      const result = await apiClient.get<{ url: string }>(
+        `/integrations/skyvector/url?${params.toString()}`,
+      );
+
+      if (Platform.OS === 'web') {
+        await Linking.openURL(result.url);
+      } else {
+        await WebBrowser.openBrowserAsync(result.url);
+      }
+    } catch (err) {
+      Alert.alert(t('common.error'), err instanceof Error ? err.message : t('common.error'));
+    }
+  };
 
   const handleDuplicate = async () => {
     try {
@@ -161,6 +206,31 @@ export default function FlightPlanDetailScreen() {
             </View>
           </Card>
         ) : null}
+
+        {/* Integration actions */}
+        <Card className="mb-4 p-4">
+          <Text className="mb-3 text-base font-semibold text-foreground">
+            {t('flightPlans.detail.integrations')}
+          </Text>
+          <View className="gap-2">
+            <Pressable
+              className="flex-row items-center rounded-button border border-accent px-4 py-3"
+              onPress={() => { void handleImportSimBrief(); }}
+            >
+              <Text className="flex-1 font-medium text-accent">
+                {t('flightPlans.detail.importSimbrief')}
+              </Text>
+            </Pressable>
+            <Pressable
+              className="flex-row items-center rounded-button border border-primary px-4 py-3"
+              onPress={() => { void handleOpenSkyVector(); }}
+            >
+              <Text className="flex-1 font-medium text-primary">
+                {t('flightPlans.detail.openSkyvector')}
+              </Text>
+            </Pressable>
+          </View>
+        </Card>
 
         {/* Actions */}
         <View className="flex-row gap-3">

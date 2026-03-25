@@ -10,6 +10,7 @@ import { AirportsModule } from './airports/airports.module';
 import { AuthModule } from './auth/auth.module';
 import { FlightPlansModule } from './flight-plans/flight-plans.module';
 import { HealthModule } from './health/health.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { UsersModule } from './users/users.module';
@@ -53,8 +54,8 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     FlightPlansModule,
     HealthModule,
+    IntegrationsModule,
     UsersModule,
-    // Future modules: IntegrationsModule
   ],
   providers: [
     // Apply rate limiting globally; auth endpoints override with stricter limit via @Throttle

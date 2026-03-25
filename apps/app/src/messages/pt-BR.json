@@ -54,7 +54,11 @@
       "created": "Criado em",
       "loadError": "Não foi possível carregar o plano de voo.",
       "notFound": "Plano de voo não encontrado.",
-      "deleteConfirm": "Tem certeza que deseja excluir este plano de voo?"
+      "deleteConfirm": "Tem certeza que deseja excluir este plano de voo?",
+      "integrations": "Integrações",
+      "importSimbrief": "Importar do SimBrief",
+      "simbriefImported": "OFP SimBrief Importado",
+      "openSkyvector": "Abrir no SkyVector"
     }
   },
   "profile": {
@@ -62,6 +66,9 @@
     "name": "Nome",
     "email": "E-mail",
     "simbriefPilotId": "SimBrief Pilot ID",
+    "simbriefSection": "Integração SimBrief",
+    "simbriefPlaceholder": "Informe seu usuário SimBrief",
+    "simbriefSaved": "SimBrief Pilot ID salvo com sucesso.",
     "save": "Salvar Perfil",
     "signOut": "Sair"
   }
