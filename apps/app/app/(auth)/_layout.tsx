@@ -1,8 +1,15 @@
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-export default function AuthLayout() {
+import { useAuthStore } from '../../src/stores/auth.store';
+
+export default function AuthLayout(): JSX.Element {
   const { t } = useTranslation();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  if (!isAuthenticated) {
+    return <Redirect href="/(public)/login" />;
+  }
 
   return (
     <Tabs

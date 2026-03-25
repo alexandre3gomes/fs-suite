@@ -1,9 +1,18 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as Sentry from '@sentry/node';
+import cookieParser = require('cookie-parser');
 import helmet from 'helmet';
 
 import { AppModule } from './app.module';
+
+// Sentry must be initialized before the NestJS app (captures bootstrap errors too)
+Sentry.init({
+  dsn: process.env['SENTRY_DSN'],
+  environment: process.env['NODE_ENV'] ?? 'development',
+  enabled: process.env['NODE_ENV'] === 'production',
+});
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
@@ -12,6 +21,9 @@ async function bootstrap(): Promise<void> {
 
   // Security headers
   app.use(helmet());
+
+  // Cookie parser (required for httpOnly refresh token cookies)
+  app.use(cookieParser());
 
   // Global prefix
   app.setGlobalPrefix('v1');

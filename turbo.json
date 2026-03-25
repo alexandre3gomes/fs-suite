@@ -4,7 +4,16 @@
     "NODE_ENV",
     "DATABASE_URL",
     "REDIS_URL",
-    "EXPO_PUBLIC_API_URL"
+    "EXPO_PUBLIC_API_URL",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_CALLBACK_URL",
+    "JWT_PRIVATE_KEY",
+    "JWT_PUBLIC_KEY",
+    "ENCRYPTION_KEY",
+    "WEB_ORIGIN",
+    "SENTRY_DSN",
+    "EXPO_PUBLIC_SENTRY_DSN"
   ],
   "tasks": {
     "build": {

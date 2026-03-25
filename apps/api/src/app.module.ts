@@ -1,6 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+
+import { ActivityModule } from './activity/activity.module';
+import { AuthModule } from './auth/auth.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -15,8 +21,15 @@ import { ThrottlerModule } from '@nestjs/throttler';
         limit: 60,
       },
     ]),
-    // Feature modules registered here in subsequent phases:
-    // AuthModule, UsersModule, AirportsModule, FlightPlansModule, IntegrationsModule, ActivityModule
+    PrismaModule,
+    ActivityModule,
+    AuthModule,
+    UsersModule,
+    // Future modules: AirportsModule, FlightPlansModule, IntegrationsModule
+  ],
+  providers: [
+    // Apply rate limiting globally; auth endpoints override with stricter limit via @Throttle
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

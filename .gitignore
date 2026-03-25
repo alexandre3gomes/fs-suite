@@ -30,8 +30,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Prisma
-apps/api/prisma/migrations/
+# Prisma (migrations are tracked in git)
 
 # Expo
 .expo/

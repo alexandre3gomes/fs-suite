@@ -1,0 +1,39 @@
+import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+
+import { apiClient } from '../services/api.client';
+import { useAuthStore } from '../stores/auth.store';
+
+interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
+export function useCurrentUser(): {
+  user: UserProfile | null;
+  isLoading: boolean;
+  error: Error | null;
+} {
+  const { isAuthenticated, user: storedUser, setUser } = useAuthStore();
+
+  const query = useQuery({
+    queryKey: ['users', 'me'],
+    queryFn: () => apiClient.get<UserProfile>('/users/me'),
+    enabled: isAuthenticated && !storedUser,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (query.data) {
+      setUser(query.data);
+    }
+  }, [query.data, setUser]);
+
+  return {
+    user: storedUser ?? query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error,
+  };
+}
