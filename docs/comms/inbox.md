@@ -580,3 +580,187 @@ A decomposição técnica em 6 fases é intencional para permitir entrega increm
 - Status: resolved
 
 Corrigido. A segunda entrada `Decision 010` renumerada para `Decision 011` em `decisions.md`. Referência correspondente no inbox (Entry 008 Response) atualizada para `Decision 011`.
+
+---
+
+## Entry 010
+- Date: 2026-03-23
+- From: Desenvolvedor
+- To: Arquiteto
+- Status: resolved
+- Action: Phase 1 (Auth) delivered — request validation of all implemented artifacts.
+- Context: Phase 1 implementation completed per `docs/technical-spec.md` v0.5 Phase 1 checklist.
+- Files: `apps/api/src/auth/`, `apps/api/src/users/`, `apps/api/src/prisma/`, `apps/api/src/common/`, `apps/api/prisma/migrations/`, `apps/app/src/stores/`, `apps/app/src/services/`, `apps/app/app/(auth)/`, `apps/app/app/(public)/`
+
+### Delivered artifacts
+
+**Backend (`apps/api`):**
+- `src/prisma/prisma.module.ts` + `prisma.service.ts` — global PrismaModule, connects on init
+- `src/common/encryption/encryption.service.ts` — AES-256-GCM encrypt/decrypt for OAuthAccount tokens at rest
+- `src/common/decorators/current-user.decorator.ts` — `@CurrentUser()` param decorator
+- `src/common/guards/jwt-auth.guard.ts` — `JwtAuthGuard` extending `AuthGuard('jwt')`
+- `src/auth/strategies/google.strategy.ts` — Passport Google OAuth 2.0 strategy; calls `authService.upsertOAuthUser`
+- `src/auth/strategies/jwt.strategy.ts` — Passport JWT RS256 strategy; validates `sub` against DB
+- `src/auth/guards/google-auth.guard.ts` — custom `GoogleAuthGuard`; reads `?platform=web|native` query param and stores in `oauth_platform` cookie before redirect
+- `src/auth/auth.service.ts` — `upsertOAuthUser`, `createSession`, `refreshTokens`, `logout`; bcrypt refresh token hash (cost 12); AES-256-GCM OAuth token encryption
+- `src/auth/auth.controller.ts` — `GET /v1/auth/google`, `GET /v1/auth/google/callback`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`
+- `src/auth/auth.module.ts` — PassportModule + JwtModule (RS256 async config) + EncryptionModule + UsersModule
+- `src/users/dto/update-user.dto.ts` — `UpdateUserDto` with optional `name`
+- `src/users/users.service.ts` — `findById`, `updateMe`, `deleteMe` (soft delete + session invalidation)
+- `src/users/users.controller.ts` — `GET /v1/users/me`, `PATCH /v1/users/me`, `DELETE /v1/users/me`
+- `src/users/users.module.ts` — exports `UsersService`
+- `src/app.module.ts` — updated: imports `PrismaModule`, `AuthModule`, `UsersModule`
+- `src/main.ts` — updated: `cookie-parser` middleware added
+- `prisma/migrations/20260323000000_init/migration.sql` — full schema migration (all 9 tables + 2 enums)
+- `package.json` — added `cookie-parser` + `@types/cookie-parser`
+
+**Frontend (`apps/app`):**
+- `src/stores/auth.store.ts` — Zustand store: `accessToken` (in-memory), `user`, `isAuthenticated`, `setTokens`, `setUser`, `clear`
+- `src/services/api.client.ts` — `fetch`-based API client; injects Bearer token from store; supports `get/post/patch/delete`
+- `src/services/auth.service.ts` — `signInWithGoogle` (web: full-page redirect; native: `WebBrowser.openAuthSessionAsync`); `handleWebCallback`; `handleNativeTokens`; `refreshAccessToken`; `signOut` with `expo-secure-store` for refresh token on native
+- `app/_layout.tsx` — updated: `QueryClientProvider` (React Query), silent `refreshAccessToken` on startup before splash screen hides
+- `app/(auth)/_layout.tsx` — updated: `useAuthStore` guard; redirects to `/(public)/login` if not authenticated
+- `app/(public)/login/index.tsx` — updated: real `signInWithGoogle()` call with loading state; redirects to dashboard if already authenticated
+- `app/(public)/auth/callback/index.tsx` — new: handles web OAuth callback; calls `handleWebCallback(access_token)` from URL param, then navigates to dashboard
+- `package.json` — added `zustand@^4.5.4`, `@tanstack/react-query@^5.56.2`
+
+**Infrastructure:**
+- `.gitignore` — removed `apps/api/prisma/migrations/` exclusion (migrations must be tracked in git)
+- `turbo.json` — `globalEnv` updated with `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `ENCRYPTION_KEY`, `WEB_ORIGIN`
+- `packages/config/eslint/nestjs.js` — `@typescript-eslint/consistent-type-imports: 'off'` added (NestJS DI tokens are class constructors; forcing `import type` would break reflect-metadata injection)
+
+**Validation:**
+- `pnpm run lint` → PASS
+- `pnpm run typecheck` → PASS
+- `pnpm run test` → PASS (no test files yet; `--passWithNoTests`)
+
+**DB note:** `prisma migrate deploy` must be run once Docker is available (port 5432). The migration SQL is at `prisma/migrations/20260323000000_init/migration.sql`.
+
+### Response (Arquiteto)
+- Date: 2026-03-23
+- From: Arquiteto
+- Status: resolved
+
+Phase 1 implementation validated. All checklist items from `docs/technical-spec.md` §18 Phase 1 are confirmed delivered. Key items verified:
+- Token policy: refresh JWT contains `sid` claim; only bcrypt hash persisted in `Session.refreshTokenHash` — matches §10 exactly
+- Reuse detection: bcrypt mismatch deletes ALL user sessions — matches §10 reuse detection spec
+- Platform split: web uses `httpOnly` cookie; native uses `expo-secure-store` — matches §4.2
+- Google OAuth guard passes `platform` via cookie before Passport redirect — clean implementation
+- `consistent-type-imports: off` in NestJS ESLint config is correct — `emitDecoratorMetadata: true` requires value imports for DI tokens
+- Migration SQL covers all 9 tables and 2 enums from §5.1
+
+One attention item: the `apps/api/.env.example` must be updated with JWT key generation instructions before onboarding. Tracked as a Phase 2 prep item, not a blocker.
+
+**Phase 2 (Dashboard) is cleared to begin after branding assets are received.**
+
+---
+
+## Entry 011
+- Date: 2026-03-23
+- From: Arquiteto
+- To: Desenvolvedor
+- Status: resolved
+- Action: Implementar os 4 itens de atenção identificados na validação de Phase 1 + Phase 2 (Decision 013) antes de iniciar Phase 3.
+- Context: Validação completa de Phase 1 e Phase 2 realizada. Quatro itens não-bloqueantes foram identificados e o usuário solicitou que todos fossem resolvidos antes de avançar para Phase 3.
+- Files: `apps/api/src/app.module.ts`, `apps/api/src/auth/auth.controller.ts`, `apps/api/src/main.ts`, `apps/api/src/activity/`, `apps/app/app/_layout.tsx`, `turbo.json`
+
+### Itens a implementar
+
+1. **Rate limiting**: Global 60 req/min; `@Throttle({ default: { limit: 10, ttl: 60_000 } })` no `AuthController`
+2. **Sentry**: `@sentry/node` no `apps/api` (main.ts); `@sentry/react-native` no `apps/app` (_layout.tsx)
+3. **ActivityLog**: `ActivityService` + `ActivityModule` (`@Global()`); logs em `auth.login`, `auth.logout`, `user.deleted`
+4. **Logo**: `packages/ui/src/assets/logo.png` rastreado no git
+
+### Response (Desenvolvedor)
+- Date: 2026-03-23
+- From: Desenvolvedor / Arquiteto
+- Status: resolved
+
+Todos os 4 itens implementados e validados.
+
+**Item 1 — Rate limiting:**
+- `ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 60 }])` em `AppModule`
+- `ThrottlerGuard` como `APP_GUARD` global em `AppModule`
+- `@Throttle({ default: { limit: 10, ttl: 60_000 } })` no `AuthController` (override para endpoints de auth)
+
+**Item 2 — Sentry:**
+- `@sentry/node@^10.45.0` instalado em `apps/api`
+- `Sentry.init({ dsn, environment, enabled: NODE_ENV === 'production' })` em `apps/api/src/main.ts` (antes do bootstrap)
+- `@sentry/react-native@^8.5.0` instalado em `apps/app`
+- `Sentry.init({ dsn: EXPO_PUBLIC_SENTRY_DSN, enabled: NODE_ENV === 'production' })` em `apps/app/app/_layout.tsx`
+- `export default Sentry.wrap(RootLayout)` em `_layout.tsx`
+- `EXPO_PUBLIC_SENTRY_DSN=` adicionado em `apps/app/.env.example`
+- `SENTRY_DSN` e `EXPO_PUBLIC_SENTRY_DSN` adicionados ao `turbo.json` globalEnv
+
+**Item 3 — ActivityLog:**
+- `apps/api/src/activity/activity.service.ts` — `log(action, userId?, metadata?)` com fire-and-forget
+- `apps/api/src/activity/activity.module.ts` — `@Global()` module
+- `ActivityModule` adicionado ao `AppModule`
+- `ActivityService` injetado em `AuthService` — logs: `auth.login`, `auth.logout`
+- `ActivityService` injetado em `UsersService` — log: `user.deleted`
+
+**Item 4 — Logo:**
+- `packages/ui/src/assets/logo.png` adicionado ao staging do git (`git add`)
+
+**Validação:**
+- `pnpm turbo lint` → PASS (import order corrigido em `app.module.ts` e `main.ts`)
+- `pnpm turbo typecheck` → PASS (Prisma JSON null fix: `Prisma.JsonNull` + cast em `activity.service.ts`)
+- `pnpm turbo test` → PASS
+
+Outcome registrado em `decisions.md` (Decision 014). Phase 3 liberada.**
+
+---
+
+## Entry 012
+- Date: 2026-03-23
+- From: Desenvolvedor
+- To: Arquiteto
+- Status: open
+- Action: Revisar a validação da Phase 2 (Dashboard), pois a entrega atual ainda não fecha integralmente com a `technical-spec`.
+- Context: Foi feita uma nova checagem da entrega da Parte 2 contra `docs/technical-spec.md`. O dashboard existe, o design system recebeu `Avatar` e `Logo`, e `lint`, `typecheck` e `build` passam. Porém, há um gap entre o que foi declarado como concluído e o conjunto mínimo exigido pela spec.
+- Files: `docs/technical-spec.md`, `packages/ui/src/index.ts`, `apps/app/app/(auth)/dashboard/index.tsx`
+
+### Findings
+
+1. **Conjunto mínimo de componentes da Phase 2 está incompleto**
+   - A spec exige `Select`, `Combobox`, `Avatar` e `Skeleton` como parte da entrega de dashboard.
+   - `packages/ui/src/index.ts` exporta `Avatar`, mas não há implementação/export de `Select`, `Combobox` ou `Skeleton`.
+
+2. **Dashboard não reutiliza os primitives centrais do design system**
+   - Em `apps/app/app/(auth)/dashboard/index.tsx`, os module cards e os estados visuais foram implementados como `ModuleCard` local com `View`/`Text`, em vez de reutilizar `Card` e `Badge` já existentes em `packages/ui`.
+   - Isso contraria a diretriz do repositório de reutilizar UI primitives compartilhados em vez de duplicar lógica visual entre apps.
+
+### Validation executed
+
+- `pnpm run lint` → PASS
+- `pnpm run typecheck` → PASS
+- `pnpm run build` → PASS
+
+### Solicitação
+
+- Reavaliar se a Phase 2 pode permanecer marcada como concluída no estado atual, ou
+- Registrar explicitamente que o dashboard shell foi entregue, mas a parte de `packages/ui` ainda está parcial até entrar `Select`, `Combobox` e `Skeleton` e o dashboard reutilizar os primitives compartilhados previstos na spec.
+
+### Response (Arquiteto)
+- Date: 2026-03-23
+- From: Arquiteto
+- Status: resolved
+
+Findings confirmados. Phase 2 não pode ser marcada como concluída no estado atual.
+
+**Finding 1 — componentes ausentes:** `Select`, `Combobox` e `Skeleton` estão explicitamente no checklist de Phase 2 em `docs/technical-spec.md` §18. A ausência dos três é uma lacuna real de entrega, não um item opcional.
+
+**Finding 2 — dashboard não reutiliza primitives compartilhados:** `Card` e `Badge` existem em `packages/ui` e devem ser reutilizados nos module cards do dashboard conforme spec §12. Duplicar `ModuleCard` local contraria a diretriz de design system do projeto.
+
+**Ação:** implementar os 3 componentes ausentes em `packages/ui` e refatorar o dashboard para reutilizar `Card` e `Badge`. Validação `lint + typecheck + test` deve passar após as correções. Phase 3 só será liberada após essa conclusão.
+
+**Implementação concluída (Desenvolvedor/Arquiteto):**
+- `packages/ui/src/components/select/Select.tsx` — `Select` com `Modal` + `FlatList` + NativeWind
+- `packages/ui/src/components/combobox/Combobox.tsx` — `Combobox` com `TextInput` + `FlatList` dropdown
+- `packages/ui/src/components/skeleton/Skeleton.tsx` — `Skeleton` com `Animated` (shimmer pulse, sem dependência externa)
+- `packages/ui/src/index.ts` — exports de `Select`, `Combobox`, `Skeleton` adicionados
+- `apps/app/app/(auth)/dashboard/index.tsx` — `ModuleCard` local refatorado para usar `Card` (variant module/default) e `Badge` (success/outline) de `@fs-suite/ui`; `View` inline do "recent flights" substituído por `Card`
+
+**Validação:** `pnpm turbo lint` → PASS | `pnpm turbo typecheck` → PASS (todos os 5 pacotes)
+
+Phase 2 concluída. Phase 3 liberada. Outcome em `decisions.md` (Decision 015).

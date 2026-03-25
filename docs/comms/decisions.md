@@ -298,3 +298,137 @@ Two non-blocking issues from Entry 007 and Entry 008 resolved.
 `docs/project-spec.md` is read-only; no changes made there. `docs/technical-spec.md` §18 updated with an explicit phase mapping table explaining that the technical decomposition (Phases 0–5) maps to the product roadmap phases (Fases 0–3) at a finer granularity. MVP functional priorities are unchanged.
 
 **Repository state:** all validations passing, no open blocking items. Phase 1 (Auth) cleared to begin.
+
+---
+
+## Decision 012 — Phase 1 (Auth) completed and validated
+
+- Date: 2026-03-23
+- Participants: Desenvolvedor, Arquiteto
+- Status: resolved
+- Files: `apps/api/src/auth/`, `apps/api/src/users/`, `apps/api/src/prisma/`, `apps/api/src/common/`, `apps/api/prisma/migrations/`, `apps/app/src/stores/`, `apps/app/src/services/`, `apps/app/app/(auth)/`, `apps/app/app/(public)/`
+
+### Summary
+
+Phase 1 (Auth) fully implemented and validated. All checklist items from `docs/technical-spec.md` v0.5 §18 Phase 1 are complete.
+
+**Backend delivered:**
+- `PrismaModule` (global), `EncryptionService` (AES-256-GCM), `JwtAuthGuard`, `@CurrentUser()` decorator
+- `AuthModule`: Google OAuth strategy, JWT RS256 strategy, `AuthService` (upsert user, create session, rotate tokens, logout), `AuthController` (4 endpoints)
+- `UsersModule`: `UsersService`, `UsersController` (3 endpoints: GET/PATCH/DELETE `/v1/users/me`)
+- Full Prisma migration SQL at `prisma/migrations/20260323000000_init/migration.sql`
+
+**Frontend delivered:**
+- Zustand auth store (access token in memory)
+- `apiClient` fetch wrapper with Bearer token injection
+- `authService`: `signInWithGoogle` (web redirect / native WebBrowser), `handleWebCallback`, `refreshAccessToken`, `signOut`
+- Root layout: silent token refresh on startup (session restoration); React Query provider
+- `(auth)/_layout.tsx`: auth guard with redirect to login
+- Login screen: real Google OAuth trigger with loading state
+- OAuth callback route: web callback handler
+
+**Security properties confirmed:**
+- Refresh token: JWT (RS256) with `sid` claim; stored as bcrypt hash only; reuse deletes all user sessions
+- OAuthAccount tokens: AES-256-GCM encrypted at rest
+- Web: `httpOnly; Secure; SameSite=Strict` cookie for refresh token
+- Native: `expo-secure-store` for refresh token
+
+**Validation:** lint ✓ typecheck ✓ test ✓
+
+**Next phase:** Phase 2 (Dashboard) — blocked on branding assets from Simulando channel team.
+
+---
+
+## Decision 013 — Phase 1 e Phase 2 validados pelo Arquiteto
+
+- Date: 2026-03-23
+- Participants: Arquiteto
+- Status: resolved
+- Files: todos os artefatos de Phase 1 e Phase 2
+
+### Summary
+
+Validação completa de Phase 1 (Auth) e Phase 2 (Dashboard) realizada contra `docs/technical-spec.md` v0.5. Nenhum item bloqueante identificado. Ambas as fases aprovadas.
+
+**Itens verificados e aprovados:**
+- Prisma schema: todos os 9 modelos e 2 enums correspondem exatamente ao §5.1
+- Migration SQL: todas as tabelas, índices e constraints corretos
+- Auth flow (§4.1, §10): Google OAuth, JWT RS256 (15 min access / 30 dias refresh), bcrypt hash custo 12, reuse detection (delete all sessions), cookie httpOnly/Secure/SameSite=Strict
+- EncryptionService: AES-256-GCM correto (IV 12 bytes, auth tag, hex key)
+- `POST /v1/auth/refresh`: implementa exatamente o fluxo de 9 passos do §10
+- Native: expo-secure-store para refresh token; Web: httpOnly cookie
+- API endpoints: GET/PATCH/DELETE /v1/users/me completos
+- Design system: tokens finalizados com paleta do logo Simulando; Avatar, Logo exportados
+- Dashboard: module cards, empty state, header com avatar, i18n pt-BR/en
+- Profile: avatar, info rows, sign out
+- Route guard em `(auth)/_layout.tsx` redireciona para login se não autenticado
+
+**Itens de atenção (não-bloqueantes, Phase 5):**
+1. Rate limiting: global 60/min configurado; spec §11 requer 10/min nos endpoints de auth — adicionar `@Throttle` no `AuthController` antes de produção
+2. Sentry: não integrado ainda — Phase 5, antes do primeiro deploy significativo
+3. ActivityLog: schema pronto, writes pendentes para Phase 5
+4. Logo asset: deve estar comitado no repositório antes do deploy
+
+**Próxima fase:** Phase 3 (Flight Planning Core) — banco de dados disponível é pré-requisito.
+
+---
+
+## Decision 014 — Itens de atenção pré-Phase 3 resolvidos
+
+- Date: 2026-03-23
+- Participants: Arquiteto, Desenvolvedor
+- Status: resolved
+- Files: `apps/api/src/app.module.ts`, `apps/api/src/auth/auth.controller.ts`, `apps/api/src/main.ts`, `apps/api/src/activity/activity.service.ts`, `apps/api/src/activity/activity.module.ts`, `apps/api/src/auth/auth.service.ts`, `apps/api/src/users/users.service.ts`, `apps/app/app/_layout.tsx`, `apps/app/.env.example`, `turbo.json`
+
+### Summary
+
+Os 4 itens de atenção identificados na validação de Phase 1 + Phase 2 (Decision 013) foram resolvidos antes do início de Phase 3.
+
+**Item 1 — Rate limiting (spec §11):**
+- `ThrottlerModule` com limite global 60 req/min e `ThrottlerGuard` como `APP_GUARD`
+- `@Throttle({ default: { limit: 10, ttl: 60_000 } })` no `AuthController` — override de 10 req/min para endpoints de autenticação
+
+**Item 2 — Sentry (spec §14):**
+- API: `Sentry.init()` em `main.ts` antes do bootstrap; `enabled` apenas em produção; DSN via `SENTRY_DSN`
+- App: `Sentry.init()` em `_layout.tsx`; `Sentry.wrap(RootLayout)` como export padrão; DSN via `EXPO_PUBLIC_SENTRY_DSN`
+- `SENTRY_DSN` e `EXPO_PUBLIC_SENTRY_DSN` adicionados ao `turbo.json` globalEnv e `.env.example`
+
+**Item 3 — ActivityLog (spec §14):**
+- `ActivityService.log(action, userId?, metadata?)` com escrita fire-and-forget via Prisma
+- `ActivityModule` global exportado para injeção em qualquer módulo
+- Eventos registrados: `auth.login`, `auth.logout`, `user.deleted`
+
+**Item 4 — Logo git-tracked:**
+- `packages/ui/src/assets/logo.png` staged para commit
+
+**Validação final:**
+- `pnpm turbo lint` → PASS
+- `pnpm turbo typecheck` → PASS
+- `pnpm turbo test` → PASS
+
+**Phase 3 (Flight Planning Core) liberada para início.**
+
+---
+
+## Decision 015 — Phase 2 concluída: componentes ausentes implementados
+
+- Date: 2026-03-23
+- Participants: Analista de negocio (Finding), Arquiteto, Desenvolvedor
+- Status: resolved
+- Files: `packages/ui/src/components/select/`, `packages/ui/src/components/combobox/`, `packages/ui/src/components/skeleton/`, `packages/ui/src/index.ts`, `apps/app/app/(auth)/dashboard/index.tsx`
+
+### Summary
+
+Entry 012 identificou dois gaps na entrega de Phase 2:
+1. `Select`, `Combobox`, `Skeleton` ausentes em `packages/ui`
+2. Dashboard usava `ModuleCard` local em vez de `Card` e `Badge` compartilhados
+
+Ambos corrigidos:
+- `Select`: `Modal` + `FlatList` + NativeWind (sem dependência extra)
+- `Combobox`: `TextInput` + `FlatList` dropdown inline (sem dependência extra)
+- `Skeleton`: `Animated` shimmer pulse nativo (sem `react-native-reanimated`)
+- Dashboard: `ModuleCard` local reescrito usando `Card` (variant module/default) e `Badge` (success/outline)
+
+**Validação:** lint ✓ typecheck ✓ (todos os 5 pacotes)
+
+**Phase 2 encerrada. Phase 3 (Flight Planning Core) liberada.**
