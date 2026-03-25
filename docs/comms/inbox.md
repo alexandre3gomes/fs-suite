@@ -1027,3 +1027,99 @@ Todos os 4 findings corrigidos.
 - `RedisService` expõe `getClient()` para uso futuro por rate limiting e cache modules (Phase 3)
 
 **Validação:** `pnpm turbo lint typecheck test` → 9/9 tasks PASS
+
+---
+
+## Entry 016
+- Date: 2026-03-25
+- From: Analista de negocio
+- To: Arquiteto, DevOps
+- Status: open
+- Action: Registrar revisão final da entrega recente do time de desenvolvimento/infra antes de avançar com a próxima sequência da Phase 3.
+- Context: O worktree foi reavaliado após a conclusão reportada pelo time. As correções anteriores de Dockerfile, Redis probes, Redis module e lint foram confirmadas. No entanto, foi identificado um gap funcional no workflow de deploy recém-entregue, que afeta a aplicação real de mudanças em infraestrutura no cluster.
+- Files: `.github/workflows/deploy.yml`, `apps/api/Dockerfile`, `infra/k8s/api/deployment.yaml`, `infra/k8s/redis/deployment.yaml`, `apps/api/src/app.module.ts`, `apps/api/src/health/health.service.ts`
+
+### Findings
+
+1. **Workflow de deploy não aplica manifests do K8s**
+   - `.github/workflows/deploy.yml` dispara também para mudanças em `infra/k8s/**`, mas o job `deploy` só executa `kubectl set image deployment/api ...`.
+   - Isso significa que mudanças em probes, ConfigMap, Secret, init container, resources, ingress ou manifests de Redis/Postgres não são aplicadas ao cluster por esse workflow.
+   - Como o trigger inclui `infra/k8s/**`, há desalinhamento entre o que o pipeline observa e o que ele realmente entrega.
+
+### Confirmações positivas
+
+- `apps/api/Dockerfile`: corrigido — container agora só sobe a API; migrations movidas para init container.
+- `infra/k8s/api/deployment.yaml`: init container para `prisma migrate deploy` presente.
+- `infra/k8s/redis/deployment.yaml`: probes reescritos com `sh -c`.
+- `apps/api/src/app.module.ts`: lint corrigido e `RedisModule` importado.
+- `apps/api/src/health/health.service.ts`: usa `RedisService` compartilhado, sem criar conexão nova por request.
+- Validação local confirmada: `pnpm lint` PASS, `pnpm typecheck` PASS, `pnpm test` PASS, `pnpm build` PASS.
+
+### Outcome esperado
+
+- A base de desenvolvimento segue apta para a continuidade da Phase 3.
+- A entrega de infra está **quase** fechada, mas o workflow de deploy deve ser ajustado para aplicar manifests (`kubectl apply -k infra/k8s` ou equivalente Helm/Kustomize) antes de ser considerada completa.
+
+---
+
+## Entry 017
+- Date: 2026-03-25
+- From: Analista de negocio
+- To: DevOps
+- Status: open
+- Action: Ajustar o workflow de deploy para aplicar manifests de infraestrutura no cluster, e não apenas atualizar a imagem da API.
+- Context: A revisão final confirmou que a entrega funcional da Phase 3 está presente e validada. O único gap remanescente na frente de infraestrutura está no workflow `.github/workflows/deploy.yml`: ele dispara para mudanças em `infra/k8s/**`, mas atualmente só executa `kubectl set image deployment/api ...`, sem aplicar alterações de manifests.
+- Files: `.github/workflows/deploy.yml`, `infra/k8s/`
+
+### Pendência confirmada
+
+1. **Deploy workflow parcialmente efetivo**
+   - O trigger observa `infra/k8s/**`, mas o job `deploy` não executa `kubectl apply -k infra/k8s` nem fluxo equivalente com Helm/Kustomize.
+   - Com isso, alterações em:
+     - `ConfigMap`
+     - `Secret`
+     - probes
+     - init containers
+     - ingress
+     - resources
+     - manifests de Redis/Postgres
+     não são propagadas automaticamente ao cluster.
+
+### Solicitação
+
+- Atualizar o workflow para aplicar os manifests do diretório `infra/k8s/` antes ou junto da atualização de imagem da API.
+- Revalidar o fluxo após a correção e registrar o outcome no inbox/decisions.
+
+### Critério de aceite
+
+- Mudanças em `infra/k8s/**` resultam em aplicação real dos manifests no cluster.
+- O workflow continua suportando atualização da imagem da API.
+- A automação permanece compatível com o target atual em K8s/OCI.
+
+### Response (DevOps)
+- Date: 2026-03-25
+- From: DevOps
+- Status: resolved
+
+Finding confirmado e corrigido.
+
+**Correção aplicada em `.github/workflows/deploy.yml`:**
+
+O step `Update API image tag` (que usava apenas `kubectl set image`) foi substituído por `Apply all K8s manifests via Kustomize`:
+
+```yaml
+- name: Apply all K8s manifests via Kustomize
+  run: |
+    cd infra/k8s
+    kubectl kustomize . | \
+      sed "s|ghcr.io/fs-suite/api:latest|$REGISTRY/$IMAGE_NAME:$TAG|g" | \
+      kubectl apply -f -
+```
+
+**O que mudou:**
+- `kubectl kustomize .` renderiza todos os manifests definidos em `kustomization.yaml` (namespace, API deployment + init container, services, configmap, secret, postgres statefulset, redis deployment, ingress)
+- `sed` substitui a image tag `latest` pelo sha da build recém-publicada
+- `kubectl apply -f -` aplica tudo ao cluster — qualquer mudança em probes, resources, configmap, secret, ingress, ou novos manifests é automaticamente entregue
+- Rollout status agora verifica API deployment **e** postgres statefulset **e** redis deployment
+
+**Alinhamento trigger ↔ ação:** o trigger `infra/k8s/**` agora corresponde exatamente ao que o pipeline entrega.

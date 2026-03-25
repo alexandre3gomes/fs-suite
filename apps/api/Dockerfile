@@ -22,9 +22,11 @@ COPY packages/config/ packages/config/
 COPY apps/api/ apps/api/
 
 # Generate Prisma client
-RUN pnpm --filter @fs-suite/api prisma generate
+WORKDIR /app/apps/api
+RUN npx prisma generate
 
 # Build the API
+WORKDIR /app
 RUN pnpm --filter @fs-suite/api build
 
 # ── Stage 2: Production ────────────────────────────────────────

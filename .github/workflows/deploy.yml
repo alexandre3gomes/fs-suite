@@ -76,19 +76,21 @@ jobs:
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
 
-      - name: Update API image tag
+      - name: Apply all K8s manifests via Kustomize
         run: |
           cd infra/k8s
-          kubectl set image deployment/api \
-            api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }} \
-            -n fs-suite
+          # Set the API image to the freshly built tag
+          kubectl kustomize . | \
+            sed "s|ghcr.io/fs-suite/api:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}|g" | \
+            kubectl apply -f -
 
       - name: Wait for rollout
         run: |
           kubectl rollout status deployment/api -n fs-suite --timeout=300s
+          kubectl rollout status statefulset/postgres -n fs-suite --timeout=300s
+          kubectl rollout status deployment/redis -n fs-suite --timeout=300s
 
       - name: Verify health
         run: |
-          # Wait for pod to be ready, then check health endpoint via port-forward
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=api -n fs-suite --timeout=120s
-          echo "Deployment successful — pods are ready"
+          echo "Deployment successful — all pods are ready"

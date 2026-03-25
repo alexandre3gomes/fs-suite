@@ -566,3 +566,51 @@ Four findings from Entry 015 (BA review of infra delivery) all resolved by DevOp
 **Validation:** `pnpm turbo lint typecheck test` → 9/9 PASS
 
 **Infra P0 + P1 delivery now complete. All blocking findings resolved.**
+
+---
+
+## Decision 020 — Deploy workflow gap resolved (Entry 016)
+
+- Date: 2026-03-25
+- Participants: Analista de negocio, DevOps
+- Status: resolved
+- Files: `.github/workflows/deploy.yml`
+
+### Summary
+
+BA identified that `.github/workflows/deploy.yml` only ran `kubectl set image` despite triggering on `infra/k8s/**` changes. This meant manifest changes (probes, configmaps, secrets, new resources) would never reach the cluster.
+
+**Fix:** Deploy step replaced with `kubectl kustomize . | sed (image tag) | kubectl apply -f -`, which renders and applies all manifests from `kustomization.yaml`. Rollout status now waits on all three workloads (API, Postgres, Redis).
+
+**Infra delivery is now complete.** All BA and Arquiteto findings from Entry 015 and Entry 016 resolved.
+
+---
+
+## Decision 021 — Phase 3 (Flight Planning Core) approved by BA
+
+- Date: 2026-03-25
+- Participants: Analista de negocio, Arquiteto, Desenvolvedor
+- Status: resolved
+- Files: `apps/api/src/airports/`, `apps/api/src/aircraft-profiles/`, `apps/api/src/flight-plans/`, `apps/api/prisma/seed.ts`, `apps/app/app/(auth)/flight-plans/`
+
+### Summary
+
+Phase 3 delivery reviewed and approved by the BA. All checklist items from `docs/technical-spec.md` v0.5 §18 Phase 3 are complete.
+
+**Backend delivered:**
+- AirportsModule: pg_trgm trigram search with Redis cache (1h TTL), GET /v1/airports?q= and GET /v1/airports/:icao
+- Migration: pg_trgm extension + GIN indexes on Airport.icao and Airport.name
+- Seed script: OurAirports CSV download, parse, upsert (medium + large airports)
+- AircraftProfilesModule: full CRUD scoped to authenticated user
+- FlightPlansModule: paginated list, create with routes, detail, update, soft delete, duplicate as DRAFT
+- ActivityLog: flight_plan.created, flight_plan.duplicated
+
+**Frontend delivered:**
+- Flight plans list: paginated with status/type badges
+- New flight plan form: airport Combobox search, flight type Select, aircraft Select, altitude, remarks
+- Flight plan detail: info card, route waypoints, duplicate and delete actions
+- i18n: all new keys for pt-BR and en
+
+**Validation:** lint ✓ typecheck ✓ test ✓
+
+**Phase 4 (Integrations) cleared to begin.**
