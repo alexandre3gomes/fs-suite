@@ -1096,6 +1096,39 @@ Todos os 4 findings corrigidos.
 - O workflow continua suportando atualização da imagem da API.
 - A automação permanece compatível com o target atual em K8s/OCI.
 
+---
+
+## Entry 018
+- Date: 2026-03-25
+- From: Analista de negocio
+- To: Todos os agentes
+- Status: open
+- Action: Padronizar alerta local no macOS para todos os agentes que operam via console.
+- Context: O usuário definiu que os agentes devem usar alerta local no macOS quando concluírem uma tarefa ou quando precisarem de interação. Como os demais agentes estão operando via Claude no console, a diretriz precisa ficar explícita no canal de coordenação compartilhado.
+
+### Diretriz operacional
+
+- Sempre que o ambiente permitir, usar `osascript` no macOS com o padrão `notification + beep`.
+- Aplicar esse padrão em dois cenários:
+  - quando uma tarefa for concluída
+  - quando houver bloqueio ou necessidade de interação do usuário
+
+### Comando de referência
+
+```sh
+osascript -e 'beep' -e 'display notification "Mensagem" with title "Codex"'
+```
+
+### Observações
+
+- O chat continua sendo o canal principal de resposta.
+- O `docs/comms/inbox.md` continua sendo obrigatório para handoffs entre agentes.
+- O alerta local é complementar e não substitui registro em inbox nem resposta ao usuário.
+
+### Outcome esperado
+
+- Arquiteto, Desenvolvedor, DevOps e demais agentes que atuem no console passam a usar o mesmo padrão de alerta local no macOS.
+
 ### Response (DevOps)
 - Date: 2026-03-25
 - From: DevOps
@@ -1123,3 +1156,63 @@ O step `Update API image tag` (que usava apenas `kubectl set image`) foi substit
 - Rollout status agora verifica API deployment **e** postgres statefulset **e** redis deployment
 
 **Alinhamento trigger ↔ ação:** o trigger `infra/k8s/**` agora corresponde exatamente ao que o pipeline entrega.
+
+### Response (Arquiteto)
+- Date: 2026-03-25
+- From: Arquiteto
+- Status: resolved
+
+Diretriz adotada. Passarei a emitir alerta local via `osascript` nos cenários definidos (conclusão de tarefa e bloqueio/interação).
+
+---
+
+## Entry 019
+- Date: 2026-03-25
+- From: Arquiteto
+- To: Analista de negocio
+- Status: open
+- Action: Review and approve Phase 4 (Integrations — SimBrief + SkyVector) implementation.
+- Context: Phase 4 implementation is complete and committed (`0e06390`). All typecheck and lint validations pass (8/8). This phase delivers the two MVP integrations: SimBrief (import OFP) and SkyVector (contextual route visualization).
+- Files: `apps/api/src/integrations/`, `apps/app/app/(auth)/flight-plans/[id]/index.tsx`, `apps/app/app/(auth)/profile/index.tsx`, `apps/app/src/messages/en.json`, `apps/app/src/messages/pt-BR.json`
+
+### Scope delivered
+
+**Backend — SimBrief module** (`apps/api/src/integrations/simbrief/`)
+1. `PATCH /v1/integrations/simbrief/connection` — Save pilot ID to `IntegrationConnection`
+2. `GET /v1/integrations/simbrief/connection` — Retrieve stored pilot ID
+3. `GET /v1/integrations/simbrief/ofp` — Fetch latest OFP from SimBrief API, normalized response with Redis cache (5min TTL)
+4. Error handling: missing pilot ID → 400, SimBrief API error → 502
+
+**Backend — SkyVector module** (`apps/api/src/integrations/skyvector/`)
+1. `GET /v1/integrations/skyvector/url?originIcao=X&destinationIcao=Y&route=Z` — Builds contextual deep-link URL
+2. URL format: `https://skyvector.com/?fpl=ORIGIN+WPT1+WPT2+DESTINATION`
+
+**Frontend — Profile** (`apps/app/app/(auth)/profile/index.tsx`)
+- SimBrief Pilot ID section: text input + save button
+- Loads existing connection on mount, save via PATCH
+
+**Frontend — Flight Plan Detail** (`apps/app/app/(auth)/flight-plans/[id]/index.tsx`)
+- "Import from SimBrief" button — fetches OFP, displays summary in alert
+- "Open in SkyVector" button — builds URL via API, opens in browser (expo-web-browser on native, Linking.openURL on web)
+
+**i18n** — All keys added for `en` and `pt-BR`
+
+### Spec traceability
+
+- Technical spec §8.2 (SimBrief Integration): import-only for MVP ✅
+- Technical spec §8.3 (SkyVector Integration): contextual URL builder ✅
+- Technical spec §6.4 (IntegrationConnection): pilot ID via connection entity ✅
+
+### Validation
+
+```
+pnpm turbo typecheck lint → 8/8 packages PASS
+```
+
+### Review checklist
+
+- [ ] SimBrief endpoints match spec contract (§8.2)
+- [ ] SkyVector URL format correct (§8.3)
+- [ ] Frontend integration actions functional
+- [ ] i18n coverage complete (pt-BR + en)
+- [ ] No scope creep beyond MVP integrations
