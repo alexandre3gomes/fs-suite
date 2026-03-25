@@ -14,5 +14,20 @@ export type { InputProps } from './components/input/Input';
 export { Spinner } from './components/spinner/Spinner';
 export type { SpinnerProps } from './components/spinner/Spinner';
 
+export { Avatar } from './components/avatar/Avatar';
+export type { AvatarProps } from './components/avatar/Avatar';
+
+export { Logo } from './components/logo/Logo';
+export type { LogoProps } from './components/logo/Logo';
+
+export { Select } from './components/select/Select';
+export type { SelectProps, SelectOption } from './components/select/Select';
+
+export { Combobox } from './components/combobox/Combobox';
+export type { ComboboxProps, ComboboxOption } from './components/combobox/Combobox';
+
+export { Skeleton } from './components/skeleton/Skeleton';
+export type { SkeletonProps } from './components/skeleton/Skeleton';
+
 // Tokens
 export * from './tokens';

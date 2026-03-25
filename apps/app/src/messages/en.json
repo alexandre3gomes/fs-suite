@@ -17,8 +17,17 @@
   "dashboard": {
     "title": "Dashboard",
     "welcome": "Welcome back",
-    "flightPlans": "Flight Plans",
-    "recentFlights": "Recent Flights"
+    "recentFlights": "Recent Flights",
+    "noRecentFlights": "No recent flights. Create your first plan!",
+    "modules": {
+      "flightPlanning": "Flight Planning",
+      "flightPlanningDesc": "Create and manage VFR and IFR flight plans",
+      "simbrief": "SimBrief",
+      "simbriefDesc": "Import OFP plans from SimBrief",
+      "skyvector": "SkyVector",
+      "skyvectorDesc": "Visualize routes and airports on SkyVector",
+      "comingSoon": "Coming soon"
+    }
   },
   "flightPlans": {
     "title": "Flight Plans",

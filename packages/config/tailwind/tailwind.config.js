@@ -18,13 +18,17 @@ module.exports = {
         },
         border: '#2a3048',
         input: '#1e2333',
-        ring: '#4a90e2',
+        ring: '#2a7dc9',
         primary: {
-          DEFAULT: '#4a90e2',
+          DEFAULT: '#2a7dc9',
           foreground: '#ffffff',
         },
         accent: {
           DEFAULT: '#00d4ff',
+          foreground: '#0d0f14',
+        },
+        chrome: {
+          DEFAULT: '#a0aabb',
           foreground: '#0d0f14',
         },
         destructive: {

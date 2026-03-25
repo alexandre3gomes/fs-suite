@@ -1,11 +1,10 @@
 /**
  * Design tokens for FS Suite — Aviation/cockpit aesthetic
  *
- * IMPORTANT: These are placeholder values based on aviation dark-cockpit aesthetics.
- * Final values must be updated when Simulando brand assets are received.
+ * Palette derived from the Simulando channel brand assets (logo.png).
+ * Background: near-black cockpit (#0d0f14), chrome silver accents, aviation blue primary.
  *
  * Ref: docs/technical-spec.md Section 12
- * Blocked on: Receipt of Simulando brand assets from channel team
  */
 
 export const colors = {
@@ -21,14 +20,19 @@ export const colors = {
 
   border: '#2a3048',
   input: '#1e2333',
-  ring: '#4a90e2',
+  ring: '#2a7dc9',
 
-  // HUD-style accent — electric blue
-  primary: '#4a90e2',
+  // Aviation blue — derived from Simulando logo sky/globe
+  primary: '#2a7dc9',
   primaryForeground: '#ffffff',
 
+  // HUD accent — electric cyan for data highlights
   accent: '#00d4ff',
   accentForeground: '#0d0f14',
+
+  // Chrome metallic — logo wings/badge framing
+  chrome: '#a0aabb',
+  chromeForeground: '#0d0f14',
 
   destructive: '#e05c5c',
   destructiveForeground: '#ffffff',

@@ -17,8 +17,17 @@
   "dashboard": {
     "title": "Painel",
     "welcome": "Bem-vindo de volta",
-    "flightPlans": "Planos de Voo",
-    "recentFlights": "Voos Recentes"
+    "recentFlights": "Voos Recentes",
+    "noRecentFlights": "Nenhum voo recente. Crie o seu primeiro plano!",
+    "modules": {
+      "flightPlanning": "Planejamento de Voo",
+      "flightPlanningDesc": "Crie e gerencie planos de voo VFR e IFR",
+      "simbrief": "SimBrief",
+      "simbriefDesc": "Importe planos OFP do SimBrief",
+      "skyvector": "SkyVector",
+      "skyvectorDesc": "Visualize rotas e aeroportos no SkyVector",
+      "comingSoon": "Em breve"
+    }
   },
   "flightPlans": {
     "title": "Planos de Voo",
