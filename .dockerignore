@@ -1,0 +1,14 @@
+node_modules
+.git
+.turbo
+*.tsbuildinfo
+dist
+.expo
+.next
+.env
+.env.*
+!.env.example
+apps/app
+docs
+coverage
+playwright-report

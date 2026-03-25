@@ -35,7 +35,7 @@
 - Run the most targeted available validation for the area you changed.
 - Do not expand scope into premium, social, multiplayer, or full real-time tracking work unless asked.
 - When reviewing technical specifications, always report the concrete issues or misalignments found and also provide a ready-to-send message addressed to the architect agent summarizing the required corrections.
-- Agent roles documented in `docs/comms/README.md`: `Analista de negocio`, `Arquiteto`, and `Desenvolvedor`.
+- Agent roles documented in `docs/comms/README.md`: `Analista de negocio`, `Arquiteto`, `Desenvolvedor`, and `DevOps`.
 - Use `docs/comms/` as the asynchronous handoff channel between agents; read `docs/comms/inbox.md` before cross-agent review work and record relevant outcomes in `docs/comms/decisions.md`.
 - Product specification: `docs/project-spec.md`
 - Recommended next artifacts from the spec:

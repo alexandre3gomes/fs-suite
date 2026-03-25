@@ -6,6 +6,7 @@ This directory is the shared asynchronous communication channel between agents w
 - `Analista de negocio`: reviews product alignment, validates technical specifications against business and product scope, and prepares feedback for other agents.
 - `Arquiteto`: defines and evolves technical architecture, technical specifications, and structural implementation decisions.
 - `Desenvolvedor`: implements features, writes code, runs tests, and coordinates with Arquiteto and Analista de negocio to deliver approved spec items. Reads `docs/comms/inbox.md` before starting any implementation task; raises blockers or clarification needs via inbox entries directed to the appropriate agent; records completed implementation milestones in `decisions.md`.
+- `DevOps`: owns all infrastructure — local development environment (Docker Compose), CI/CD pipelines (GitHub Actions), cloud deployment (Railway/Render, EAS, managed databases), environment configuration, secrets management, observability infrastructure (Sentry, logging), and production readiness. Reads `docs/comms/inbox.md` for infrastructure-related requests; coordinates with Arquiteto on infrastructure decisions and with Desenvolvedor on deployment and environment needs.
 
 ## Purpose
 Use this folder to coordinate work across agents through repository files.

@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as Sentry from '@sentry/node';
 import cookieParser = require('cookie-parser');
 import helmet from 'helmet';
+import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 
@@ -16,8 +17,11 @@ Sentry.init({
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log'],
+    bufferLogs: true,
   });
+
+  // Use pino as the application logger
+  app.useLogger(app.get(Logger));
 
   // Security headers
   app.use(helmet());

@@ -12,6 +12,7 @@
     "JWT_PUBLIC_KEY",
     "ENCRYPTION_KEY",
     "WEB_ORIGIN",
+    "LOG_LEVEL",
     "SENTRY_DSN",
     "EXPO_PUBLIC_SENTRY_DSN"
   ],
