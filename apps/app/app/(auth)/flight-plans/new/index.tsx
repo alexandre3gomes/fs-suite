@@ -38,6 +38,7 @@ export default function NewFlightPlanScreen() {
   const [remarks, setRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [importingSimbrief, setImportingSimbrief] = useState(false);
+  const [importedRoutes, setImportedRoutes] = useState<{ sequence: number; waypointIdent: string }[]>([]);
 
   // Airport search
   const [originOptions, setOriginOptions] = useState<ComboboxOption[]>([]);
@@ -98,7 +99,11 @@ export default function NewFlightPlanScreen() {
         setDestOptions([{ label: ofp.destinationIcao, value: ofp.destinationIcao }]);
       }
       if (ofp.route) {
-        setRemarks((prev) => prev ? `${prev}\n${t('flightPlans.route')}: ${ofp.route}` : `${t('flightPlans.route')}: ${ofp.route}`);
+        const waypoints = ofp.route
+          .split(/\s+/)
+          .map((w) => w.trim().toUpperCase())
+          .filter((w) => w.length > 0);
+        setImportedRoutes(waypoints.map((wpt, idx) => ({ sequence: idx, waypointIdent: wpt })));
       }
 
       // SimBrief flights are typically IFR
@@ -131,6 +136,7 @@ export default function NewFlightPlanScreen() {
       if (plannedAltitude) body.plannedAltitude = parseInt(plannedAltitude, 10);
       if (remarks) body.remarks = remarks;
       if (aircraftProfileId) body.aircraftProfileId = aircraftProfileId;
+      if (importedRoutes.length > 0) body.routes = importedRoutes;
 
       const plan = await apiClient.post<{ id: string }>('/flight-plans', body);
       router.replace(`/(auth)/flight-plans/${plan.id}` as never);
@@ -233,6 +239,20 @@ export default function NewFlightPlanScreen() {
               numberOfLines={3}
             />
           </View>
+
+          {/* Imported route (from SimBrief) */}
+          {importedRoutes.length > 0 ? (
+            <View>
+              <Text className="mb-1.5 text-sm font-medium text-muted-foreground">
+                {t('flightPlans.route')}
+              </Text>
+              <View className="rounded-card border border-border bg-surface p-3">
+                <Text className="font-mono text-sm text-foreground">
+                  {importedRoutes.map((r) => r.waypointIdent).join(' ')}
+                </Text>
+              </View>
+            </View>
+          ) : null}
 
           {/* Import from SimBrief */}
           <Pressable

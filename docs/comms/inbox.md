@@ -1177,7 +1177,7 @@ Diretriz adotada. Passarei a emitir alerta local via `osascript` nos cenários d
 - Date: 2026-03-25
 - From: Arquiteto
 - To: Analista de negocio
-- Status: open
+- Status: resolved
 - Action: Review and approve Phase 4 (Integrations — SimBrief + SkyVector) implementation.
 - Context: Phase 4 implementation is complete and committed (`0e06390`). All typecheck and lint validations pass (8/8). This phase delivers the two MVP integrations: SimBrief (import OFP) and SkyVector (contextual route visualization).
 - Files: `apps/api/src/integrations/`, `apps/app/app/(auth)/flight-plans/[id]/index.tsx`, `apps/app/app/(auth)/profile/index.tsx`, `apps/app/src/messages/en.json`, `apps/app/src/messages/pt-BR.json`
@@ -1291,3 +1291,77 @@ Todos os 3 findings bloqueantes foram corrigidos no commit `4d48382`:
 **Validação:** `pnpm turbo typecheck lint → 8/8 PASS`
 
 Resubmetido para nova revisão.
+
+### Response (Analista de negocio)
+- Date: 2026-03-25
+- From: Analista de negocio
+- Status: resolved
+
+Revisão refeita. Os 3 findings bloqueantes anteriores foram corrigidos e a Phase 4 pode ser aprovada.
+
+**Verificações confirmadas:**
+
+1. **Contrato do `GET /integrations/simbrief/connection` corrigido**
+   - `apps/api/src/integrations/simbrief/simbrief.controller.ts` agora aplica o fallback após `await`, retornando objeto estável quando não há conexão.
+
+2. **UI de integração agora existe no formulário de plano de voo**
+   - `apps/app/app/(auth)/flight-plans/new/index.tsx` recebeu ação de importação do SimBrief dentro do fluxo de criação, atendendo o checklist da phase.
+
+3. **Importação SimBrief agora produz efeito material no fluxo**
+   - No detail screen, a importação aplica `PATCH /flight-plans/:id` com `simBriefOfpId`, origem, destino e rota parseada.
+   - No formulário novo, a importação pré-preenche campos do plano e adiciona a rota ao estado editável do formulário.
+
+4. **SkyVector e i18n seguem aderentes**
+   - URL builder permanece consistente com o padrão documentado.
+   - Cobertura `pt-BR` e `en` permanece suficiente para o escopo entregue.
+
+**Nota residual (não bloqueante):**
+- No formulário novo, a rota importada do SimBrief ainda é materializada em `remarks`, e não em um editor estruturado de rota. Isso é aceitável para o escopo atual, mas vale refinar quando o fluxo de planejamento avançar.
+
+**Outcome:**
+- Phase 4 aprovada.
+- Pode registrar fechamento em `docs/comms/decisions.md`.
+
+---
+
+## Entry 020
+- Date: 2026-03-25
+- From: Analista de negocio
+- To: Arquiteto
+- Status: resolved
+- Action: Tratar imediatamente o refinamento residual da importação SimBrief no formulário de plano de voo, mesmo sem bloqueio formal da Phase 4.
+- Context: A Phase 4 foi aprovada, mas ficou registrado um ponto residual: no formulário de criação, a rota importada do SimBrief ainda é materializada em `remarks`, e não em estrutura própria de rota. O usuário pediu para já endereçar isso agora, sem postergar para uma fase futura.
+- Files: `apps/app/app/(auth)/flight-plans/new/index.tsx`, `apps/api/src/flight-plans/`, `docs/technical-spec.md`
+
+### Orientação
+
+- Rever com o Desenvolvedor a forma correta de representar a rota importada do SimBrief dentro do fluxo de criação do plano.
+- Evitar consolidar a rota em `remarks` como solução final, porque isso mistura dado operacional estruturado com texto livre.
+- Preferir um caminho alinhado ao modelo existente de `FlightPlanRoute`, mesmo que a UI inicial continue simples.
+
+### Resultado esperado
+
+- Definição arquitetural curta de como a rota importada deve viver no estado do formulário e no contrato salvo do plano.
+- Handoff claro para o Desenvolvedor implementar o ajuste.
+- Registrar a decisão no inbox/decisions antes de seguir para a próxima expansão do fluxo de planejamento.
+
+### Response (Arquiteto)
+- Date: 2026-03-25
+- From: Arquiteto
+- Status: resolved
+
+**Decisão arquitetural:**
+
+A rota importada do SimBrief no formulário de criação agora é armazenada como `routes[]` (array de `{ sequence, waypointIdent }`), alinhada ao modelo `FlightPlanRoute` do Prisma. Não é mais concatenada em `remarks`.
+
+**Implementação aplicada:**
+
+1. Novo estado `importedRoutes` no formulário (`apps/app/app/(auth)/flight-plans/new/index.tsx`)
+2. `handleImportSimBrief()` parseia a string de rota do OFP em waypoints estruturados: `ofp.route.split(/\s+/)` → `[{ sequence: 0, waypointIdent: 'ERNAS' }, ...]`
+3. `handleSubmit()` inclui `routes` no payload de criação quando `importedRoutes.length > 0`
+4. UI exibe a rota importada em bloco `font-mono` antes do botão de import, para que o piloto veja os waypoints antes de salvar
+5. O backend já suporta `routes` no `CreateFlightPlanDto` — nenhuma alteração necessária na API
+
+**Validação:** `pnpm turbo typecheck lint → 8/8 PASS`
+
+Decision 022 registrada em `docs/comms/decisions.md`.

@@ -614,3 +614,30 @@ Phase 3 delivery reviewed and approved by the BA. All checklist items from `docs
 **Validation:** lint ✓ typecheck ✓ test ✓
 
 **Phase 4 (Integrations) cleared to begin.**
+
+---
+
+## Decision 022 — Phase 4 (Integrations — SimBrief + SkyVector) approved by BA
+
+- Date: 2026-03-25
+- Participants: Analista de negocio, Arquiteto
+- Status: resolved
+- Files: `apps/api/src/integrations/`, `apps/app/app/(auth)/flight-plans/`, `apps/app/app/(auth)/profile/index.tsx`
+
+### Summary
+
+Phase 4 delivery reviewed by BA. First submission had 3 blocker findings; all corrected and re-approved on second review.
+
+**Findings resolved:**
+1. `getConnection` controller: `await` added before `??` fallback — stable `{ pilotId: null }` contract
+2. SimBrief import UI added to new flight plan form (was only on detail screen)
+3. SimBrief import now applies OFP data to the flight plan via PATCH (`simBriefOfpId`, origin, destination, route waypoints)
+
+**Non-blocking note:** route imported from SimBrief into the new plan form was initially materialized in `remarks` — addressed in follow-up (Entry 020) by using structured `routes[]` instead.
+
+**Scope delivered:**
+- Backend: SimBrief module (connection CRUD + OFP fetch with Redis 5min cache), SkyVector URL builder
+- Frontend: Profile SimBrief Pilot ID, flight plan detail + new form integration actions
+- i18n: pt-BR + en coverage complete
+
+**Validation:** lint ✓ typecheck ✓
