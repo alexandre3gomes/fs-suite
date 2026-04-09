@@ -1365,3 +1365,102 @@ A rota importada do SimBrief no formulário de criação agora é armazenada com
 **Validação:** `pnpm turbo typecheck lint → 8/8 PASS`
 
 Decision 022 registrada em `docs/comms/decisions.md`.
+
+---
+
+## Entry 021
+- Date: 2026-03-25
+- From: Analista de negocio
+- To: Arquiteto
+- Status: open
+- Action: Registrar liberação para início da Phase 5 e pedir validação das pendências atualmente abertas no worktree.
+- Context: A revisão final confirmou que o ponto residual da Phase 4 foi resolvido e que a sequência técnica pode avançar para a Phase 5. Ao mesmo tempo, o worktree atual não está completamente limpo por mudanças de infraestrutura fora do escopo direto dessa validação, e o usuário pediu que isso também seja explicitamente encaminhado ao Arquiteto.
+- Files: `docs/comms/decisions.md`, `apps/api/Dockerfile`, `infra/k8s/overlays/local/kustomization.yaml`, `infra/k8s-overlays/`
+
+### Liberação de fase
+
+- A `Phase 4` está aprovada e o fluxo pode avançar para **início da Phase 5 — Observability & Hardening**.
+- A liberação aqui significa **início da fase**, não conclusão.
+
+### Itens que seguem pendentes para validação do Arquiteto
+
+Estado atual do worktree observado nesta revisão:
+
+- `M apps/api/Dockerfile`
+- `D infra/k8s/overlays/local/kustomization.yaml`
+- `?? infra/k8s-overlays/`
+
+### Solicitação ao Arquiteto
+
+- Validar se essas mudanças de infraestrutura:
+  - fazem parte de uma reorganização correta e intencional da estrutura K8s, ou
+  - representam drift / trabalho parcialmente movido sem consolidação
+- Confirmar se o estado atual pode seguir junto com a abertura da Phase 5 ou se precisa ser consolidado/normalizado antes.
+
+### Outcome esperado
+
+- Confirmação formal de que a Phase 5 pode começar.
+- Parecer do Arquiteto sobre as pendências de infraestrutura atualmente abertas no worktree.
+
+### Response (Arquiteto)
+- Date: 2026-04-09
+- From: Arquiteto
+- Status: resolved
+
+**Parecer sobre as mudanças de infraestrutura no worktree:**
+
+Todas as 4 alterações são correções legítimas e intencionais do DevOps. Não há drift nem trabalho parcial abandonado.
+
+1. **`M apps/api/Dockerfile`** — Simplificação dos `COPY` de artefatos Prisma: paths pnpm flat (`node_modules/.prisma/`, `node_modules/prisma/`, `node_modules/@prisma/engines/`) em vez dos paths nested `.pnpm/`. Corrige a resolução de binários Prisma no container de produção. **Válido.**
+
+2. **`M apps/api/prisma/schema.prisma`** — Adição de `binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]` ao generator client. Necessário para gerar o Prisma engine compatível com Alpine Linux ARM64 (target do Dockerfile). Sem isso, `prisma migrate deploy` falha no container. **Válido e necessário.**
+
+3. **`M infra/k8s/kustomization.yaml`** — Migração de `commonLabels` (deprecated no Kustomize v5+) para o novo formato `labels` com `includeSelectors: false`. Evita que labels sejam injetados nos selectors de Deployments/StatefulSets, o que causaria falha de rollout em updates. **Correção necessária.**
+
+4. **`D infra/k8s/overlays/local/` → `?? infra/k8s-overlays/local/`** — Reorganização do overlay local para fora do diretório base Kustomize (`infra/k8s/`), evitando que o overlay seja acidentalmente incluído no render do base. O novo local (`infra/k8s-overlays/local/`) é mais limpo e adiciona patches de `image`/`imagePullPolicy` para deploy local com imagem buildada localmente. **Reorganização correta.**
+
+**Decisão:**
+
+- As mudanças devem ser consolidadas num commit de infraestrutura antes de iniciar a Phase 5.
+- **Phase 5 (Observability & Hardening) está formalmente liberada para início** após esse commit.
+
+**Itens da Phase 5 já parcialmente entregues (a verificar completude):**
+
+| Item | Status |
+|------|--------|
+| Sentry (app + api) | Integrado (Decision 014) — verificar cobertura |
+| ActivityLog | Parcial — faltam eventos de integração (`simbrief.import`) |
+| Rate limiting auth/integrations | Feito (Decision 014) |
+| `GET /v1/health` | Feito (Decision 017) |
+| e2e tests (Playwright) | Pendente |
+
+**Itens efetivamente pendentes para Phase 5:**
+1. Completar ActivityLog com eventos faltantes
+2. e2e tests com Playwright (web target)
+3. Revisão final de cobertura Sentry
+4. Retention policy job (purga de sessions expiradas e activity logs > 12 meses, conforme §10)
+
+---
+
+## Entry 022
+- Date: 2026-04-09
+- From: Arquiteto
+- To: DevOps
+- Status: open
+- Action: Consolidar as mudanças de infraestrutura pendentes no worktree num commit antes do início da Phase 5.
+- Context: A validação do Entry 021 confirmou que todas as mudanças de infra atualmente no worktree são correções legítimas (Decision 023). Elas precisam ser comitadas para limpar o working tree antes de iniciar a Phase 5. O Arquiteto não realiza commits de infra — isso é responsabilidade do DevOps.
+- Files: `apps/api/Dockerfile`, `apps/api/prisma/schema.prisma`, `infra/k8s/kustomization.yaml`, `infra/k8s/overlays/local/kustomization.yaml` (deleted), `infra/k8s-overlays/local/kustomization.yaml` (new)
+
+### Mudanças a consolidar
+
+1. **`apps/api/Dockerfile`** — Simplificação dos COPY de artefatos Prisma (paths flat em vez de .pnpm nested)
+2. **`apps/api/prisma/schema.prisma`** — Adição de `binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]` para Alpine ARM64
+3. **`infra/k8s/kustomization.yaml`** — Migração de `commonLabels` (deprecated) para formato `labels` (Kustomize v5+)
+4. **`infra/k8s/overlays/local/` → `infra/k8s-overlays/local/`** — Relocação do overlay local para fora do diretório base Kustomize, com adição de patches de image/imagePullPolicy para deploy local
+
+### Critério de aceite
+
+- Commit único cobrindo as 4 mudanças acima
+- Mensagem de commit descritiva referenciando Decision 023
+- Working tree limpo após o commit (exceto `docs/comms/` que pode ter mudanças do Arquiteto)
+- Registrar conclusão neste entry

@@ -641,3 +641,39 @@ Phase 4 delivery reviewed by BA. First submission had 3 blocker findings; all co
 - i18n: pt-BR + en coverage complete
 
 **Validation:** lint ✓ typecheck ✓
+
+---
+
+## Decision 023 — Infra worktree validated; Phase 5 cleared to begin
+
+- Date: 2026-04-09
+- Participants: Arquiteto, Analista de negocio
+- Status: resolved
+- Files: `apps/api/Dockerfile`, `apps/api/prisma/schema.prisma`, `infra/k8s/kustomization.yaml`, `infra/k8s-overlays/local/kustomization.yaml`
+
+### Summary
+
+Entry 021 requested Arquiteto validation of uncommitted infrastructure changes and formal Phase 5 clearance.
+
+**Infra changes validated — all legitimate DevOps corrections:**
+1. Dockerfile: simplified Prisma COPY paths for pnpm flat layout (fixes runtime resolution)
+2. Prisma schema: added `binaryTargets` for Alpine ARM64 (required for container builds)
+3. Kustomization: migrated deprecated `commonLabels` to `labels` format (Kustomize v5+ compat)
+4. Overlay relocation: `infra/k8s/overlays/local/` → `infra/k8s-overlays/local/` (prevents accidental inclusion in base render, adds local image patches)
+
+**Phase 5 (Observability & Hardening) scope assessment:**
+
+Already delivered in prior phases:
+- Sentry init in api + app (Decision 014)
+- Rate limiting: global 60/min, auth 10/min (Decision 014)
+- ActivityLog: auth.login, auth.logout, user.deleted, flight_plan.created, flight_plan.duplicated (Decisions 014, 021)
+- Health check endpoint (Decision 017)
+- Structured logging with pino (Decision 018)
+
+Remaining for Phase 5:
+- Complete ActivityLog coverage (missing: `simbrief.import` and other integration events)
+- e2e tests with Playwright for web target
+- Sentry coverage review (error boundaries, breadcrumbs)
+- Retention policy scheduled job (session expiry purge, activity log 12-month retention per §10)
+
+**Outcome:** Infra changes to be consolidated in a commit. Phase 5 is formally cleared to begin.
