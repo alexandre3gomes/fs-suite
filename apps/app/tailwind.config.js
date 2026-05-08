@@ -9,4 +9,5 @@ module.exports = {
     './src/**/*.{js,jsx,ts,tsx}',
     '../../packages/ui/src/**/*.{js,jsx,ts,tsx}',
   ],
+  plugins: [require('tailwindcss-animate')],
 };

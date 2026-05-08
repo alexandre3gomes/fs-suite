@@ -1,131 +1,110 @@
-import { Avatar, Button, Input, Spinner } from '@fs-suite/ui';
-import { useRouter } from 'expo-router';
+import { Input } from '@fs-suite/ui';
+import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
 import { apiClient } from '../../../src/services/api.client';
-import { signOut } from '../../../src/services/auth.service';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
-  const router = useRouter();
-  const { user, isLoading } = useCurrentUser();
+  const { user } = useCurrentUser();
 
-  const [pilotId, setPilotId] = useState('');
-  const [pilotIdSaved, setPilotIdSaved] = useState('');
-  const [savingPilotId, setSavingPilotId] = useState(false);
-
-  const loadSimBriefConnection = useCallback(async () => {
-    try {
-      const conn = await apiClient.get<{ pilotId: string | null }>('/integrations/simbrief/connection');
-      if (conn.pilotId) {
-        setPilotId(conn.pilotId);
-        setPilotIdSaved(conn.pilotId);
-      }
-    } catch {
-      // ignore — user may not have a connection yet
-    }
-  }, []);
+  // SimBrief connection
+  const [simbriefPilotId, setSimbriefPilotId] = useState('');
+  const [simbriefLoading, setSimbriefLoading] = useState(true);
+  const [simbriefSaving, setSimbriefSaving] = useState(false);
+  const [simbriefSaved, setSimbriefSaved] = useState(false);
 
   useEffect(() => {
-    void loadSimBriefConnection();
-  }, [loadSimBriefConnection]);
+    setSimbriefLoading(true);
+    apiClient
+      .get<{ pilotId: string | null }>('/integrations/simbrief/connection')
+      .then((data) => {
+        if (data.pilotId) setSimbriefPilotId(data.pilotId);
+      })
+      .catch(() => {})
+      .finally(() => setSimbriefLoading(false));
+  }, []);
 
-  const handleSavePilotId = async () => {
-    if (!pilotId.trim()) return;
-    setSavingPilotId(true);
+  const handleSaveSimbrief = useCallback(async () => {
+    const id = simbriefPilotId.trim();
+    if (!id) return;
+    setSimbriefSaving(true);
     try {
-      await apiClient.patch('/integrations/simbrief/connection', { pilotId: pilotId.trim() });
-      setPilotIdSaved(pilotId.trim());
-      Alert.alert(t('common.save'), t('profile.simbriefSaved'));
-    } catch (err) {
-      Alert.alert(t('common.error'), err instanceof Error ? err.message : t('common.error'));
-    } finally {
-      setSavingPilotId(false);
+      await apiClient.patch('/integrations/simbrief/connection', { pilotId: id });
+      setSimbriefSaved(true);
+      setTimeout(() => setSimbriefSaved(false), 2000);
+    } catch {
+      Alert.alert(t('common.error'), 'Could not save SimBrief pilot ID.');
     }
-  };
-
-  const handleSignOut = async (): Promise<void> => {
-    await signOut();
-    router.replace('/(public)/login');
-  };
-
-  if (isLoading && !user) {
-    return (
-      <View className="flex-1 items-center justify-center bg-background">
-        <Spinner size="lg" />
-      </View>
-    );
-  }
+    setSimbriefSaving(false);
+  }, [simbriefPilotId, t]);
 
   return (
-    <ScrollView className="flex-1 bg-background">
-      <View className="px-4 py-6">
-        <Text className="mb-6 text-2xl font-bold text-foreground">{t('profile.title')}</Text>
-
-        {/* Avatar + name header */}
-        <View className="mb-6 items-center gap-3">
-          <Avatar uri={user?.avatarUrl} name={user?.name} size={80} />
-          {user?.name ? (
-            <Text className="text-lg font-semibold text-foreground">{user.name}</Text>
-          ) : null}
-        </View>
-
-        {/* Info rows */}
-        <View className="mb-6 overflow-hidden rounded-card border border-border bg-surface">
-          <View className="border-b border-border px-4 py-3">
-            <Text className="mb-0.5 text-xs uppercase tracking-wide text-muted-foreground">
-              {t('profile.name')}
-            </Text>
-            <Text className="text-foreground">{user?.name ?? '—'}</Text>
+    <>
+      <Stack.Screen options={{ title: t('dashboard.profile'), headerShown: true, headerBackTitle: t('common.back') }} />
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ paddingBottom: 40 }}>
+        <View className="md:mx-auto md:w-full md:max-w-2xl">
+          {/* User info */}
+          <View className="border-b border-border px-4 py-5 md:px-6">
+            <Text className="text-base font-bold text-foreground">{t('dashboard.profile')}</Text>
+            {user ? (
+              <View className="mt-3">
+                <Text className="text-sm text-foreground">{user.name}</Text>
+                <Text className="text-xs text-muted-foreground">{user.email}</Text>
+              </View>
+            ) : null}
           </View>
 
-          <View className="px-4 py-3">
-            <Text className="mb-0.5 text-xs uppercase tracking-wide text-muted-foreground">
-              {t('profile.email')}
+          {/* Integrations */}
+          <View className="border-b border-border px-4 py-5 md:px-6">
+            <Text className="mb-3 text-base font-bold text-foreground">
+              {t('profile.integrations')}
             </Text>
-            <Text className="font-mono text-foreground">{user?.email ?? '—'}</Text>
-          </View>
-        </View>
 
-        {/* SimBrief Pilot ID */}
-        <View className="mb-8 overflow-hidden rounded-card border border-border bg-surface p-4">
-          <Text className="mb-3 text-base font-semibold text-foreground">
-            {t('profile.simbriefSection')}
-          </Text>
-          <Text className="mb-2 text-xs text-muted-foreground">
-            {t('profile.simbriefPilotId')}
-          </Text>
-          <View className="flex-row gap-2">
-            <View className="flex-1">
-              <Input
-                value={pilotId}
-                onChangeText={setPilotId}
-                placeholder={t('profile.simbriefPlaceholder')}
-              />
+            {/* SimBrief */}
+            <View className="rounded-md border border-border bg-surface-muted px-4 py-4">
+              <View className="mb-2 flex-row items-center gap-2">
+                <Text className="text-sm font-semibold text-foreground">SimBrief</Text>
+                {!simbriefLoading && simbriefPilotId ? (
+                  <View className="flex-row items-center gap-1">
+                    <View className="h-2 w-2 rounded-full bg-green-500" />
+                    <Text className="text-[10px] text-green-600">{t('vfr.simbriefConnected')}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text className="mb-3 text-xs text-muted-foreground">
+                {t('profile.simbriefDescription')}
+              </Text>
+              {simbriefLoading ? (
+                <Text className="text-xs text-muted-foreground">{t('common.loading')}</Text>
+              ) : (
+                <View className="flex-row items-end gap-2">
+                  <View className="flex-1">
+                    <Input
+                      label={t('vfr.simbriefPilotId')}
+                      value={simbriefPilotId}
+                      onChangeText={(v) => { setSimbriefPilotId(v); setSimbriefSaved(false); }}
+                      placeholder={t('vfr.simbriefPilotIdPlaceholder')}
+                    />
+                  </View>
+                  <Pressable
+                    onPress={handleSaveSimbrief}
+                    disabled={simbriefSaving || !simbriefPilotId.trim()}
+                    className="rounded-button bg-primary px-4 py-2.5 active:opacity-80 disabled:opacity-50"
+                  >
+                    <Text className="text-xs font-medium text-primary-foreground">
+                      {simbriefSaving ? t('common.saving') : simbriefSaved ? '✓' : t('common.save')}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
-            <Button
-              onPress={() => { void handleSavePilotId(); }}
-              disabled={savingPilotId || pilotId.trim() === pilotIdSaved}
-              variant="primary"
-            >
-              {savingPilotId ? t('common.loading') : t('common.save')}
-            </Button>
           </View>
         </View>
-
-        {/* Sign out */}
-        <Pressable
-          className="rounded-button border border-destructive px-6 py-3 active:opacity-70"
-          onPress={() => {
-            void handleSignOut();
-          }}
-        >
-          <Text className="text-center font-medium text-destructive">{t('profile.signOut')}</Text>
-        </Pressable>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </>
   );
 }

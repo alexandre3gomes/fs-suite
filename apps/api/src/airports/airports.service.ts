@@ -1,11 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import type { Airport } from '@prisma/client';
+import type { Airport, Runway } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
-const CACHE_TTL_SECONDS = 3600; // 1 hour per spec §13
+const SEARCH_CACHE_TTL = 3600; // 1 hour
 const MAX_RESULTS = 20;
+const MAX_MAP_RESULTS = 300;
+
+export type AirportWithRunways = Airport & { runways: Runway[] };
+
+export interface MapBounds {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
 
 @Injectable()
 export class AirportsService {
@@ -15,56 +25,101 @@ export class AirportsService {
   ) {}
 
   async search(query: string): Promise<Airport[]> {
-    const normalized = query.trim().toLowerCase();
+    const normalized = query.trim();
     if (normalized.length < 2) return [];
 
-    // Check Redis cache
-    const cacheKey = `airports:search:${normalized}`;
+    const cacheKey = `aerodromes:search:${normalized.toLowerCase()}`;
     const client = this.redis.getClient();
     const cached = await client.get(cacheKey).catch(() => null);
     if (cached) {
       return JSON.parse(cached) as Airport[];
     }
 
-    // Exact ICAO match first (4-letter code)
-    const isIcaoQuery = /^[A-Za-z]{3,4}$/.test(normalized);
     let results: Airport[];
 
-    if (isIcaoQuery) {
-      results = await this.prisma.$queryRaw<Airport[]>`
-        SELECT "icao", "iata", "name", "city", "country", "latitude", "longitude", "elevation"
-        FROM "Airport"
-        WHERE UPPER("icao") = UPPER(${query.trim()})
-        LIMIT 1
-      `;
-      if (results.length === 0) {
-        results = await this.trigramSearch(normalized);
+    // Exact ICAO prefix match (fast path for 2-4 letter queries)
+    const isIcaoLike = /^[A-Za-z]{2,4}$/.test(normalized);
+
+    if (isIcaoLike) {
+      results = await this.prisma.airport.findMany({
+        where: {
+          icao: { startsWith: normalized.toUpperCase() },
+          type: { not: 'closed' },
+        },
+        orderBy: [{ type: 'asc' }, { name: 'asc' }],
+        take: MAX_RESULTS,
+      });
+
+      if (results.length < MAX_RESULTS) {
+        // Fill with ILIKE name matches
+        const existingIcaos = results.map((r) => r.icao);
+        const nameMatches = await this.prisma.airport.findMany({
+          where: {
+            name: { contains: normalized, mode: 'insensitive' },
+            icao: { notIn: existingIcaos },
+            type: { not: 'closed' },
+          },
+          orderBy: [{ type: 'asc' }, { name: 'asc' }],
+          take: MAX_RESULTS - results.length,
+        });
+        results = [...results, ...nameMatches];
       }
     } else {
-      results = await this.trigramSearch(normalized);
+      // Name/city search via ILIKE
+      results = await this.prisma.airport.findMany({
+        where: {
+          OR: [
+            { name: { contains: normalized, mode: 'insensitive' } },
+            { city: { contains: normalized, mode: 'insensitive' } },
+            { icao: { contains: normalized, mode: 'insensitive' } },
+          ],
+          type: { not: 'closed' },
+        },
+        orderBy: [{ type: 'asc' }, { name: 'asc' }],
+        take: MAX_RESULTS,
+      });
     }
 
-    // Cache results
     if (results.length > 0) {
-      await client.setEx(cacheKey, CACHE_TTL_SECONDS, JSON.stringify(results)).catch(() => {});
+      await client.setEx(cacheKey, SEARCH_CACHE_TTL, JSON.stringify(results)).catch(() => {});
     }
 
     return results;
   }
 
-  async findByIcao(icao: string): Promise<Airport | null> {
+  async findByIcao(icao: string): Promise<AirportWithRunways | null> {
     return this.prisma.airport.findUnique({
       where: { icao: icao.toUpperCase() },
+      include: { runways: { where: { closed: false }, orderBy: { ident: 'asc' } } },
     });
   }
 
-  private async trigramSearch(query: string): Promise<Airport[]> {
-    return this.prisma.$queryRaw<Airport[]>`
-      SELECT "icao", "iata", "name", "city", "country", "latitude", "longitude", "elevation"
-      FROM "Airport"
-      WHERE "icao" % ${query} OR "name" % ${query}
-      ORDER BY GREATEST(similarity("icao", ${query}), similarity("name", ${query})) DESC
-      LIMIT ${MAX_RESULTS}
-    `;
+  async findByBbox(bounds: MapBounds, types?: string[]): Promise<Omit<Airport, 'raw'>[]> {
+    const where: Record<string, unknown> = {
+      latitude: { gte: bounds.south, lte: bounds.north },
+      longitude: { gte: bounds.west, lte: bounds.east },
+    };
+
+    if (types && types.length > 0) {
+      where.type = { in: types };
+    } else {
+      where.type = { not: 'closed' };
+    }
+
+    return this.prisma.airport.findMany({
+      where,
+      select: {
+        icao: true,
+        iata: true,
+        name: true,
+        latitude: true,
+        longitude: true,
+        elevation: true,
+        type: true,
+        city: true,
+        country: true,
+      },
+      take: MAX_MAP_RESULTS,
+    });
   }
 }

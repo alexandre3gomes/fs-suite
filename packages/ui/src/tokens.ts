@@ -1,43 +1,37 @@
 /**
- * Design tokens for FS Suite — Aviation/cockpit aesthetic
+ * Design tokens for FS Suite — Light aviation palette
  *
- * Palette derived from the Simulando channel brand assets (logo.png).
- * Background: near-black cockpit (#0d0f14), chrome silver accents, aviation blue primary.
- *
+ * Clean, professional light theme with aviation blue accents.
  * Ref: docs/technical-spec.md Section 12
  */
 
 export const colors = {
-  // Dark cockpit background palette
-  background: '#0d0f14',
-  foreground: '#e8eaf0',
+  background: '#f8f9fb',
+  foreground: '#1a1d26',
 
-  surface: '#161a24',
-  surfaceMuted: '#1e2333',
+  surface: '#ffffff',
+  surfaceMuted: '#f1f3f7',
 
-  muted: '#2a3048',
-  mutedForeground: '#8892a4',
+  muted: '#e2e5eb',
+  mutedForeground: '#6b7280',
 
-  border: '#2a3048',
-  input: '#1e2333',
-  ring: '#2a7dc9',
+  border: '#dfe2e8',
+  input: '#f1f3f7',
+  ring: '#2563eb',
 
-  // Aviation blue — derived from Simulando logo sky/globe
-  primary: '#2a7dc9',
+  primary: '#2563eb',
   primaryForeground: '#ffffff',
 
-  // HUD accent — electric cyan for data highlights
-  accent: '#00d4ff',
-  accentForeground: '#0d0f14',
+  accent: '#0284c7',
+  accentForeground: '#ffffff',
 
-  // Chrome metallic — logo wings/badge framing
-  chrome: '#a0aabb',
-  chromeForeground: '#0d0f14',
+  chrome: '#6b7280',
+  chromeForeground: '#ffffff',
 
-  destructive: '#e05c5c',
+  destructive: '#dc2626',
   destructiveForeground: '#ffffff',
 
-  success: '#4caf7d',
+  success: '#16a34a',
   successForeground: '#ffffff',
 } as const;
 

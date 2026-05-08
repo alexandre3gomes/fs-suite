@@ -26,6 +26,7 @@ model User {
   aircraftProfiles       AircraftProfile[]
   activityLogs           ActivityLog[]
   integrationConnections IntegrationConnection[]
+  vfrFlightPlans         VfrFlightPlan[]
 }
 
 model OAuthAccount {
@@ -79,10 +80,32 @@ model Airport {
   latitude  Float
   longitude Float
   elevation Int? // feet
+  type      String? // large_airport, medium_airport, small_airport, heliport, seaplane_base, closed
   raw       Json? // full source record (OurAirports) for future enrichment
 
+  runways          Runway[]
   originPlans      FlightPlan[] @relation("origin")
   destinationPlans FlightPlan[] @relation("destination")
+}
+
+model Runway {
+  id            String  @id @default(cuid())
+  airportIcao   String
+  ident         String // e.g. "09L/27R"
+  lengthFt      Int?
+  widthFt       Int?
+  surfaceType   String? // e.g. "ASP", "GRS", "CON"
+  leIdent       String? // low-end identifier e.g. "09L"
+  leHeadingDeg  Float?
+  leElevationFt Int?
+  heIdent       String? // high-end identifier e.g. "27R"
+  heHeadingDeg  Float?
+  heElevationFt Int?
+  closed        Boolean @default(false)
+
+  airport Airport @relation(fields: [airportIcao], references: [icao], onDelete: Cascade)
+
+  @@index([airportIcao])
 }
 
 model FlightPlan {
@@ -147,6 +170,8 @@ model ActivityLog {
 
   userId String?
   user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
 }
 
 enum PlanStatus {
@@ -158,4 +183,104 @@ enum PlanStatus {
 enum FlightType {
   VFR
   IFR
+}
+
+// --- VFR Flight Planning v1 ---
+
+model VfrFlightPlan {
+  id          String        @id @default(cuid())
+  userId      String
+  status      VfrPlanStatus @default(DRAFT)
+  flightRules FlightRules   @default(VFR)
+
+  // Origin aerodrome (snapshot)
+  originIcao        String
+  originName        String
+  originElevationFt Int?
+  originRunwayInUse String?
+  originMetarRaw    String?
+
+  // Destination aerodrome (snapshot)
+  destinationIcao        String
+  destinationName        String
+  destinationElevationFt Int?
+  destinationRunwayInUse String?
+  destinationMetarRaw    String?
+
+  // Alternate aerodrome (optional, snapshot)
+  alternateIcao        String?
+  alternateName        String?
+  alternateElevationFt Int?
+  alternateRunwayInUse String?
+  alternateMetarRaw    String?
+
+  // Aircraft
+  aircraftType    String?
+  aircraftName    String?
+  takeoffWeightKg Float?
+  mtowKg          Float?
+  callsign        String?
+  simbriefOfpId   String?
+
+  // Route
+  routeText   String?
+  cruiseLevel    String?
+  todMinutes     Int?
+  todDistanceNm  Float?
+
+  // Fuel / endurance (liters)
+  fuelConsumptionPerHour Float?
+  fuelCurrentTotal       Float?
+  fuelReserveMinutes     Int? // 30 or 45
+  fuelRequiredTotal      Float?
+  fuelPerWing            Float?
+  enduranceMinutes       Int?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // soft delete
+
+  user             User                          @relation(fields: [userId], references: [id])
+  visualReferences VfrFlightPlanVisualReference[]
+  briefingItems    VfrFlightPlanBriefingItem[]
+
+  @@index([userId, deletedAt])
+}
+
+model VfrFlightPlanVisualReference {
+  id           String @id @default(cuid())
+  flightPlanId String
+  sequence     Int
+  name         String
+  distanceNm   Float?
+  timeMin      Int?
+
+  flightPlan VfrFlightPlan @relation(fields: [flightPlanId], references: [id], onDelete: Cascade)
+
+  @@index([flightPlanId, sequence])
+}
+
+model VfrFlightPlanBriefingItem {
+  id           String  @id @default(cuid())
+  flightPlanId String
+  code         String // machine key e.g. "start_simacars", "pdc_briefing"
+  label        String // display label
+  checked      Boolean @default(false)
+  notes        String?
+
+  flightPlan VfrFlightPlan @relation(fields: [flightPlanId], references: [id], onDelete: Cascade)
+
+  @@index([flightPlanId])
+}
+
+enum VfrPlanStatus {
+  DRAFT
+  COMPLETED
+}
+
+enum FlightRules {
+  VFR
+  IFR
+  VFR_IFR
+  IFR_VFR
 }

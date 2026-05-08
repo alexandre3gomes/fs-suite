@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# Production uses the base values as-is (api.fssuite.app, TLS, letsencrypt-prod).
+# Add production-specific patches here if needed in the future.

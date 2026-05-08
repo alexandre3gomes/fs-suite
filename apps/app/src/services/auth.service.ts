@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native';
 import * as Linking from 'expo-linking';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
@@ -99,7 +100,8 @@ export async function refreshAccessToken(): Promise<string | null> {
     }
 
     return accessToken;
-  } catch {
+  } catch (err) {
+    Sentry.captureException(err, { level: 'info', tags: { context: 'token_refresh' } });
     return null;
   }
 }
@@ -117,8 +119,8 @@ export async function signOut(): Promise<void> {
     }
 
     await apiClient.post('/auth/logout', body);
-  } catch {
-    // Best-effort logout — clear local state regardless
+  } catch (err) {
+    Sentry.captureException(err, { level: 'warning', tags: { context: 'logout' } });
   } finally {
     useAuthStore.getState().clear();
   }

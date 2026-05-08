@@ -1,43 +1,53 @@
+const { hairlineWidth } = require('nativewind/theme');
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   presets: [require('nativewind/preset')],
   content: [],
   theme: {
     extend: {
       colors: {
-        // Aviation-themed palette — tokens defined in packages/ui/src/tokens.ts
-        background: '#0d0f14',
-        foreground: '#e8eaf0',
-        surface: {
-          DEFAULT: '#161a24',
-          muted: '#1e2333',
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
+        card: {
+          DEFAULT: 'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))',
+        },
+        popover: {
+          DEFAULT: 'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))',
+        },
+        primary: {
+          DEFAULT: 'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))',
+        },
+        secondary: {
+          DEFAULT: 'hsl(var(--secondary))',
+          foreground: 'hsl(var(--secondary-foreground))',
         },
         muted: {
-          DEFAULT: '#2a3048',
-          foreground: '#8892a4',
-        },
-        border: '#2a3048',
-        input: '#1e2333',
-        ring: '#2a7dc9',
-        primary: {
-          DEFAULT: '#2a7dc9',
-          foreground: '#ffffff',
+          DEFAULT: 'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))',
         },
         accent: {
-          DEFAULT: '#00d4ff',
-          foreground: '#0d0f14',
-        },
-        chrome: {
-          DEFAULT: '#a0aabb',
-          foreground: '#0d0f14',
+          DEFAULT: 'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
         },
         destructive: {
-          DEFAULT: '#e05c5c',
-          foreground: '#ffffff',
+          DEFAULT: 'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))',
         },
         success: {
-          DEFAULT: '#4caf7d',
-          foreground: '#ffffff',
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
+        },
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))',
+        surface: {
+          DEFAULT: 'hsl(var(--surface))',
+          muted: 'hsl(var(--surface-muted))',
         },
       },
       fontFamily: {
@@ -45,14 +55,17 @@ module.exports = {
         mono: ['JetBrains Mono', 'monospace'],
       },
       borderRadius: {
-        card: '8px',
-        button: '6px',
-        sm: '4px',
-        lg: '12px',
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)',
+        card: 'var(--radius)',
+        button: 'calc(var(--radius) - 2px)',
         full: '9999px',
       },
+      borderWidth: {
+        hairline: hairlineWidth(),
+      },
       spacing: {
-        // 4px base grid
         1: '4px',
         2: '8px',
         3: '12px',

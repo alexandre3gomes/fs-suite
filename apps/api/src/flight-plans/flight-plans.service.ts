@@ -107,7 +107,7 @@ export class FlightPlansService {
         }
       : undefined;
 
-    return this.prisma.flightPlan.update({
+    const updated = await this.prisma.flightPlan.update({
       where: { id },
       data: {
         ...planData,
@@ -122,6 +122,10 @@ export class FlightPlansService {
         routes: { orderBy: { sequence: 'asc' } },
       },
     });
+
+    void this.activity.log('flight_plan.updated', userId, { flightPlanId: id });
+
+    return updated;
   }
 
   async remove(id: string, userId: string): Promise<void> {
@@ -132,6 +136,8 @@ export class FlightPlansService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+
+    void this.activity.log('flight_plan.deleted', userId, { flightPlanId: id });
   }
 
   async duplicate(id: string, userId: string): Promise<FlightPlan> {

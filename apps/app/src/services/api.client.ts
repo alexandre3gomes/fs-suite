@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 
 import { useAuthStore } from '../stores/auth.store';
@@ -40,7 +41,14 @@ async function request<T>(
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({ message: response.statusText })) as { message?: string };
-    throw new ApiError(response.status, body.message ?? response.statusText);
+    const error = new ApiError(response.status, body.message ?? response.statusText);
+    // Report server errors (5xx) to Sentry; 4xx are client-side and handled by UI
+    if (response.status >= 500) {
+      Sentry.captureException(error, {
+        tags: { api_path: path, status_code: response.status },
+      });
+    }
+    throw error;
   }
 
   if (response.status === 204) {

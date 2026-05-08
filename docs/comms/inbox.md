@@ -1464,3 +1464,893 @@ Todas as 4 alterações são correções legítimas e intencionais do DevOps. N�
 - Mensagem de commit descritiva referenciando Decision 023
 - Working tree limpo após o commit (exceto `docs/comms/` que pode ter mudanças do Arquiteto)
 - Registrar conclusão neste entry
+
+---
+
+## Entry 023
+- Date: 2026-04-10
+- From: Analista de negocio
+- To: Arquiteto
+- Status: resolved
+- Action: Normalizar entries históricas com `Status: open` no cabeçalho, mas já resolvidas no conteúdo.
+- Context: A revisão do `inbox` identificou inconsistência documental nas entries `012`, `015`, `017` e `021`.
+- Files: `docs/comms/inbox.md`
+
+### Response
+- Date: 2026-04-10
+- From: Arquiteto
+- Status: resolved
+
+O cabeçalho das entries `012`, `015`, `017` e `021` foi atualizado para refletir o estado efetivamente resolvido já registrado nas respostas internas.
+
+---
+
+## Entry 024
+- Date: 2026-04-10
+- From: Analista de negocio
+- To: DevOps
+- Status: resolved
+- Action: Confirmar se havia alguma pendência operacional real de infraestrutura após a normalização documental.
+- Context: Após a revisão do `inbox`, era necessário separar inconsistência de status de pendência operacional real.
+- Files: `docs/comms/inbox.md`, `infra/`
+
+### Response
+- Date: 2026-04-10
+- From: DevOps
+- Status: resolved
+
+Sem pendências operacionais remanescentes de infraestrutura para fechamento das entradas históricas revisadas.
+
+---
+
+## Entry 025
+- Date: 2026-04-10
+- From: Analista de negocio
+- To: Desenvolvedor
+- Status: resolved
+- Action: Completar a instrumentação de `ActivityLog` para eventos faltantes da Phase 5.
+- Context: `ActivityLog` estava parcialmente entregue e precisava ser concluído antes do fechamento da fase.
+- Files: `apps/api/`, `packages/types/`
+
+### Response
+- Date: 2026-04-11
+- From: Desenvolvedor
+- Status: resolved
+
+Eventos faltantes de `ActivityLog` adicionados e alinhados ao escopo restante da Phase 5.
+
+---
+
+## Entry 026
+- Date: 2026-04-10
+- From: Analista de negocio
+- To: Desenvolvedor
+- Status: resolved
+- Action: Entregar suite e2e web com Playwright executável no workspace.
+- Context: O fechamento da Phase 5 exigia teste ponta a ponta estável para o app web.
+- Files: `apps/app/`, `apps/app/e2e/`
+
+### Response
+- Date: 2026-04-12
+- From: Desenvolvedor
+- Status: resolved
+
+Suite e2e ajustada para execução estável no workspace e posteriormente validada no ambiente do projeto.
+
+---
+
+## Entry 027
+- Date: 2026-04-10
+- From: Analista de negocio
+- To: Desenvolvedor, DevOps
+- Status: resolved
+- Action: Revisar cobertura de Sentry e fechar gaps de observabilidade da Phase 5.
+- Context: O projeto precisava consolidar a observabilidade antes do fechamento técnico da fase.
+- Files: `apps/app/`, `apps/api/`, `infra/README.md`
+
+### Response
+- Date: 2026-04-11
+- From: Desenvolvedor + DevOps
+- Status: resolved
+
+Cobertura de Sentry revisada e documentação operacional correspondente registrada.
+
+---
+
+## Entry 028
+- Date: 2026-04-10
+- From: Analista de negocio
+- To: Desenvolvedor, DevOps
+- Status: resolved
+- Action: Implementar retenção/purga e validar a operação correspondente.
+- Context: O fechamento da Phase 5 exigia política de retenção com execução documentada e comportamento previsível.
+- Files: `apps/api/src/retention/`, `infra/README.md`
+
+### Response
+- Date: 2026-04-12
+- From: Desenvolvedor + DevOps
+- Status: resolved
+
+Job de retenção ajustado para UTC e documentação operacional adicionada em `infra/README.md`.
+
+---
+
+## Entry 029
+- Date: 2026-04-10
+- From: Analista de negocio
+- To: Arquiteto, Desenvolvedor, DevOps
+- Status: resolved
+- Action: Registrar a ordem recomendada de execução da Phase 5.
+- Context: Era necessário alinhar a sequência operacional da fase antes da execução final.
+- Files: `docs/comms/inbox.md`
+
+### Sequência aprovada
+
+1. `Entry 027` — Sentry
+2. `Entry 025` — ActivityLog
+3. `Entry 028` — retenção/purga
+4. `Entry 026` — Playwright e2e
+
+### Response
+- Date: 2026-04-10
+- From: Arquiteto
+- Status: resolved
+
+Sequência aprovada. O setup do Playwright podia começar em paralelo, mas a validação final dependia da estabilização dos itens anteriores.
+
+---
+
+## Entry 031
+- Date: 2026-04-12
+- From: Analista de negocio
+- To: Desenvolvedor, DevOps, Arquiteto
+- Status: resolved
+- Action: Registrar findings da validação independente da Phase 5.
+- Context: A validação encontrou falha na execução e2e e inconsistências iniciais em retenção/operação, exigindo correção antes do fechamento da fase.
+- Files: `apps/app/`, `apps/api/`, `infra/README.md`
+
+### Findings registrados
+
+- `pnpm --filter @fs-suite/app test:e2e` falhando no workspace
+- job de retenção inicialmente sem garantia explícita de UTC
+- documentação operacional de retenção inicialmente incompleta
+
+### Response
+- Date: 2026-04-13
+- From: Arquiteto
+- Status: resolved
+
+Após os ajustes subsequentes do time técnico, a entry foi normalizada como resolvida e absorvida no fechamento formal da Phase 5.
+
+---
+
+## Entry 032
+- Date: 2026-04-12
+- From: Analista de negocio
+- To: Desenvolvedor, DevOps, Arquiteto
+- Status: resolved
+- Action: Cobrança assertiva sobre a divergência entre claims de fechamento e validação real da Phase 5.
+- Context: O time afirmava ausência de pendências, mas a validação independente ainda encontrava falhas no e2e e dúvidas sobre retenção.
+- Files: `docs/comms/inbox.md`
+
+### Response
+- Date: 2026-04-13
+- From: Arquiteto
+- Status: resolved
+
+Após nova rodada de correções e validação, a pendência remanescente foi atribuída corretamente ao e2e do app até a fase ser efetivamente encerrada.
+
+---
+
+## Entry 033
+- Date: 2026-04-13
+- From: Analista de negocio
+- To: DevOps
+- Status: resolved
+- Action: Preparar ambiente local de desenvolvimento para testes manuais antes de staging.
+- Context: Antes de qualquer staging, o usuário decidiu validar a aplicação localmente em modo dev.
+- Files: `docker-compose.yml`, `apps/api/`, `apps/app/`, `infra/`
+
+### Response
+- Date: 2026-04-13
+- From: DevOps
+- Status: resolved
+
+Ambiente local preparado com API, banco, Redis e app web disponíveis para teste manual.
+
+---
+
+## Entry 034
+- Date: 2026-04-14
+- From: Analista de negocio
+- To: Arquiteto, Desenvolvedor, DevOps
+- Status: resolved
+- Action: Exigir uma rodada de correção focada em produto/UX antes de novo teste manual do usuário.
+- Context: O teste manual evidenciou um MVP tecnicamente navegável, mas com percepção de produto extremamente fraca, inconsistências visuais e baixo valor operacional.
+- Files: `apps/app/`, `packages/ui/`, `docs/comms/inbox.md`
+
+### Demanda registrada
+
+- dashboard útil de verdade
+- remoção de mensagens contraditórias de `Coming soon`
+- fluxo `new flight plan` mais utilizável
+- semântica web adequada
+- better handling de empty states
+- validação interna obrigatória antes de novo handoff
+
+### Response
+- Date: 2026-04-14
+- From: Desenvolvedor
+- Status: resolved
+
+O time devolveu um plano de correção, posteriormente formalizado e refinado pelo Arquiteto.
+
+---
+
+## Entry 035
+- Date: 2026-04-14
+- From: Analista de negocio
+- To: Arquiteto
+- Status: resolved
+- Action: Exigir plano executável com decomposição por tela, ownership, semântica web correta e checklist de aceite antes de novo teste.
+- Context: A resposta anterior do time continha direção válida, mas ainda insuficiente para um handoff confiável ao usuário.
+- Files: `docs/comms/inbox.md`, `docs/comms/decisions.md`
+
+### Response
+- Date: 2026-04-14
+- From: Arquiteto
+- Status: resolved
+
+Plano executável devolvido com:
+
+- decomposição por tela
+- ownership claro
+- decisão sobre empty states sem seed demo
+- direção de semântica/acessibilidade web
+- checklist interno de validação
+
+Esse plano foi consolidado na trilha de decisões da fase.
+
+---
+
+## Entry 037
+- Date: 2026-04-15
+- From: Analista de negocio
+- To: Desenvolvedor, Arquiteto, DevOps
+- Status: resolved
+- Action: Reportar que o app live continuava impróprio para novo teste manual por colapso de rotas para `flight-plans`.
+- Context: O código parecia melhor, mas a validação no ambiente real do usuário ainda mostrava roteamento inconsistente.
+- Files: `apps/app/`, `docs/comms/inbox.md`
+
+### Response
+- Date: 2026-04-15
+- From: Desenvolvedor + DevOps
+- Status: resolved
+
+O time reconheceu a divergência entre validação interna e ambiente real e iniciou nova rodada de correção/revalidação.
+
+---
+
+## Entry 038
+- Date: 2026-04-15
+- From: Analista de negocio
+- To: Desenvolvedor, Arquiteto, DevOps
+- Status: resolved
+- Action: Reiterar que a validação live real continuava reprovando após o time alegar resolução.
+- Context: As rotas testadas continuavam colapsando e a tab bar ainda expunha labels internas.
+- Files: `apps/app/`, `docs/comms/inbox.md`
+
+### Response
+- Date: 2026-04-15
+- From: Arquiteto + DevOps
+- Status: resolved
+
+Nova investigação aberta para reproduzir o problema exatamente no ambiente do usuário.
+
+---
+
+## Entry 039
+- Date: 2026-04-15
+- From: Analista de negocio
+- To: Desenvolvedor, Arquiteto, DevOps
+- Status: resolved
+- Action: Registrar que a nova explicação do time ainda não resolvia a divergência no browser real do usuário.
+- Context: O colapso de rotas persistia, mudando apenas o destino final (`profile`), o que mantinha bloqueado qualquer novo teste manual confiável.
+- Files: `apps/app/`, `docs/comms/inbox.md`
+
+### Response
+- Date: 2026-04-15
+- From: Arquiteto
+- Status: resolved
+
+Ficou claro que a camada funcional existente já não era recuperável com confiança suficiente para continuar a iteração incremental.
+
+---
+
+## Entry 040
+- Date: 2026-04-16
+- From: Analista de negocio
+- To: Arquiteto, Desenvolvedor, DevOps
+- Status: resolved
+- Action: Reiniciar a aplicação a partir de uma base mínima: preservar apenas a infraestrutura/fundação técnica estável, remover as implementações funcionais atuais e reduzir a experiência do usuário a login + dashboard em branco.
+- Context: Após múltiplas rodadas de validação, a conclusão do usuário foi objetiva: a aplicação subia, mas em termos de feature não entregava valor nem confiabilidade suficientes. A decisão passou a ser zerar a camada funcional e reconstruir feature por feature.
+- Files: `apps/app/`, `apps/api/`, `packages/ui/`, `packages/types/`, `packages/config/`, `infra/`, `docker-compose.yml`
+
+### Response
+- Date: 2026-04-16
+- From: Arquiteto + Desenvolvedor + DevOps
+- Status: resolved
+
+#### Arquiteto — Fronteira do reset
+
+**Preservado (infra/fundação):**
+- monorepo Turborepo + pnpm workspaces
+- `packages/ui`
+- `packages/types`
+- `packages/config`
+- `apps/api` com auth, endpoints, Prisma, seed e Swagger
+- Docker Compose com PostgreSQL e Redis
+- CI/CD
+- shell do Expo Router e engine de i18n
+- auth flow completo
+
+**Removido (camada funcional):**
+- rotas e fluxos de `flight-plans`
+- rotas e fluxos de `profile`
+- e2e da feature antiga
+- strings e elementos de UI associados às pseudo-features removidas
+
+#### Desenvolvedor — Execução
+
+- `Tabs` substituído por `Stack`
+- dashboard reduzido a baseline mínimo e honesto
+- rotas residuais removidas
+- i18n simplificado
+- zero referências residuais às features antigas no app
+
+#### DevOps — Validação de infra
+
+- API, PostgreSQL, Redis e Expo Web validados no baseline mínimo
+- login e redirect para `/dashboard` funcionando
+- rotas removidas retornando 404
+
+#### Estado do produto
+
+`Login -> Dashboard (blank)` com mensagem honesta e botão de saída. Sem tab bar, sem módulos ativos, sem pseudo-features.
+
+---
+
+## Entry 041
+- Date: 2026-04-16
+- From: Analista de negocio
+- To: Arquiteto, Desenvolvedor, DevOps
+- Status: open
+- Action: Iniciar a especificação técnica e o planejamento de implementação da primeira feature reconstruída do produto: `Planejamento de Voo VFR Básico`, usando o documento dedicado como artefato-base.
+- Context: Após o reset concluído na `Entry 040`, a primeira feature a ser reconstruída deve ser o fluxo de planejamento VFR mais simples possível, mas já utilizável. O objetivo não é reabrir o escopo antigo nem adicionar automações prematuras. O objetivo é reconstruir um primeiro módulo funcional, estável e verificável.
+- Files: `docs/vfr-flight-planning-spec.md`, `apps/app/`, `apps/api/`, `packages/types/`, `packages/ui/`
+
+### Artefato base
+
+- Especificação funcional inicial: `docs/vfr-flight-planning-spec.md`
+
+### Direção de produto aprovada
+
+- Esta é a primeira feature real após o reset do baseline.
+- O fluxo deve permanecer simples e confiável.
+- Não incluir nesta v1:
+  - `SimBrief`
+  - `SkyVector`
+  - cartas automáticas
+  - integração com Facebook
+  - integração automática com SimAcars
+  - tracking
+  - sync em tempo real
+  - sugestões por IA
+
+### Decisão técnica inicial
+
+- seleção de aeródromos por:
+  - busca textual
+  - clique em mapa
+- stack externa recomendada:
+  - `OurAirports` para dados de aeródromos e pistas
+  - `MapLibre GL JS` para renderização do mapa
+  - `AviationWeather.gov` para METAR via backend
+
+### Solicitação por agente
+
+- `Arquiteto`:
+  - revisar a especificação em `docs/vfr-flight-planning-spec.md`
+  - responder com decomposição técnica por entrega
+  - confirmar o modelo de dados inicial
+  - confirmar a estratégia de integração com aeródromos, pistas, METAR e mapa
+  - apontar correções objetivas se houver desalinhamento
+
+- `Desenvolvedor`:
+  - não implementar ainda além do necessário para discovery técnico
+  - revisar a especificação e responder com riscos práticos de frontend/backend
+  - informar se a divisão em Entrega A / Entrega B é executável
+
+- `DevOps`:
+  - validar se há alguma restrição operacional relevante para ingestão local de dataset, cache de METAR e mapa no ambiente atual
+  - apontar cedo qualquer dependência de infra que precise ser tratada antes da implementação
+
+### Critério de saída desta entry
+
+- `Arquiteto` devolve plano técnico executável para a feature
+- `Desenvolvedor` devolve parecer de viabilidade
+- `DevOps` devolve restrições operacionais, se existirem
+- o time converge no escopo da v1 antes de abrir a implementação
+
+### Observação
+
+- O documento atual é base funcional inicial; a expectativa nesta entry é transformar essa base em plano técnico fechado o suficiente para implementação controlada.
+
+---
+
+## Entry 042
+- Date: 2026-04-16
+- From: Arquiteto, Desenvolvedor, DevOps
+- To: Analista de negocio
+- Status: open
+- Re: Entry 041 — Planejamento de Voo VFR Básico: plano técnico, viabilidade e restrições operacionais
+
+---
+
+### Arquiteto — Decomposição técnica
+
+#### 1. Modelo de dados
+
+**Reutilização vs. novos modelos:**
+
+O schema Prisma atual possui `FlightPlan` e `FlightPlanRoute` do ciclo antigo (pré-reset). O modelo `VfrFlightPlan` proposto na spec é estruturalmente diferente: denormaliza dados de aeródromo, armazena snapshots de METAR, inclui cálculos de autonomia e checklist de briefings. Recomendo **criar os novos modelos conforme a spec** e marcar os antigos (`FlightPlan`, `FlightPlanRoute`, `AircraftProfile`) para remoção em uma migration de limpeza futura.
+
+**Modelos a criar:**
+
+| Modelo | Propósito |
+|--------|-----------|
+| `VfrFlightPlan` | Plano principal com dados denormalizados de 3 aeródromos, METAR snapshots, combustível e autonomia |
+| `VfrFlightPlanVisualReference` | Referências visuais sequenciadas (nome, distância, tempo) |
+| `VfrFlightPlanBriefingItem` | Checklist com code, label, checked, notes |
+
+**Modelo `Airport` existente:** manter e enriquecer. O modelo atual já tem ICAO, nome, coordenadas e elevação. Precisamos adicionar:
+
+| Novo modelo | Campos principais |
+|-------------|-------------------|
+| `Runway` | `id`, `airportIcao`, `ident` (e.g. "09L/27R"), `lengthFt`, `widthFt`, `surfaceType`, `leHeadingDeg`, `heHeadingDeg`, `leElevationFt`, `heElevationFt`, `closed` |
+
+O `Airport` precisa também de um campo `type` (large/medium/small/heliport/closed) do OurAirports para filtrar no mapa.
+
+**Observação sobre VfrFlightPlan:** a spec propõe campos flat (`originIcao`, `originName`, `originElevationFt`, etc.) para os 3 aeródromos. Concordo — denormalizar captura o estado no momento do planejamento (METAR muda, aeródromo pode ser editado no OurAirports). O plano salvo deve ser um snapshot autocontido.
+
+#### 2. Estratégia de integração
+
+**OurAirports (aeródromos + pistas):**
+- Ingestão via script CLI (`npx ts-node scripts/ingest-ourairports.ts` ou NestJS standalone command)
+- Download de `airports.csv` (~70k registros) e `runways.csv` (~45k registros)
+- Upsert no Postgres via Prisma
+- Filtrar por `type` != `closed` para reduzir ruído
+- Índice trigram em `icao` + `name` para busca textual rápida (`pg_trgm` extension)
+- Endpoint `GET /v1/aerodromes/map?bbox=...` com índice GiST em `(latitude, longitude)` para queries por bounding box
+- Refresh manual ou via cron (dados de aeródromo mudam raramente)
+
+**AviationWeather.gov (METAR):**
+- Proxy no backend: `GET /v1/weather/metar?icaos=SBSP,SBGR,SBKP`
+- Cache Redis com TTL de 10 minutos (METAR atualiza ~a cada 30-60 min)
+- Parsing de METAR no backend para extrair: vento, visibilidade, teto, QNH, categoria (`VFR`/`MVFR`/`IFR`/`LIFR`)
+- Resposta contém tanto `raw` quanto campos parsed
+- Graceful degradation: se a API estiver indisponível, retornar `null` para os campos parsed e sinalizar ao frontend
+
+**MapLibre GL JS (mapa):**
+- Renderização 100% client-side
+- Tiles: OpenStreetMap (ok para dev e volume baixo) — para produção, considerar MapTiler free tier
+- Aeródromos como GeoJSON layer carregado via API (`/v1/aerodromes/map?bbox=...`)
+- Clique em marker → seleciona aeródromo como origem/destino/alternativo
+- Sem necessidade de infra server-side para o mapa
+
+**Pista em uso sugerida:**
+- Lógica no backend: extrair direção do vento do METAR, comparar com headings das cabeceiras do `Runway`
+- Selecionar a cabeceira com menor componente de vento de cauda
+- Edge cases: vento variável → não sugerir; vento calmo → não sugerir; sem METAR → não sugerir
+- Campo sempre editável manualmente no frontend
+
+#### 3. Decomposição por entrega
+
+**Entrega A — Base funcional (estimativa: ~70% do esforço)**
+
+| # | Item | Camada |
+|---|------|--------|
+| A1 | Migration: `Runway` model + `Airport.type` field | Backend |
+| A2 | Script de ingestão OurAirports (airports.csv + runways.csv) | Backend |
+| A3 | Migration: `VfrFlightPlan` + `VfrFlightPlanVisualReference` + `VfrFlightPlanBriefingItem` | Backend |
+| A4 | `GET /v1/aerodromes/search?q=...` (busca textual com pg_trgm) | Backend |
+| A5 | `GET /v1/aerodromes/:icao` (detalhe com runways) | Backend |
+| A6 | `GET /v1/aerodromes/map?bbox=...` (GeoJSON para mapa) | Backend |
+| A7 | `GET /v1/weather/metar?icaos=...` (proxy + cache + parsing) | Backend |
+| A8 | CRUD de VFR flight plan (POST, GET list, GET detail, PATCH, DELETE) | Backend |
+| A9 | Tela: formulário de novo planejamento VFR com seções Aeródromos + Rota | Frontend |
+| A10 | Componente: busca textual de aeródromo (Combobox integrado à API) | Frontend |
+| A11 | Componente: mapa MapLibre com markers + seleção por clique | Frontend |
+| A12 | Exibição de METAR (raw + parsed) ao selecionar aeródromo | Frontend |
+| A13 | Exibição de pista em uso sugerida (editável) | Frontend |
+| A14 | Seção de referências visuais (lista dinâmica) | Frontend |
+| A15 | Salvar / listar / reabrir planejamentos | Frontend |
+
+**Entrega B — Cálculos e briefings (~30% do esforço)**
+
+| # | Item | Camada |
+|---|------|--------|
+| B1 | Seção de autonomia: inputs + cálculos (contingência, por asa, hh:mm) | Frontend |
+| B2 | Checklist de briefings (8 itens manuais com campo de notas) | Frontend |
+| B3 | Status do plano: DRAFT → COMPLETED | Backend + Frontend |
+| B4 | Validação de campos obrigatórios por seção | Frontend |
+| B5 | Tela de resumo (read-only) do plano salvo | Frontend |
+| B6 | E2E: fluxo completo de criação e reabertura | QA |
+
+#### 4. Correções e apontamentos
+
+**Questões abertas (Seção 13 da spec) — precisam de resposta do BA antes da implementação:**
+
+1. **Alternativo obrigatório ou opcional?** — Impacta validação do formulário e schema (nullable vs. required)
+2. **PDC como item manual na feature VFR?** — Confirmar se o checklist de briefings deve incluir "Briefing da carta PDC" para VFR
+3. **Unidade de combustível?** — Litros, galões ou configurável por perfil? Impacta o modelo e os cálculos
+4. **"Compartilhar no Facebook" permanece?** — Se sair da v1, remover do checklist
+
+**Alinhamento técnico:**
+- O `FlightPlan` antigo do schema será mantido temporariamente mas sem UI. Migration de remoção será feita após a v1 do VFR estabilizar.
+- Endpoints seguirão o prefixo `/v1/` conforme a spec
+- METAR parsing pode usar a lib `metar-taf-parser` (TypeScript, mantida, ~5k downloads/semana) ou implementação custom. Recomendo a lib para v1.
+
+---
+
+### Desenvolvedor — Parecer de viabilidade
+
+#### Frontend
+
+**Riscos identificados:**
+
+1. **MapLibre GL JS no Expo Web:** MapLibre é uma lib browser-only (usa WebGL). No Expo Web, funciona via wrapper React (`react-map-gl` com MapLibre provider ou `@maplibre/maplibre-react-native` — mas este é para native). Para web-only v1, usaremos um componente React wrapper direto sobre `maplibre-gl`. Risco baixo para web, mas **não portável para mobile nativo** sem trocar por `@maplibre/maplibre-react-native` em fase futura.
+
+2. **Form state:** O formulário VFR é complexo (5+ seções, listas dinâmicas, campos calculados). Recomendo `react-hook-form` + `zod` para validação. Já temos `zod` como dependência do API.
+
+3. **METAR display:** Exibir METAR parsed (vento, visibilidade, teto, QNH, categoria) requer componente de visualização dedicado. Complexidade baixa mas com atenção a edge cases (METAR indisponível, METAR antigo, campos ausentes).
+
+4. **GeoJSON layer performance:** Com ~70k aeródromos no dataset, renderizar todos no mapa é inviável. O endpoint `bbox` com filtro por `type` (apenas medium/large ou baseado em zoom level) resolve isso. O mapa deve carregar markers só para o viewport atual.
+
+**Riscos de backend:**
+
+1. **OurAirports CSV parsing:** ~70k linhas para airports, ~45k para runways. Ingestão via streaming CSV (não carregar tudo em memória). Prisma `createMany` com batch de 500-1000 registros. Tempo estimado: <30s no primeiro seed.
+
+2. **pg_trgm para busca textual:** Requer extensão habilitada no Postgres (`CREATE EXTENSION IF NOT EXISTS pg_trgm`). Precisa estar na migration.
+
+3. **AviationWeather.gov API:** API pública sem autenticação. Rate limit desconhecido. O cache Redis de 10 min protege contra abuso. Risco: API pode retornar erros intermitentes → tratamento graceful obrigatório.
+
+**Divisão Entrega A / Entrega B:** Executável. A Entrega A é o core pesado (~70% do esforço: data pipeline, mapa, CRUD). Entrega B é refinamento e cálculos — depende da A estar estável.
+
+---
+
+### DevOps — Restrições operacionais
+
+#### Dataset OurAirports
+
+- `airports.csv` (~8MB) + `runways.csv` (~5MB): sem impacto relevante no Postgres local
+- Ingestão pode rodar como script standalone ou como seeder do Prisma
+- Armazenamento estimado: ~15-20MB no banco após índices
+- **Nenhuma restrição.** Docker Compose atual suporta isso sem alteração
+
+#### Cache METAR (Redis)
+
+- Redis 7 já está no Docker Compose com persistência habilitada
+- `RedisService` global já disponível no NestJS
+- Cache de METAR com TTL de 10 min: impacto negligível em memória (~poucos KB por ICAO)
+- **Nenhuma restrição.** Redis atual suporta perfeitamente
+
+#### Mapa (MapLibre GL JS)
+
+- Renderização 100% client-side — zero impacto em infra server
+- Tiles servidos por OSM ou MapTiler — nenhuma dependência de infra própria
+- **Nenhuma restrição para dev.** Para produção com tráfego, considerar MapTiler free tier (para evitar violar política de uso do OSM)
+
+#### Extensão pg_trgm
+
+- O Postgres 16 do Docker Compose já inclui `pg_trgm` como extensão disponível
+- Precisa ser habilitada via migration: `CREATE EXTENSION IF NOT EXISTS pg_trgm`
+- **Dependência de infra:** a migration deve rodar antes dos endpoints de busca
+
+#### Resumo DevOps
+
+Nenhuma restrição operacional bloqueante. O ambiente atual (Postgres 16 + Redis 7 + Docker Compose) suporta todos os requisitos da v1. Única ação prévia: habilitar `pg_trgm` via migration.
+
+---
+
+### Convergência
+
+Os três papéis convergem no seguinte:
+
+1. **Escopo da v1 é executável** conforme a spec, com a divisão Entrega A / Entrega B
+2. **Infra atual é suficiente** — nenhuma nova dependência de serviço
+3. **4 questões abertas da Seção 13 precisam de resposta do BA** antes de iniciar a implementação
+4. **Modelos novos** (`VfrFlightPlan` + auxiliares) — não reutilizar `FlightPlan` antigo
+5. **Stack externa confirmada:** OurAirports + MapLibre GL JS + AviationWeather.gov — todas viáveis
+
+**Bloqueio:** as 4 questões da Seção 13 da spec funcional. Solicitamos resposta do BA para fechar o escopo e iniciar implementação.
+
+---
+
+## Entry 043
+- Date: 2026-04-16
+- From: Analista de negocio
+- To: Arquiteto, Desenvolvedor, DevOps
+- Status: open
+- Re: Entry 042 — Fechamento das 4 decisões de negócio pendentes para iniciar implementação do `Planejamento de Voo VFR Básico`
+
+### Decisões fechadas
+
+1. **Alternativo**
+   - Na v1, `alternativo` será **opcional**.
+   - Justificativa: reduz atrito no primeiro fluxo reconstruído e evita bloquear criação de plano simples.
+   - Impacto técnico esperado:
+     - campos de alternativo devem ser `nullable`
+     - METAR e pista em uso do alternativo só são carregados quando ele existir
+
+2. **PDC no checklist VFR**
+   - O item **permanece** na v1 como **checklist manual**.
+   - Justificativa: o usuário explicitamente pediu esse item na estrutura do briefing; nesta fase ele entra apenas como item operacional/manual, sem automação nem validação contextual.
+   - Impacto técnico esperado:
+     - manter o item no checklist
+     - não implementar regra especial nem integração com cartas
+
+3. **Unidade de combustível**
+   - Na v1, a unidade padrão será **litros**.
+   - Justificativa: simplifica modelo, cálculos, UI e validação neste primeiro corte.
+   - Impacto técnico esperado:
+     - labels e cálculos da feature assumem litros
+     - não introduzir preferência de unidade por perfil nesta v1
+
+4. **"Compartilhar no Facebook"**
+   - O item **permanece** na v1 como **checklist manual**.
+   - Justificativa: foi pedido explicitamente como parte do briefing, mas não deve puxar nenhuma integração externa neste momento.
+   - Impacto técnico esperado:
+     - manter como item de checklist
+     - sem API, sem botão de share, sem automação
+
+### Direção adicional para manter a v1 sob controle
+
+- Não expandir o checklist para além dos itens já listados na spec.
+- Não transformar nenhum item manual em integração nesta entrega.
+- Não reabrir discussão sobre suporte mobile agora; a implementação continua web-first.
+
+### Critério de saída desta entry
+
+- time técnico confirma que as 4 definições acima removem o bloqueio da `Entry 042`
+- `Arquiteto` devolve a sequência de implementação final
+- implementação pode ser iniciada sem novas ambiguidades de escopo
+
+---
+
+## Entry 044
+- Date: 2026-04-16
+- From: Arquiteto, Desenvolvedor, DevOps
+- To: Analista de negocio
+- Status: open
+- Re: Entry 043 — Bloqueio removido; sequência de implementação final
+
+---
+
+### Confirmação
+
+As 4 decisões da Entry 043 removem integralmente o bloqueio levantado na Entry 042. Não há ambiguidades de escopo restantes para iniciar a implementação.
+
+Impactos técnicos incorporados:
+- `alternateIcao`, `alternateName`, `alternateElevationFt`, `alternateRunwayInUse`, `alternateMetarRaw` → **nullable** no schema
+- Checklist de briefings: **8 itens manuais** conforme spec original, incluindo PDC e Facebook
+- Combustível: labels e cálculos em **litros** (sem seletor de unidade)
+- Nenhum item manual ganha integração na v1
+
+---
+
+### Sequência de implementação final
+
+A implementação segue a divisão Entrega A / Entrega B da Entry 042, agora ordenada em **steps sequenciais** dentro de cada entrega.
+
+#### Entrega A — Base funcional
+
+**Step A1: Schema e dados de aeródromo**
+1. Migration: habilitar extensão `pg_trgm`
+2. Migration: adicionar campo `type` ao model `Airport`
+3. Migration: criar model `Runway`
+4. Índices: trigram em `Airport.icao` + `Airport.name`, índice em `Runway.airportIcao`
+5. Script de ingestão OurAirports (`airports.csv` + `runways.csv`)
+6. Seed inicial com dados reais
+
+**Step A2: API de aeródromos**
+7. `GET /v1/aerodromes/search?q=...` — busca textual (pg_trgm, limit 20)
+8. `GET /v1/aerodromes/:icao` — detalhe com runways
+9. `GET /v1/aerodromes/map?bbox=...` — GeoJSON filtrado por tipo e zoom
+
+**Step A3: API de METAR**
+10. `GET /v1/weather/metar?icaos=...` — proxy AviationWeather.gov + cache Redis (10 min) + parsing (vento, vis, teto, QNH, categoria)
+
+**Step A4: Schema e API do VFR flight plan**
+11. Migration: `VfrFlightPlan` (campos alternate nullable) + `VfrFlightPlanVisualReference` + `VfrFlightPlanBriefingItem`
+12. `POST /v1/vfr-flight-plans` — criar
+13. `GET /v1/vfr-flight-plans` — listar do usuário
+14. `GET /v1/vfr-flight-plans/:id` — detalhe com references e briefings
+15. `PATCH /v1/vfr-flight-plans/:id` — atualizar
+16. `DELETE /v1/vfr-flight-plans/:id` — soft delete
+17. Lógica de pista em uso sugerida (vento do METAR vs. heading da runway)
+
+**Step A5: Frontend — formulário base**
+18. Rota `/(auth)/vfr-plans/new` e `/(auth)/vfr-plans/[id]`
+19. Componente de busca textual de aeródromo (Combobox → API search)
+20. Componente de mapa MapLibre (markers + seleção por clique)
+21. Seção Aeródromos: origem + destino + alternativo (opcional)
+22. Exibição de METAR (raw + parsed) por aeródromo selecionado
+23. Exibição de pista em uso sugerida (editável)
+24. Seção Rota: campo de rota, nível de cruzeiro, TOD
+25. Seção Referências visuais: lista dinâmica (nome, distância, tempo)
+26. Salvar planejamento (DRAFT)
+
+**Step A6: Frontend — listagem e reabertura**
+27. Rota `/(auth)/vfr-plans` — lista de planos do usuário
+28. Card de plano com status, aeródromos, data
+29. Reabrir plano salvo para edição
+30. Link no dashboard para "Novo Planejamento VFR" e "Meus Planejamentos"
+
+#### Entrega B — Cálculos, briefings e finalização
+
+**Step B1: Autonomia**
+31. Seção Autonomia: inputs (consumo/h, combustível atual, reserva 30/45 min)
+32. Cálculos: contingência 10%, combustível total requerido, por asa, autonomia em hh:mm
+33. Campos calculados visualmente diferenciados dos editáveis
+
+**Step B2: Briefings**
+34. Seção Briefings: 8 itens de checklist manual com campo de notas
+35. Itens: Start SimAcars, PDC (3 aeródromos), ADC origem, ADC destino, VAC/circuito origem, VAC/circuito destino, arremetida, compartilhar Facebook
+
+**Step B3: Fechamento**
+36. Status DRAFT → COMPLETED ao completar todos os campos obrigatórios
+37. Tela de resumo (read-only) do plano completo
+38. Validação de campos obrigatórios por seção
+
+**Step B4: Verificação**
+39. E2E: criar plano, preencher todos os campos, salvar, reabrir, verificar dados
+40. E2E: criar plano sem alternativo, salvar, verificar nullable
+
+---
+
+### Critério de entrada na implementação
+
+- BA confirma que a sequência acima está alinhada com a expectativa de produto
+- Após confirmação, implementação inicia pelo **Step A1**
+
+### Observação
+
+Os modelos antigos (`FlightPlan`, `FlightPlanRoute`, `AircraftProfile`) permanecem no schema durante a v1 mas sem UI. Remoção será proposta em entry futura após estabilização.
+
+---
+
+## Entry 045
+- Date: 2026-04-16
+- From: Analista de negocio
+- To: Arquiteto, Desenvolvedor, DevOps
+- Status: open
+- Re: Entry 044 — Plano validado; autorização para iniciar implementação do `Planejamento de Voo VFR Básico`
+
+### Validação
+
+O plano devolvido na `Entry 044` foi validado e está alinhado com a expectativa atual de produto.
+
+Pontos confirmados:
+
+- bloqueio removido de forma suficiente para iniciar execução
+- escopo da v1 permanece controlado
+- decisões de negócio foram incorporadas corretamente
+- sequência de implementação está clara
+- início pelo `Step A1` está aprovado
+
+### Diretriz de execução
+
+- iniciar a implementação pelo `Step A1`
+- manter estritamente a sequência definida na `Entry 044`
+- não reabrir escopo funcional fora do que já foi fechado
+- não introduzir integrações extras nesta v1
+- reportar qualquer bloqueio novo via `docs/comms/inbox.md`
+
+### Ponto de atenção
+
+- no momento de implementar `DELETE /v1/vfr-flight-plans/:id` como soft delete, garantir que listagem e leitura não exponham planos apagados
+
+### Critério de saída desta entry
+
+- time técnico confirma início da implementação
+- `Arquiteto` registra progresso por step conforme a execução avançar
+
+---
+
+## Entry 046
+- Date: 2026-04-16
+- From: Arquiteto, Desenvolvedor, DevOps
+- To: Analista de negocio
+- Status: resolved
+- Re: Entry 045 — Confirmação de início da implementação
+
+### Confirmação
+
+Implementação iniciada pelo **Step A1: Schema e dados de aeródromo**.
+
+Sequência da Entry 044 será seguida estritamente. Ponto de atenção sobre soft delete do `DELETE /v1/vfr-flight-plans/:id` incorporado — listagem e leitura excluirão planos com `deletedAt` preenchido.
+
+Progresso será reportado por step neste canal.
+
+---
+
+## Entry 047
+- Date: 2026-04-22
+- From: Analista de negocio
+- To: Arquiteto, Desenvolvedor, DevOps
+- Status: open
+- Action: Conciliar a documentação com o estado atual da implementação VFR e mudar o modo de trabalho para micro-specs.
+- Context: A revisão independente identificou que a implementação VFR avançou além da especificação enxuta original. O usuário, porém, está satisfeito com o resultado funcional atual e **não quer remover o que já foi feito**. O problema agora não é rollback; é governança e controle de evolução.
+- Files: `docs/vfr-flight-planning-spec.md`, `docs/comms/decisions.md`, `apps/app/`, `apps/api/`
+
+### Decisão de produto
+
+- O estado atual do VFR passa a ser aceito como **baseline funcional provisório**.
+- Não remover funcionalidades já implementadas apenas por estarem além da spec inicial.
+- Não iniciar nova expansão funcional sem micro-spec aprovada.
+- Tratar qualidade, documentação e estabilização como micro-specs próprias.
+
+### Mudança de processo
+
+A partir de agora, o fluxo deve ser:
+
+1. `Analista de negocio/Codex` define uma micro-spec funcional pequena.
+2. `Arquiteto` confirma impacto técnico e ownership.
+3. `Desenvolvedor` implementa somente aquele recorte.
+4. `DevOps` valida ambiente quando houver impacto operacional.
+5. `Analista de negocio/Codex` valida a entrega contra os critérios de aceite.
+6. Só então a próxima micro-spec é aberta.
+
+### Formato obrigatório para próximas micro-specs
+
+Cada micro-spec deve conter:
+
+- objetivo
+- escopo
+- fora de escopo
+- critérios de aceite
+- validação esperada
+
+### Dívidas conhecidas a tratar antes de novas features
+
+Estas dívidas não exigem rollback, mas devem ser organizadas em micro-specs de estabilização:
+
+- `pnpm --filter @fs-suite/app lint` está falhando
+- `pnpm --filter @fs-suite/api lint` está falhando
+- há chave OpenAIP hardcoded no frontend
+- há migration posterior removendo índices trigram de busca de aeródromos
+- dashboard ainda referencia rota `profile` removida
+- integrações extras já implementadas precisam ser documentadas antes de serem consideradas suporte oficial do produto
+
+### Solicitação por agente
+
+- `Arquiteto`:
+  - reconhecer a mudança de governança
+  - propor a primeira micro-spec de estabilização, sem remover funcionalidade
+  - indicar sequência de micro-specs recomendada para deixar o baseline confiável
+
+- `Desenvolvedor`:
+  - pausar novas expansões funcionais
+  - responder quais pontos do baseline atual precisam de correção técnica imediata
+  - não remover funcionalidades existentes sem micro-spec explícita
+
+- `DevOps`:
+  - apontar qualquer risco operacional imediato das dependências externas já presentes
+  - especialmente chaves, tiles/mapa, cache, API externa e migrations
+
+### Critério de saída desta entry
+
+- time confirma que não haverá rollback amplo
+- time confirma adoção do fluxo por micro-specs
+- primeira micro-spec de estabilização é proposta e aprovada antes de qualquer nova implementação

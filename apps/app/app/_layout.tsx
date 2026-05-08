@@ -5,16 +5,64 @@ import * as Sentry from '@sentry/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef, useState } from 'react';
+import i18n from 'i18next';
+import { Component, useEffect, useRef, useState } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
+import { Text, View } from 'react-native';
 
+import { restoreLanguage } from '../src/i18n';
 import { refreshAccessToken } from '../src/services/auth.service';
 
 Sentry.init({
   dsn: process.env['EXPO_PUBLIC_SENTRY_DSN'],
+  environment: process.env['NODE_ENV'] ?? 'development',
   enabled: process.env['NODE_ENV'] === 'production',
+  release: process.env['EXPO_PUBLIC_SENTRY_RELEASE'] ?? undefined,
+  tracesSampleRate: 0.2,
+  beforeSend(event) {
+    if (event.request?.headers) {
+      delete event.request.headers['authorization'];
+      delete event.request.headers['cookie'];
+    }
+    return event;
+  },
 });
 
 SplashScreen.preventAutoHideAsync();
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  override state: ErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
+    Sentry.captureException(error, {
+      contexts: { react: { componentStack: info.componentStack ?? undefined } },
+    });
+  }
+
+  override render(): ReactNode {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8f9fb' }}>
+          <Text style={{ color: '#1a1d26', fontSize: 18, fontWeight: '600', marginBottom: 8 }}>
+            {i18n.t('common.errorBoundaryTitle')}
+          </Text>
+          <Text style={{ color: '#6b7280', fontSize: 14 }}>
+            {i18n.t('common.errorBoundaryMessage')}
+          </Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,9 +81,8 @@ function RootLayout(): JSX.Element | null {
     if (initialized.current) return;
     initialized.current = true;
 
-    // Attempt silent token refresh on app start (restores session if valid)
-    refreshAccessToken()
-      .catch(() => undefined)
+    // Restore persisted language + attempt silent token refresh
+    Promise.all([restoreLanguage(), refreshAccessToken().catch(() => undefined)])
       .finally(() => {
         setReady(true);
         void SplashScreen.hideAsync();
@@ -45,12 +92,15 @@ function RootLayout(): JSX.Element | null {
   if (!ready) return null;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(public)" />
-        <Stack.Screen name="(auth)" />
-      </Stack>
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(public)" />
+          <Stack.Screen name="(auth)" />
+        </Stack>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   );
 }
 

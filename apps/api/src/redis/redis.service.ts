@@ -5,6 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/node';
 import { createClient, RedisClientType } from 'redis';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
     this.client.on('error', (err: Error) => {
       this.logger.error(`Redis client error: ${err.message}`);
+      Sentry.captureException(err, { tags: { service: 'redis' } });
     });
   }
 

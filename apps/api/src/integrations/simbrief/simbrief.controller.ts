@@ -29,6 +29,12 @@ export class SimBriefController {
     return (await this.simBriefService.getConnection(user.id)) ?? { pilotId: null };
   }
 
+  @Get('aircraft')
+  @ApiOperation({ summary: 'Get list of SimBrief-supported aircraft types' })
+  async getAircraftList(): Promise<unknown> {
+    return this.simBriefService.getAircraftList();
+  }
+
   @Get('ofp')
   @ApiOperation({ summary: "Fetch latest OFP for the authenticated user's pilot ID" })
   async fetchOfp(@CurrentUser() user: User): Promise<unknown> {

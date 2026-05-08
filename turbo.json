@@ -14,7 +14,11 @@
     "WEB_ORIGIN",
     "LOG_LEVEL",
     "SENTRY_DSN",
-    "EXPO_PUBLIC_SENTRY_DSN"
+    "SENTRY_RELEASE",
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_TRACES_SAMPLE_RATE",
+    "EXPO_PUBLIC_SENTRY_DSN",
+    "EXPO_PUBLIC_SENTRY_RELEASE"
   ],
   "tasks": {
     "build": {

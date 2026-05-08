@@ -7,7 +7,8 @@ on:
       - 'apps/api/**'
       - 'packages/types/**'
       - 'packages/config/**'
-      - 'infra/k8s/**'
+      - 'infra/base/**'
+      - 'infra/overlays/production/**'
       - 'pnpm-lock.yaml'
 
 env:
@@ -77,11 +78,13 @@ jobs:
           chmod 600 $HOME/.kube/config
 
       - name: Apply all K8s manifests via Kustomize
+        env:
+          TAG: ${{ needs.build-and-push.outputs.image-tag }}
         run: |
-          cd infra/k8s
-          # Set the API image to the freshly built tag
+          cd infra/overlays/production
           kubectl kustomize . | \
-            sed "s|ghcr.io/fs-suite/api:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}|g" | \
+            sed "s|ghcr.io/fs-suite/api:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}|g" | \
+            sed "s|__DEPLOY_RELEASE__|${TAG}|g" | \
             kubectl apply -f -
 
       - name: Wait for rollout

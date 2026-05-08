@@ -1,48 +1,55 @@
 import * as React from 'react';
-import { View, type ViewProps } from 'react-native';
+import { Platform, View, type ViewProps } from 'react-native';
+
+import { cn } from '../../lib/utils';
 
 export interface CardProps extends ViewProps {
-  variant?: 'default' | 'module';
   className?: string;
 }
 
-export function Card({ variant = 'default', className = '', children, ...props }: CardProps) {
-  return (
-    <View
-      className={[
-        'rounded-card border border-border bg-surface',
-        variant === 'module' ? 'border-primary/40' : '',
-        className,
-      ]
-        .filter(Boolean)
-        .join(' ')}
-      {...props}
-    >
-      {children}
-    </View>
-  );
-}
+const Card = React.forwardRef<React.ElementRef<typeof View>, CardProps>(
+  ({ className, ...props }, ref) => {
+    return (
+      <View
+        ref={ref}
+        className={cn(
+          'rounded-card border border-border bg-card shadow-sm',
+          Platform.select({ web: 'transition-shadow hover:shadow-md' }),
+          className,
+        )}
+        {...props}
+      />
+    );
+  },
+);
+Card.displayName = 'Card';
 
-export function CardHeader({ className = '', children, ...props }: ViewProps & { className?: string }) {
-  return (
-    <View className={['px-6 py-4 border-b border-border', className].join(' ')} {...props}>
-      {children}
-    </View>
-  );
-}
+const CardHeader = React.forwardRef<
+  React.ElementRef<typeof View>,
+  ViewProps & { className?: string }
+>(({ className, ...props }, ref) => (
+  <View ref={ref} className={cn('px-6 py-4', className)} {...props} />
+));
+CardHeader.displayName = 'CardHeader';
 
-export function CardContent({ className = '', children, ...props }: ViewProps & { className?: string }) {
-  return (
-    <View className={['px-6 py-4', className].join(' ')} {...props}>
-      {children}
-    </View>
-  );
-}
+const CardContent = React.forwardRef<
+  React.ElementRef<typeof View>,
+  ViewProps & { className?: string }
+>(({ className, ...props }, ref) => (
+  <View ref={ref} className={cn('px-6 py-4', className)} {...props} />
+));
+CardContent.displayName = 'CardContent';
 
-export function CardFooter({ className = '', children, ...props }: ViewProps & { className?: string }) {
-  return (
-    <View className={['px-6 py-4 border-t border-border', className].join(' ')} {...props}>
-      {children}
-    </View>
-  );
-}
+const CardFooter = React.forwardRef<
+  React.ElementRef<typeof View>,
+  ViewProps & { className?: string }
+>(({ className, ...props }, ref) => (
+  <View
+    ref={ref}
+    className={cn('border-t border-border px-6 py-4', className)}
+    {...props}
+  />
+));
+CardFooter.displayName = 'CardFooter';
+
+export { Card, CardContent, CardFooter, CardHeader };

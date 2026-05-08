@@ -25,47 +25,90 @@ export function Combobox({
   ...props
 }: ComboboxProps) {
   const [query, setQuery] = React.useState('');
-  const [open, setOpen] = React.useState(false);
+  const [focused, setFocused] = React.useState(false);
 
   const selected = options.find((o) => o.value === value);
-  const displayValue = query || (selected ? selected.label : '');
+  const displayValue = focused ? query : (selected ? selected.label : '');
+  const showResults = focused && options.length > 0;
+
+  function handleFocus() {
+    setFocused(true);
+    setQuery(selected ? selected.label : '');
+  }
+
+  function handleBlur() {
+    // Delay to allow onPress on options to fire before hiding
+    setTimeout(() => setFocused(false), 150);
+  }
 
   function handleQueryChange(text: string) {
     setQuery(text);
-    setOpen(text.length > 0);
     onSearch?.(text);
   }
 
   function handleSelect(option: ComboboxOption) {
     setQuery('');
-    setOpen(false);
+    setFocused(false);
     onValueChange?.(option.value);
   }
 
-  return (
-    <View className={['relative', className].filter(Boolean).join(' ')} {...props}>
-      <TextInput
-        value={displayValue}
-        onChangeText={handleQueryChange}
-        onFocus={() => {
-          if (query.length > 0) setOpen(true);
-        }}
-        placeholder={placeholder}
-        className="rounded-input border border-border bg-surface px-3 py-2.5 text-foreground"
-      />
+  function handleClear() {
+    setQuery('');
+    onValueChange?.('');
+    onSearch?.('');
+  }
 
-      {open && options.length > 0 ? (
-        <View className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-card border border-border bg-surface">
+  return (
+    <View {...props}>
+      <View className="relative">
+        <TextInput
+          value={displayValue}
+          onChangeText={handleQueryChange}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          placeholder={placeholder}
+          placeholderTextColor="#9ca3af"
+          className={[
+            'rounded-input border border-border bg-surface px-3 py-2.5 text-foreground',
+            className,
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        />
+        {selected && !focused ? (
+          <Pressable
+            className="absolute right-2 top-0 bottom-0 items-center justify-center px-1"
+            onPress={handleClear}
+          >
+            <Text className="text-muted-foreground">✕</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {showResults ? (
+        <View className="mt-1 overflow-hidden rounded-card border border-border bg-surface">
           <FlatList
             data={options}
             keyExtractor={(item) => item.value}
             keyboardShouldPersistTaps="handled"
+            style={{ maxHeight: 200 }}
             renderItem={({ item }) => (
               <Pressable
-                className="border-b border-border px-4 py-3"
+                className={[
+                  'border-b border-border px-4 py-3',
+                  item.value === value ? 'bg-primary/10' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 onPress={() => handleSelect(item)}
               >
-                <Text className="text-foreground">{item.label}</Text>
+                <Text
+                  className={
+                    item.value === value ? 'font-medium text-primary' : 'text-foreground'
+                  }
+                >
+                  {item.label}
+                </Text>
               </Pressable>
             )}
           />

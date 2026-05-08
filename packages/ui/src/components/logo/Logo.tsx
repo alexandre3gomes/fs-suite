@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Image } from 'react-native';
 
-const logoSource = require('../../assets/logo.png') as number;
+export const logoSource = require('../../assets/logo.png') as number;
 
 export interface LogoProps {
   /** Height in pixels. Width is calculated from the image aspect ratio (~16:9). */

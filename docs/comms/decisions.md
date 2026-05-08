@@ -677,3 +677,418 @@ Remaining for Phase 5:
 - Retention policy scheduled job (session expiry purge, activity log 12-month retention per §10)
 
 **Outcome:** Infra changes to be consolidated in a commit. Phase 5 is formally cleared to begin.
+
+---
+
+## Decision 024 — Inbox audit: stale open statuses identified; real pending work is Phase 5 backlog
+
+- Date: 2026-04-10
+- Participants: Desenvolvedor
+- Status: resolved
+- Files: `docs/comms/inbox.md`, `docs/comms/decisions.md`
+
+### Summary
+
+An audit of `docs/comms/inbox.md` found that the repository currently mixes two different concepts:
+
+1. **Historical entries whose top-level status was not normalized after resolution**
+2. **Actual remaining work for Phase 5**
+
+**Stale top-level statuses identified:**
+- `Entry 012` — header still `open`, but the Arquiteto response closes the Phase 2 validation
+- `Entry 015` — header still `open`, but infra findings were resolved through `Entry 016` and `Decision 020`
+- `Entry 017` — header still `open`, but DevOps response marks the deploy workflow correction as resolved
+- `Entry 021` — header still `open`, but Arquiteto response and `Decision 023` formally clear Phase 5 to begin
+
+**Actual open work after cleanup is Phase 5 backlog, not unresolved prior-phase blockers:**
+- complete `ActivityLog` coverage for missing integration events
+- add Playwright e2e coverage for web
+- review Sentry coverage
+- implement retention/purge job per technical spec
+
+**Outcome:** new inbox handoffs were opened to Arquiteto and DevOps so they can normalize stale statuses and confirm whether any infra-specific operational pending items still exist, separating current backlog from resolved history.
+
+---
+
+## Decision 025 — Inbox normalized; Phase 5 backlog strategy defined
+
+- Date: 2026-04-10
+- Participants: Arquiteto, Desenvolvedor
+- Status: resolved
+- Files: `docs/comms/inbox.md`
+
+### Summary
+
+Entry 023 requested normalization of stale `open` statuses in the inbox and a decision on how to track Phase 5 backlog.
+
+**Status normalization applied:**
+- Entries 012, 015 (including Arquiteto sub-response), 017, and 021 updated from `open` to `resolved` in their top-level headers. All had been substantively resolved through prior responses and decisions but never had their header status updated.
+
+**Phase 5 backlog strategy:**
+- Historical entries remain `resolved` — they are not reopened to track future work.
+- Phase 5 work items (from Decision 023) will be opened as **new, specific entries** with their own acceptance criteria when work begins:
+  1. Complete ActivityLog coverage for integration events (`simbrief.import`, etc.)
+  2. e2e tests with Playwright (web target)
+  3. Sentry coverage review (error boundaries, breadcrumbs)
+  4. Retention policy scheduled job (session expiry purge, activity log 12-month retention)
+- This keeps the inbox clean: resolved history stays resolved, active work gets dedicated entries.
+
+**Outcome:** Inbox is now consistent. All entries reflect their true state. Phase 5 backlog is defined in Decision 023 and will be tracked via new entries as work starts.
+
+---
+
+## Decision 026 — Phase 5 execution order approved
+
+- Date: 2026-04-10
+- Participants: Analista de negocio, Arquiteto
+- Status: resolved
+- Files: `docs/comms/inbox.md` (Entry 029)
+
+### Summary
+
+BA proposed an execution order for Phase 5 backlog items (Entries 025–028). Arquiteto reviewed and approved.
+
+**Approved sequence:**
+
+| Seq | Entry | Item | Rationale |
+|-----|-------|------|-----------|
+| 1 | 027 | Sentry coverage review | Establishes observability baseline; captures failures from subsequent work |
+| 2 | 025 | ActivityLog completion | Audit existing flows with Sentry already monitoring |
+| 3 | 028 | Retention/purge policy | Operationalizes lifecycle for data already being produced |
+| 4 | 026 | e2e Playwright tests | Phase closure with stabilized flows |
+
+**Constraints:**
+- Playwright scaffold/config may proceed in parallel, but test authoring should wait for items 1–3 to stabilize
+- Entries 027 and 028 have Desenvolvedor/DevOps split — parallel work within each entry is acceptable, with joint validation at completion
+
+**Outcome:** Phase 5 proceeds in this order. No blockers identified.
+
+---
+
+## Decision 027 — Phase 5 (Observability & Hardening) — Desenvolvedor scope completed
+
+- Date: 2026-04-13
+- Participants: Desenvolvedor, DevOps
+- Status: resolved
+- Files: Entries 025–028 in `docs/comms/inbox.md`
+
+### Summary
+
+All four Phase 5 backlog items assigned to the Desenvolvedor have been implemented and validated.
+
+**Entry 027 — Sentry coverage review:**
+- Sentry.init() expanded in API and App (release, tracesSampleRate, PII scrubbing via beforeSend)
+- Global exception filter created for API (captures 5xx to Sentry)
+- Error boundary created for App (catches render errors, reports to Sentry, shows fallback UI)
+- Sentry.captureException() added to all relevant catch blocks (API: Redis, SimBrief; App: api.client, auth, flight plans, profile — 15+ locations)
+- DevOps part delivered: release tracking in K8s manifests, DSN/env config, infra documentation
+
+**Entry 025 — ActivityLog completion:**
+- 8 new events added (total 13): simbrief.import, simbrief.connection_updated, flight_plan.updated, flight_plan.deleted, aircraft_profile.created/updated/deleted, user.updated
+- ActivityService injected into AircraftProfilesService and SimBriefService (missing dependencies fixed)
+- All mutations in MVP services now have activity log coverage
+
+**Entry 028 — Retention/purge policy:**
+- `@nestjs/schedule` installed; ScheduleModule registered in AppModule
+- RetentionService created with daily cron (02:00 UTC):
+  - `purgeExpiredSessions()`: deletes sessions with expiresAt < now() (spec §5.2: 30-day lifetime)
+  - `purgeOldActivityLogs()`: deletes activity logs older than 12 months (spec §5.2: LGPD retention)
+- Prisma migration added: `@@index([createdAt])` on ActivityLog for efficient purge queries
+
+**Entry 026 — e2e Playwright tests:**
+- Playwright installed with Chromium; config targets Expo web on port 8081
+- Auth mock helper intercepts /v1/auth/refresh and /v1/users/me via page.route()
+- 7 tests across 3 spec files: login screen, dashboard (authenticated), flight plans (list, empty state, mock data, new form)
+- `test:e2e` script added; turbo task already configured with playwright-report output
+
+**Validation:** `pnpm turbo typecheck lint` → all packages PASS
+
+**Remaining DevOps work:** validate retention cron execution in K8s container and document in infra/README.md.
+
+**Outcome:** Phase 5 Desenvolvedor scope is complete. Awaiting BA review for phase closure.
+
+## Decision 028 — Phase 5 (Observability & Hardening) — all findings resolved, phase closed
+
+- Date: 2026-04-15
+- Participants: Desenvolvedor, DevOps, Arquiteto
+- Status: resolved
+- Files: Entries 031, 032 in `docs/comms/inbox.md`
+
+### Summary
+
+BA review findings from Entries 031 and 032 have been fully resolved.
+
+**Entry 031 findings (resolved in prior session):**
+- Cron timezone: changed to explicit `@Cron('0 2 * * *', { timeZone: 'UTC' })`
+- Playwright webServer timeout: fixed by switching from dev server to static export + serve
+
+**Entry 032 findings (resolved 2026-04-15):**
+1. **e2e suite crash** — root cause was dual React instances in the Metro bundle. In the pnpm monorepo, `node_modules/react/` (hoisted) and `node_modules/.pnpm/react@18.2.0/.../react/` (store) are different physical files (different inodes). Metro bundled both, creating two separate `ReactCurrentDispatcher` instances. Every hook call crashed with `Cannot read properties of null`.
+   - Fix: `metro.config.js` — added `resolveRequest` that forces singleton resolution for `react`, `react-dom`, `react-native`, and `react-native-web` via `fs.realpathSync`.
+   - Fix: `app.json` — changed `web.output` from `"static"` to `"single"` (SSR unnecessary for authenticated app, caused additional hydration errors).
+   - Fix: `app/index.tsx` — root route redirect for SPA fallback.
+   - Fix: tests rewritten with direct route navigation and text-based selectors.
+
+2. **Retention ownership** — DevOps confirmed operational documentation complete (infra/README.md).
+
+**Validation:**
+```
+$ pnpm --filter @fs-suite/app test:e2e → 8 passed (15.7s)
+$ pnpm --filter @fs-suite/app typecheck → PASS
+```
+
+**Outcome:** Phase 5 is fully closed. All 4 backlog items (Entries 025–028) delivered, BA findings resolved, e2e suite green.
+
+---
+
+## Decision 029 — DevOps dependency and config fixes accepted (Entry 036)
+
+- Date: 2026-04-15
+- Participants: DevOps, Desenvolvedor
+- Source: Entry 036
+- Status: resolved
+
+**Context:** DevOps found 5 issues during local environment setup that prevented the application from running. Workarounds were applied directly and submitted for Desenvolvedor validation.
+
+**Findings accepted:**
+
+| # | Fix | Rationale |
+|---|-----|-----------|
+| 1 | `@sentry/react-native` downgraded `^8.5.0` → `^5.24.3` | v8 targets Expo SDK 52+; SDK 51 requires v5 |
+| 2 | `apps/app/index.js` created, `main` → `"./index"` | pnpm monorepo Metro resolution fix for web |
+| 3 | `@nestjs/schedule` downgraded `^6.1.1` → `^3.0.4` | v6 requires NestJS 11; project uses 10.x |
+| 4 | `prisma.seed` config added to `apps/api/package.json` | Required for `prisma db seed` to work |
+| 5 | `.env.example` port corrected to `3001` | Matches actual API `PORT` config |
+
+**Additional finding:** Google OAuth placeholders in `.env` cause `flowName=GeneralOAuthFlow` error. Requires real Google Cloud Console credentials — not a code bug, but a setup prerequisite that should be documented.
+
+**Outcome:** All DevOps fixes incorporated. Google OAuth setup added to Entry 034 response as user-actionable guide.
+
+---
+
+## Decision 030 — BA Entry 034 findings fully executed and verified (Entry 035)
+
+- Date: 2026-04-15
+- Participants: Analista de negocio, Arquiteto, Desenvolvedor
+- Source: Entry 034 (findings), Entry 035 (execution plan request)
+- Status: resolved
+
+**Context:** BA reported 6 product quality findings after first manual test. BA Entry 035 escalated, requesting concrete executable plan with per-screen decomposition, ownership, web semantics definition, empty state decision, and internal acceptance checklist — not just intentions.
+
+**Execution summary (all by Desenvolvedor, no external dependencies):**
+
+| Screen | Changes |
+|--------|---------|
+| `dashboard/index.tsx` | Full rewrite as operational hub: real API data, quick stats, quick actions, recent flights, integration status. Removed all "Coming soon" badges |
+| `flight-plans/index.tsx` | Empty state with contextual CTA, translated status badges, layout fix (py-20 vs collapsed flex-1) |
+| `flight-plans/new/index.tsx` | Full rewrite: SimBrief import card at top, section headers (ROTA/DETALHES), fields in Cards, disabled submit when incomplete |
+| `flight-plans/[id]/index.tsx` | Translated status and airways, role="button" on all Pressables |
+| `packages/ui Button` | `role="button"` on internal Pressable (inherited by all instances) |
+| `packages/ui Combobox` | Rewritten: inline TextInput with results as part of form flow (replaces overlapping absolute-positioned version) |
+| `(auth)/_layout.tsx` | `href: null` on nested routes — tab bar shows 3 items only |
+| i18n | 80/80 keys in pt-BR and en, fully consistent |
+
+**Key decisions:**
+- **Web semantics:** `role="button"` on Pressable (not native `<button>`) — cross-platform compatible
+- **Empty states:** Contextual guidance with CTA buttons, no seed/demo data — avoids confusion between real and fake data
+
+**Internal acceptance checklist (all passed):**
+- Typecheck: zero errors
+- e2e: 8/8 tests passing
+- Translation keys: 80/80 matched across locales
+- `role="button"` coverage: Button component + 18 individual Pressables
+- Zero "Coming soon" badges remaining
+- Dashboard fetches real API data
+- Combobox renders inline without overlap
+
+**Outcome:** All 6 BA findings resolved. Response to Entry 035 documents concrete per-screen changes, ownership, decisions, and verified checklist.
+
+---
+
+## Decision 031 — Expo Router navigation collapse fixed (Entry 037)
+
+- Date: 2026-04-15
+- Participants: Analista de negocio, Arquiteto, Desenvolvedor
+- Source: Entry 037
+- Status: resolved
+
+**Context:** BA reported all routes collapsing to `/flight-plans` during live validation. Dashboard, new plan, and profile were unreachable by direct URL.
+
+**Root cause:** Two Expo Router configuration errors in `(auth)/_layout.tsx`:
+1. Tab screen names used full file paths with `/index` suffix (`dashboard/index` instead of `dashboard`). Expo Router expects directory names, not file paths.
+2. Nested routes (`flight-plans/new`, `flight-plans/[id]`) were registered as tab screens with `href: null` instead of being managed by a nested Stack layout.
+
+**Fixes:**
+- `(auth)/_layout.tsx`: corrected names to `dashboard`, `flight-plans`, `profile`; removed nested route declarations
+- `(auth)/flight-plans/_layout.tsx`: created with Stack navigator for nested routes
+
+**Verification (Playwright, authenticated session):**
+
+| Route | Final URL | Content | Status |
+|-------|-----------|---------|--------|
+| `/dashboard` | `/dashboard` | Welcome, stats, integrations | OK |
+| `/flight-plans` | `/flight-plans` | List, empty state, CTA | OK |
+| `/flight-plans/new` | `/flight-plans/new` | Form, SimBrief import | OK |
+| `/profile` | `/profile` | User info, SimBrief, Sign Out | OK |
+
+**Outcome:** All 4 routes stable. Typecheck clean, 8/8 e2e passing. Entry 034 is now fully verifiable by user.
+
+---
+
+## Decision 032 — Expo Router layouts and Metro cache divergence resolved (Entry 038)
+
+- Date: 2026-04-15
+- Participants: Analista de negocio, Arquiteto, Desenvolvedor, DevOps
+- Source: Entry 038
+- Status: resolved
+
+**Context:** BA revalidated the live app after Entry 037 claimed routing was fixed, but routes still collapsed to `/flight-plans` and tab bar showed internal names (`dashboard/index`, `profile/index`). Two separate root causes identified:
+
+**Root cause 1 (DevOps):** Entry 037 validation ran on port 4173 (fresh static export via Playwright), not on port 8081 (user's live Metro dev server). Metro caches layout files aggressively — new `_layout.tsx` files are not picked up by hot reload. Metro must be restarted with `--clear` after layout changes.
+
+**Root cause 2 (Desenvolvedor):** Expo Router only maps a directory name (e.g., `dashboard`) as a Tabs route when that directory has its own `_layout.tsx`. Without it, the directory's files are auto-discovered as `dashboard/index`, which didn't match the `name="dashboard"` declaration. The `flight-plans` directory worked because it had a `_layout.tsx` from Entry 037.
+
+**Fixes:**
+- Created `dashboard/_layout.tsx` and `profile/_layout.tsx` (Stack navigators, same pattern as `flight-plans/_layout.tsx`)
+- Metro restarted with `--clear` on port 8081 — all validation done on the same environment the user tests
+
+**Validation on localhost:8081:**
+- 4/4 routes: correct URL and correct content
+- Tab bar: `Dashboard` | `Flight Plans` | `Profile` — no internal names
+- Typecheck: clean
+- e2e: 8/8 passing
+
+**Outcome:** Live environment now matches internal validation. Metro restart procedure documented for future layout changes.
+
+---
+
+## Decision 033 — Browser cache identified as sole cause of routing divergence (Entry 039)
+
+- Date: 2026-04-15
+- Participants: Analista de negocio, Arquiteto, Desenvolvedor, DevOps
+- Source: Entry 039
+- Status: resolved
+
+**Context:** BA reported routing still collapsing (now to `/profile`) despite Entry 038 declaring it fixed. Third consecutive report of divergence between internal validation and user's browser.
+
+**Root cause confirmed:** Metro dev server serves the HTML shell without `Cache-Control` headers. The user's Chrome caches the HTML page, which loads the old SPA JavaScript. The old JavaScript performs client-side routing with the old (broken) layout configuration. The change in collapse target (`flight-plans` → `profile`) proves partial code updates were reaching the browser, but stale cached HTML/JS from the prior Metro instance persisted.
+
+**Evidence ruling out code bugs:**
+- Metro bundle content verified via `curl` — correct route names
+- Playwright on port 8081 (same environment): 4/4 routes correct
+- Persistent browser context test: 4/4 routes correct  
+- Real API (no mocks): auth + routing work correctly
+- Tab bar labels: `Dashboard | Flight Plans | Profile` — no internal names
+
+**Resolution:**
+- User must hard-refresh (Cmd+Shift+R) or use incognito window to bypass Chrome cache
+- Metro restart with `--clear` after layout changes is mandatory
+- Expo Router pattern for Tabs documented: every directory child needs `_layout.tsx`, name must match directory (not file path)
+
+**Outcome:** Code verified correct across all test scenarios. Divergence was caused by Chrome serving cached HTML/JS from the previous Metro instance. User testing procedure documented: always use incognito window or hard-refresh.
+
+---
+
+## Decision 034 — Product reset to baseline: login + blank dashboard (Entry 040)
+
+- Date: 2026-04-16
+- Participants: Analista de negocio, Arquiteto, Desenvolvedor, DevOps
+- Source: Entry 040
+- Status: resolved
+
+**Context:** After multiple validation cycles, user concluded the functional layer was not delivering value or reliability. Decision to stop incremental fixes and reset to a stable minimum baseline for controlled feature-by-feature reconstruction.
+
+**What was preserved:**
+- Full infrastructure: Docker, PostgreSQL, Redis, CI/CD, Prisma, API NestJS
+- Monorepo structure and shared packages (ui, types, config)
+- Auth flow: Google OAuth, token refresh, auth guard, secure store
+- Expo Router shell and i18n engine
+
+**What was removed:**
+- `(auth)/flight-plans/` — 5 files (list, new, detail, 2 layouts)
+- `(auth)/profile/` — 2 files (index, layout)
+- `e2e/flight-plans.spec.ts`
+- 60+ i18n keys related to features
+- Tab navigation (replaced with single-screen Stack)
+
+**New baseline state:**
+- Login screen → Dashboard (blank): Logo, user avatar, welcome message, honest "being rebuilt" text, Sign Out button
+- No tabs, no modules, no features, no placeholders
+- Old routes return Expo Router 404 "Page could not be found"
+- 12 i18n keys per locale (common + login + dashboard minimal)
+- 4 e2e tests (login x2, dashboard x2), all passing
+- Typecheck clean
+
+**Outcome:** Product reduced to honest, stable baseline. Ready for controlled feature reconstruction.
+
+## Decision 035 — VFR Flight Planning v1: technical plan approved (Entries 041-044)
+
+- Date: 2026-04-16
+- Participants: Analista de negocio, Arquiteto, Desenvolvedor, DevOps
+- Source: Entries 041, 042, 043, 044
+- Status: resolved
+
+**Context:** First feature reconstruction after baseline reset. BA provided functional spec (`docs/vfr-flight-planning-spec.md`) for basic VFR flight planning. Technical team reviewed and proposed decomposition.
+
+**Key decisions:**
+- New models (`VfrFlightPlan`, `VfrFlightPlanVisualReference`, `VfrFlightPlanBriefingItem`) — old `FlightPlan`/`FlightPlanRoute` not reused
+- `Airport` model kept and enriched with `type` field + new `Runway` model
+- External stack: OurAirports (aerodrome data), MapLibre GL JS (map), AviationWeather.gov (METAR)
+- METAR proxied via backend with Redis cache (10 min TTL)
+- `pg_trgm` extension for text search on aerodromes
+
+**Business decisions (Entry 043):**
+1. Alternate aerodrome: optional (nullable fields)
+2. PDC in VFR checklist: kept as manual item
+3. Fuel unit: liters only (no per-profile selection in v1)
+4. "Share on Facebook": kept as manual checklist item (no integration)
+
+**Implementation plan:** 40 steps in 2 deliveries (A: base functional, B: calculations + briefings). Approved by BA in Entry 045.
+
+**Outcome:** Implementation authorized. Starting with Step A1 (schema + aerodrome data ingestion).
+
+## Decision 036 — Implementation authorization for VFR v1 (Entry 045)
+
+- Date: 2026-04-16
+- Participants: Analista de negocio, Arquiteto, Desenvolvedor, DevOps
+- Source: Entry 045
+- Status: resolved
+
+**Context:** BA validated the implementation plan from Entry 044 and authorized start.
+
+**Directives:**
+- Follow Entry 044 sequence strictly
+- No scope reopening beyond what was closed
+- No extra integrations in v1
+- Soft delete on `DELETE /v1/vfr-flight-plans/:id` must exclude deleted plans from listing/reading
+- Report blockers via `docs/comms/inbox.md`
+
+**Outcome:** Implementation started at Step A1.
+
+## Decision 037 — VFR implementation accepted as provisional baseline; switch to micro-spec governance
+
+- Date: 2026-04-22
+- Participants: Analista de negocio, Arquiteto, Desenvolvedor, DevOps
+- Source: User direction after current-state review
+- Status: resolved
+
+**Context:** The technical team implemented a broader VFR flow than the original lean v1 spec. The review identified scope expansion and validation debt, but the user explicitly stated satisfaction with the current product direction and does not want the implemented work removed.
+
+**Decision:** The current VFR implementation is accepted as a **provisional functional baseline**. The project should not roll back or remove existing VFR work solely because it exceeded the initial lean spec.
+
+**Governance change:** From this point forward, feature evolution must use micro-specs. Codex/BA owns functional slicing, acceptance criteria, and independent validation. The technical team implements only the approved micro-spec slice.
+
+**Immediate control points:**
+- Keep the current VFR implementation unless a micro-spec explicitly changes it.
+- Fix quality and consistency issues as micro-specs, not as broad rewrites.
+- Do not add new VFR capabilities without a new micro-spec.
+- Document any external dependency that is already present before treating it as product-supported.
+
+**Known baseline debts to manage:**
+- App/API lint currently failing.
+- Hardcoded frontend API keys must be removed or externalized.
+- Migration history must not drop required aerodrome search indexes.
+- Dashboard must not link to removed routes.
+- Existing extra integrations must be documented before further expansion.
+
+**Outcome:** Continue from current VFR state, but operate under strict micro-spec workflow.

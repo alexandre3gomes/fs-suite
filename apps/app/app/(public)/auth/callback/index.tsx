@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator, View } from 'react-native';
@@ -22,14 +23,15 @@ export default function AuthCallbackScreen(): JSX.Element {
       .then(() => {
         router.replace('/(auth)/dashboard');
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        Sentry.captureException(err, { tags: { context: 'auth_callback' } });
         router.replace('/(public)/login');
       });
   }, [access_token, router]);
 
   return (
     <View className="flex-1 items-center justify-center bg-background">
-      <ActivityIndicator size="large" color="#4a90e2" />
+      <ActivityIndicator size="large" color="#2563eb" />
     </View>
   );
 }

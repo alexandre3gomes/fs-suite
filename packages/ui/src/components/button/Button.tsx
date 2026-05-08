@@ -1,76 +1,101 @@
+import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
-import { Pressable, Text, ActivityIndicator, type PressableProps } from 'react-native';
+import { Platform, Pressable, type PressableProps } from 'react-native';
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost';
-type ButtonSize = 'sm' | 'md' | 'lg';
+import { cn } from '../../lib/utils';
+import { TextClassContext } from '../text/Text';
 
-export interface ButtonProps extends PressableProps {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
-  isLoading?: boolean;
+const buttonVariants = cva(
+  cn(
+    'group shrink-0 flex-row items-center justify-center gap-2 rounded-md',
+    Platform.select({
+      web: 'outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+    }),
+  ),
+  {
+    variants: {
+      variant: {
+        default: cn(
+          'bg-primary shadow-sm active:bg-primary/90',
+          Platform.select({ web: 'hover:bg-primary/90' }),
+        ),
+        destructive: cn(
+          'bg-destructive shadow-sm active:bg-destructive/90',
+          Platform.select({ web: 'hover:bg-destructive/90' }),
+        ),
+        outline: cn(
+          'border border-input bg-background shadow-sm active:bg-accent',
+          Platform.select({ web: 'hover:bg-accent hover:text-accent-foreground' }),
+        ),
+        secondary: cn(
+          'bg-secondary shadow-sm active:bg-secondary/80',
+          Platform.select({ web: 'hover:bg-secondary/80' }),
+        ),
+        ghost: cn(
+          'active:bg-accent',
+          Platform.select({ web: 'hover:bg-accent hover:text-accent-foreground' }),
+        ),
+        link: '',
+      },
+      size: {
+        default: 'h-10 px-4 py-2',
+        sm: 'h-9 gap-1.5 rounded-md px-3',
+        lg: 'h-12 rounded-md px-8',
+        icon: 'h-10 w-10',
+      },
+    },
+    defaultVariants: { variant: 'default', size: 'default' },
+  },
+);
+
+const buttonTextVariants = cva('text-sm font-medium', {
+  variants: {
+    variant: {
+      default: 'text-primary-foreground',
+      destructive: 'text-destructive-foreground',
+      outline: 'text-foreground',
+      secondary: 'text-secondary-foreground',
+      ghost: 'text-foreground',
+      link: cn(
+        'text-primary',
+        Platform.select({ web: 'group-hover:underline' }),
+      ),
+    },
+    size: {
+      default: 'text-sm',
+      sm: 'text-xs',
+      lg: 'text-base',
+      icon: 'text-sm',
+    },
+  },
+  defaultVariants: { variant: 'default', size: 'default' },
+});
+
+export interface ButtonProps
+  extends PressableProps,
+    VariantProps<typeof buttonVariants> {
   className?: string;
-  children?: React.ReactNode;
 }
 
-const variantContainerClass: Record<ButtonVariant, string> = {
-  primary: 'bg-primary',
-  secondary: 'bg-surface border border-border',
-  ghost: 'bg-transparent',
-};
+const Button = React.forwardRef<React.ElementRef<typeof Pressable>, ButtonProps>(
+  ({ className, variant, size, disabled, ...props }, ref) => {
+    return (
+      <TextClassContext.Provider value={buttonTextVariants({ variant, size })}>
+        <Pressable
+          ref={ref}
+          role="button"
+          disabled={disabled}
+          className={cn(
+            disabled && 'opacity-50',
+            buttonVariants({ variant, size }),
+            className,
+          )}
+          {...props}
+        />
+      </TextClassContext.Provider>
+    );
+  },
+);
+Button.displayName = 'Button';
 
-const variantTextClass: Record<ButtonVariant, string> = {
-  primary: 'text-primary-foreground',
-  secondary: 'text-foreground',
-  ghost: 'text-foreground',
-};
-
-const sizeContainerClass: Record<ButtonSize, string> = {
-  sm: 'px-3 py-1.5',
-  md: 'px-4 py-2',
-  lg: 'px-6 py-3',
-};
-
-const sizeTextClass: Record<ButtonSize, string> = {
-  sm: 'text-sm',
-  md: 'text-sm',
-  lg: 'text-base',
-};
-
-export function Button({
-  variant = 'primary',
-  size = 'md',
-  isLoading = false,
-  disabled,
-  className = '',
-  children,
-  ...props
-}: ButtonProps) {
-  const isDisabled = disabled ?? isLoading;
-
-  return (
-    <Pressable
-      disabled={isDisabled}
-      className={[
-        'flex-row items-center justify-center gap-2 rounded-button font-medium',
-        variantContainerClass[variant],
-        sizeContainerClass[size],
-        isDisabled ? 'opacity-50' : '',
-        className,
-      ]
-        .filter(Boolean)
-        .join(' ')}
-      {...props}
-    >
-      {isLoading && <ActivityIndicator size="small" color="currentColor" />}
-      <Text
-        className={[
-          'font-medium',
-          variantTextClass[variant],
-          sizeTextClass[size],
-        ].join(' ')}
-      >
-        {children}
-      </Text>
-    </Pressable>
-  );
-}
+export { Button, buttonTextVariants, buttonVariants };

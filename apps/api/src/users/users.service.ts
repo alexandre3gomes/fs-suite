@@ -20,12 +20,14 @@ export class UsersService {
   }
 
   async updateMe(id: string, dto: UpdateUserDto): Promise<User> {
-    return this.prisma.user.update({
+    const user = await this.prisma.user.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
       },
     });
+    void this.activity.log('user.updated', id);
+    return user;
   }
 
   async deleteMe(id: string): Promise<void> {
