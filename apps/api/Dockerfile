@@ -32,7 +32,8 @@ RUN pnpm --filter @fs-suite/api build
 # ── Stage 2: Production ────────────────────────────────────────
 FROM node:20-alpine AS production
 
-RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+RUN apk add --no-cache openssl && \
+    corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 # Security: run as non-root
 RUN addgroup --system --gid 1001 nodejs && \
