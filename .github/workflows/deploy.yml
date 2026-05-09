@@ -9,7 +9,9 @@ on:
       - 'packages/config/**'
       - 'infra/base/**'
       - 'infra/overlays/production/**'
+      - '.github/workflows/deploy.yml'
       - 'pnpm-lock.yaml'
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
