@@ -112,6 +112,11 @@ read_secret "SENTRY_DSN" SENTRY_DSN ""
 read_secret "SENTRY_AUTH_TOKEN" SENTRY_AUTH_TOKEN ""
 echo ""
 
+echo "── GHCR (image pull) ──"
+echo ""
+read_secret "GitHub PAT with read:packages scope" GHCR_PAT
+echo ""
+
 # ── Create namespace ────────────────────────────────────────
 
 echo "Creating namespace ${NAMESPACE}..."
@@ -124,8 +129,6 @@ $K create secret generic api-secrets \
   --namespace="$NAMESPACE" \
   --from-literal="DATABASE_URL=${DATABASE_URL}" \
   --from-literal="REDIS_URL=${REDIS_URL}" \
-  --from-literal="POSTGRES_PASSWORD=unused-external-db" \
-  --from-literal="REDIS_PASSWORD=unused-external-redis" \
   --from-literal="GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}" \
   --from-literal="GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}" \
   --from-literal="VATSIM_CLIENT_ID=${VATSIM_CLIENT_ID}" \
@@ -135,6 +138,17 @@ $K create secret generic api-secrets \
   --from-literal="ENCRYPTION_KEY=${ENCRYPTION_KEY}" \
   --from-literal="SENTRY_DSN=${SENTRY_DSN}" \
   --from-literal="SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}" \
+  --dry-run=client -o yaml | $K apply -f -
+
+# ── Create GHCR pull secret ────────────────────────────────
+
+echo "Creating ghcr-pull-secret..."
+$K create secret docker-registry ghcr-pull-secret \
+  --namespace="$NAMESPACE" \
+  --docker-server=ghcr.io \
+  --docker-username=alexandre3gomes \
+  --docker-password="${GHCR_PAT}" \
+  --docker-email=noreply@fssuite.app \
   --dry-run=client -o yaml | $K apply -f -
 
 # ── Apply manifests ─────────────────────────────────────────

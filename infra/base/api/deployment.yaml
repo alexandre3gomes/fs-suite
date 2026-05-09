@@ -17,6 +17,8 @@ spec:
         app.kubernetes.io/name: api
         app.kubernetes.io/part-of: fs-suite
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       initContainers:
         - name: migrate
           image: ghcr.io/alexandre3gomes/fs-suite/api:latest
