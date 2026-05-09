@@ -6,31 +6,9 @@ metadata:
 spec:
   template:
     spec:
-      # Override init container to use external DATABASE_URL from secret
-      initContainers:
-        - name: migrate
-          env:
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: api-secrets
-                  key: DATABASE_URL
       containers:
         - name: api
           env:
-            # Override DATABASE_URL — external Neon instead of in-cluster Postgres
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: api-secrets
-                  key: DATABASE_URL
-            # Override REDIS_URL — external Upstash instead of in-cluster Redis
-            - name: REDIS_URL
-              valueFrom:
-                secretKeyRef:
-                  name: api-secrets
-                  key: REDIS_URL
-            # VATSIM OAuth
             - name: VATSIM_CLIENT_ID
               valueFrom:
                 secretKeyRef:
