@@ -38,7 +38,7 @@ O dev local **não usa Kubernetes**. Roda diretamente:
 
 | Componente | Tipo | Serviço |
 |------------|------|---------|
-| API (NestJS) | Deployment K8s | `ghcr.io/fs-suite/api:latest` |
+| API (NestJS) | Deployment K8s | `ghcr.io/alexandre3gomes/fs-suite/api` |
 | PostgreSQL | Externo | **Neon** (serverless) |
 | Redis | Externo | **Upstash** (serverless, TLS) |
 | Cluster | K3s single-node | OCI VM (`158.179.221.244`) |
@@ -59,12 +59,23 @@ source infra/scripts/kube-aliases.sh
 kprod get pods
 ```
 
+### CI/CD
+
+O branching model é **feature branches → PR → merge em main**.
+
+| Workflow | Trigger | O que faz |
+|----------|---------|-----------|
+| `ci.yml` | Push em `main` + PRs para `main` | Install, lint, typecheck, build, test |
+| `deploy.yml` | Push em `main` (paths: `apps/api/`, `infra/`, `packages/`) | Build Docker → GHCR, apply K8s manifests, rollout |
+
+O deploy usa um `KUBECONFIG` armazenado como GitHub environment secret (`production`) para aceder ao cluster via kubectl remoto.
+
 ### Deploys subsequentes
 
-Automatizados via CI/CD (`.github/workflows/deploy.yml`). A cada push em `main` que altere `apps/api/`, o workflow:
+A cada merge em `main` que altere código relevante, o workflow:
 
-1. Builda a imagem Docker e pusha para GHCR
-2. Aplica os manifests com a tag do git sha
+1. Builda a imagem Docker e pusha para GHCR com tag do git sha
+2. Aplica os manifests via Kustomize com a imagem taggeada
 3. Aguarda rollout e verifica health dos pods
 
 ## Secrets
