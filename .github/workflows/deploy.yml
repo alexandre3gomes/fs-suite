@@ -83,7 +83,7 @@ jobs:
         run: |
           cd infra/overlays/production
           kubectl kustomize . | \
-            sed "s|ghcr.io/fs-suite/api:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}|g" | \
+            sed "s|ghcr.io/${{ env.IMAGE_NAME }}:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}|g" | \
             sed "s|__DEPLOY_RELEASE__|${TAG}|g" | \
             kubectl apply -f -
 
