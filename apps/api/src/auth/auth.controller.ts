@@ -8,12 +8,11 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { User } from '@prisma/client';
 import type { Request, Response } from 'express';
-
-import { ConfigService } from '@nestjs/config';
 
 import { Public } from '../common/guards/jwt-auth.guard';
 

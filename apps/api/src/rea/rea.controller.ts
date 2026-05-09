@@ -3,7 +3,7 @@ import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
-import { ReaService } from './rea.service';
+import { type ReaDetectionResult, type ReaRegionData, ReaService } from './rea.service';
 
 @ApiTags('rea')
 @Controller('rea')
@@ -13,13 +13,13 @@ export class ReaController {
 
   @Get('regions')
   @ApiOperation({ summary: 'List all REA regions with chart PDF URLs' })
-  async listRegions() {
+  async listRegions(): Promise<{ regionId: string; chartName: string; chartPdfUrl: string }[]> {
     return this.rea.listRegions();
   }
 
   @Get('region/:regionId')
   @ApiOperation({ summary: 'Get all REA corridor data for a specific region' })
-  async getRegion(@Param('regionId') regionId: string) {
+  async getRegion(@Param('regionId') regionId: string): Promise<ReaRegionData | { error: string; regionId: string }> {
     const data = await this.rea.getRegionData(regionId);
     if (!data) return { error: 'Region not found', regionId };
     return data;
@@ -28,7 +28,7 @@ export class ReaController {
   @Get('detect')
   @ApiOperation({ summary: 'Detect REA corridors crossed by a route' })
   @ApiQuery({ name: 'waypoints', description: 'Comma-separated lat:lon pairs (e.g. -23.5:-46.6,-22.9:-43.1)', required: true })
-  async detect(@Query('waypoints') waypointsStr: string) {
+  async detect(@Query('waypoints') waypointsStr: string): Promise<ReaDetectionResult> {
     const waypoints = this.parseWaypoints(waypointsStr);
     if (waypoints.length < 2) {
       return { regions: [] };

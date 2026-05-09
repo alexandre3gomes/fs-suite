@@ -187,8 +187,8 @@ export class SimBriefService {
       }
     }
 
-    const n = (v: unknown) => (v != null && v !== '' ? Number(v) : null);
-    const s = (v: unknown) => (v != null && v !== '' ? String(v) : null);
+    const n = (v: unknown): number | null => (v != null && v !== '' ? Number(v) : null);
+    const s = (v: unknown): string | null => (v != null && v !== '' ? String(v) : null);
 
     // SimBrief fuel values follow params.units — normalize to kg
     const LBS_TO_KG = 0.453592;

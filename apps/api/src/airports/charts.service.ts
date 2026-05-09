@@ -59,42 +59,42 @@ const REGIONS: RegionConfig[] = [
   {
     prefixes: ['LP'],
     fetch: fetchPortugalCharts,
-    links: (icao) => [
+    links: (_icao) => [
       { label: 'NAV Portugal', url: `https://ais.nav.pt/online-eaip-en/` },
     ],
   },
   {
     prefixes: ['LO'],
     fetch: fetchAustriaCharts,
-    links: (icao) => [
+    links: (_icao) => [
       { label: 'Austro Control', url: `https://eaip.austrocontrol.at/` },
     ],
   },
   {
     prefixes: ['EF'],
     fetch: fetchFinlandCharts,
-    links: (icao) => [
+    links: (_icao) => [
       { label: 'Fintraffic ANS', url: `https://ais.fi/` },
     ],
   },
   {
     prefixes: ['EP'],
     fetch: fetchPolandCharts,
-    links: (icao) => [
+    links: (_icao) => [
       { label: 'PANSA eAIP', url: `https://www.ais.pansa.pl/en/publications/eaip/` },
     ],
   },
   {
     prefixes: ['ES'],
     fetch: fetchSwedenCharts,
-    links: (icao) => [
+    links: (_icao) => [
       { label: 'LFV AIP', url: `https://aro.lfv.se/Editorial/View/IAIP` },
     ],
   },
   {
     prefixes: ['EN'],
     fetch: fetchNorwayCharts,
-    links: (icao) => [
+    links: (_icao) => [
       { label: 'Avinor AIP', url: `https://ais.avinor.no/` },
     ],
   },
@@ -149,15 +149,6 @@ function getAiracCycle(date: Date = new Date()): { cycle: string; effectiveDate:
   const yy = String(year % 100).padStart(2, '0');
   const nn = String(cycleInYear).padStart(2, '0');
   return { cycle: `${yy}${nn}`, effectiveDate: cycleStart };
-}
-
-/** Format AIRAC effective date as YYMMDD (for Austria) */
-function airacYYMMDD(date: Date = new Date()): string {
-  const { effectiveDate } = getAiracCycle(date);
-  const yy = String(effectiveDate.getUTCFullYear() % 100).padStart(2, '0');
-  const mm = String(effectiveDate.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(effectiveDate.getUTCDate()).padStart(2, '0');
-  return `${yy}${mm}${dd}`;
 }
 
 /** Classify a chart type from its filename/path using common European eAIP naming */
