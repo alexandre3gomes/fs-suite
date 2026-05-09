@@ -52,6 +52,34 @@ export async function signInWithGoogle(): Promise<void> {
   await handleNativeTokens(accessToken, refreshToken ?? null);
 }
 
+export async function signInWithVatsim(): Promise<void> {
+  if (Platform.OS === 'web') {
+    (globalThis as unknown as { location: { href: string } }).location.href =
+      `${API_URL}/v1/auth/vatsim?platform=web`;
+    return;
+  }
+
+  const redirectUrl = Linking.createURL('auth/callback');
+  const result = await WebBrowser.openAuthSessionAsync(
+    `${API_URL}/v1/auth/vatsim?platform=native`,
+    redirectUrl,
+  );
+
+  if (result.type !== 'success') {
+    return;
+  }
+
+  const url = new URL(result.url);
+  const accessToken = url.searchParams.get('access_token');
+  const refreshToken = url.searchParams.get('refresh_token');
+
+  if (!accessToken) {
+    return;
+  }
+
+  await handleNativeTokens(accessToken, refreshToken ?? null);
+}
+
 export async function handleNativeTokens(
   accessToken: string,
   refreshToken: string | null,

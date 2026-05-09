@@ -16,6 +16,7 @@
     "title": "FS Suite",
     "subtitle": "Planejamento de voo para simuladores",
     "signInButton": "Entrar com Google",
+    "signInVatsim": "Entrar com VATSIM",
     "terms": "Ao entrar, você concorda com nossos Termos de Uso e Política de Privacidade."
   },
   "dashboard": {
@@ -73,6 +74,8 @@
     "todMinutes": "TOD (min)",
     "todDistance": "TOD (NM)",
     "ifrRule": "Semicircular IFR",
+    "imcAltitudes": "IMC — milhares cheios",
+    "cloudClearanceWarning": "Altitudes marcadas ⛅ não mantêm 1000 ft de separação vertical de camadas BKN/OVC",
     "mixedRouteHint": "Indique o ponto de mudança na rota (ex: WAYPOINT IFR/VFR ou VFR/IFR)",
     "visualReferences": "Referências Visuais",
     "refName": "Referência",

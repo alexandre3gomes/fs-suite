@@ -16,6 +16,7 @@
     "title": "FS Suite",
     "subtitle": "Flight planning for simulators",
     "signInButton": "Sign in with Google",
+    "signInVatsim": "Sign in with VATSIM",
     "terms": "By signing in, you agree to our Terms of Service and Privacy Policy."
   },
   "dashboard": {
@@ -73,6 +74,8 @@
     "todMinutes": "TOD (min)",
     "todDistance": "TOD (NM)",
     "ifrRule": "IFR semicircular",
+    "imcAltitudes": "IMC — full thousands",
+    "cloudClearanceWarning": "Altitudes marked ⛅ do not maintain 1000 ft vertical clearance from BKN/OVC layers",
     "mixedRouteHint": "Indicate the change point in the route (e.g., WAYPOINT IFR/VFR or VFR/IFR)",
     "visualReferences": "Visual References",
     "refName": "Reference",

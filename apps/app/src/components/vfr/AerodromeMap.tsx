@@ -28,6 +28,20 @@ export interface ReaCorridorSegment {
   geometry: { type: string; coordinates: number[][][][] | number[][][] };
 }
 
+interface PopupRunway {
+  leIdent: string | null;
+  leHeadingDeg: number | null;
+  heIdent: string | null;
+  heHeadingDeg: number | null;
+  closed: boolean;
+  ident: string;
+  lengthFt: number | null;
+}
+
+interface PopupAerodromeDetail {
+  runways: PopupRunway[];
+}
+
 interface Props {
   onSelectOrigin: (a: Aerodrome) => void;
   onSelectDestination: (a: Aerodrome) => void;
@@ -693,49 +707,26 @@ export function AerodromeMap({
         const marker = L.marker([airport.latitude, airport.longitude], { icon }).addTo(map);
 
         marker.on('click', () => {
-          const catHtml = airport.flightCategory
-            ? `<div style="font-size:11px;font-weight:600;color:${color};margin-bottom:6px">${airport.flightCategory}</div>`
-            : '';
+          const roleRefs = { origin: onSelectOriginRef, dest: onSelectDestRef, alt: onSelectAltRef };
+          const popup = L.popup({ maxWidth: 360 })
+            .setLatLng([airport.latitude, airport.longitude])
+            .setContent(buildAirportPopupHtml(airport, null, null, null, tRef.current))
+            .openOn(map);
 
-          const popupHtml = `
-            <div style="min-width:190px;font-family:system-ui,sans-serif">
-              <div style="font-weight:700;font-size:14px;color:#1a1d26;margin-bottom:2px">${escapeHtml(airport.icao)}</div>
-              <div style="font-size:12px;color:#6b7280;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(airport.name)}</div>
-              ${catHtml}
-              <div style="display:flex;gap:4px">
-                <button data-role="origin" style="flex:1;padding:5px 4px;background:#2563eb;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer">
-                  ${escapeHtml(tRef.current('vfr.origin'))}
-                </button>
-                <button data-role="destination" style="flex:1;padding:5px 4px;background:#2563eb;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer">
-                  ${escapeHtml(tRef.current('vfr.destination'))}
-                </button>
-                <button data-role="alternate" style="flex:1;padding:5px 4px;background:#2563eb;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer">
-                  ${escapeHtml(tRef.current('vfr.alternate'))}
-                </button>
-              </div>
-            </div>
-          `;
+          bindPopupRoleButtons(popup, airport, map, roleRefs);
 
-          const popup = L.popup().setLatLng([airport.latitude, airport.longitude]).setContent(popupHtml).openOn(map);
-
-          const popupEl = popup.getElement();
-          if (popupEl) {
-            popupEl.querySelectorAll('button[data-role]').forEach((btn: any) => {
-              btn.addEventListener('click', (e: any) => {
-                const role = e.currentTarget.getAttribute('data-role');
-                const aerodrome: Aerodrome = {
-                  icao: airport.icao, iata: airport.iata, name: airport.name,
-                  city: airport.city, country: airport.country,
-                  latitude: airport.latitude, longitude: airport.longitude,
-                  elevation: airport.elevation, type: airport.type,
-                };
-                if (role === 'origin') onSelectOriginRef.current(aerodrome);
-                else if (role === 'destination') onSelectDestRef.current(aerodrome);
-                else if (role === 'alternate') onSelectAltRef.current(aerodrome);
-                map.closePopup();
-              });
-            });
-          }
+          Promise.all([
+            apiClient.get<ParsedMetar[]>(`/weather/metar?icaos=${airport.icao}`).catch(() => null),
+            apiClient.get<PopupAerodromeDetail>(`/aerodromes/${airport.icao}`).catch(() => null),
+          ]).then(([metarData, detail]) => {
+            const metar = metarData?.find((m) => m.icaoId === airport.icao) ?? null;
+            const runways = detail?.runways ?? null;
+            const suggestedRwy = metar && runways && typeof metar.windDirection === 'number'
+              ? suggestRunwayFromWind(metar.windDirection, runways)
+              : null;
+            popup.setContent(buildAirportPopupHtml(airport, metar, runways, suggestedRwy, tRef.current));
+            bindPopupRoleButtons(popup, airport, map, roleRefs);
+          });
         });
 
         markersRef.current.push(marker);
@@ -874,6 +865,174 @@ export function AerodromeMap({
 
 function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// --------------- Airport popup helpers ---------------
+
+function categoryColorHex(cat: string | null): string {
+  if (!cat) return DEFAULT_DOT_COLOR;
+  return CATEGORY_COLORS[cat] ?? DEFAULT_DOT_COLOR;
+}
+
+function formatPopupWind(dir: number | string | null, spd: number | null): string {
+  if (dir === null || spd === null) return '—';
+  if (dir === 'VRB') return `VRB ${spd}kt`;
+  return `${String(dir).padStart(3, '0')}°/${spd}kt`;
+}
+
+function suggestRunwayFromWind(
+  windDir: number,
+  runways: PopupRunway[],
+): string | null {
+  const open = runways.filter((r) => !r.closed);
+  if (open.length === 0) return null;
+  let bestIdent: string | null = null;
+  let bestHeadwind = -Infinity;
+  for (const rwy of open) {
+    for (const th of [
+      { ident: rwy.leIdent, heading: rwy.leHeadingDeg },
+      { ident: rwy.heIdent, heading: rwy.heHeadingDeg },
+    ]) {
+      if (!th.ident || th.heading === null) continue;
+      const diff = ((windDir - th.heading + 540) % 360) - 180;
+      const headwind = Math.cos((diff * Math.PI) / 180);
+      if (headwind > bestHeadwind) {
+        bestHeadwind = headwind;
+        bestIdent = th.ident;
+      }
+    }
+  }
+  return bestIdent;
+}
+
+function buildRunwayHtml(runways: PopupRunway[], suggestedRwy: string | null, t: (key: string) => string): string {
+  if (runways.length === 0) return '';
+
+  interface ThresholdRow { ident: string; heading: number | null; lengthFt: number | null; closed: boolean; inUse: boolean }
+  const thresholds: ThresholdRow[] = [];
+
+  for (const rwy of runways) {
+    if (rwy.leIdent) {
+      thresholds.push({ ident: rwy.leIdent, heading: rwy.leHeadingDeg, lengthFt: rwy.lengthFt, closed: rwy.closed, inUse: rwy.leIdent === suggestedRwy });
+    }
+    if (rwy.heIdent) {
+      thresholds.push({ ident: rwy.heIdent, heading: rwy.heHeadingDeg, lengthFt: rwy.lengthFt, closed: rwy.closed, inUse: rwy.heIdent === suggestedRwy });
+    }
+  }
+
+  const rows = thresholds.map((th) => {
+    const hdg = th.heading != null ? `${String(Math.round(th.heading)).padStart(3, '0')}°` : '';
+    const len = th.lengthFt != null ? `${th.lengthFt} ft` : '';
+    const closedTag = th.closed ? ' <span style="color:#dc2626;font-size:9px">fechada</span>' : '';
+    const inUseTag = th.inUse
+      ? `<span style="background:#16a34a;color:#fff;font-size:8px;font-weight:700;padding:1px 4px;border-radius:2px;margin-left:4px">${escapeHtml(t('vfr.suggested'))}</span>`
+      : '';
+
+    const rowBg = th.inUse ? 'background:#f0fdf4;border-radius:3px;' : '';
+
+    return `<div style="display:flex;align-items:center;gap:8px;padding:2px 4px;${rowBg}">
+      <span style="font-size:11px;font-weight:${th.inUse ? '700' : '500'};color:${th.inUse ? '#16a34a' : '#1e293b'};min-width:28px">${escapeHtml(th.ident)}</span>
+      <span style="font-size:10px;color:#6b7280;min-width:32px">${hdg}</span>
+      <span style="font-size:10px;color:#6b7280">${len}</span>
+      ${closedTag}${inUseTag}
+    </div>`;
+  }).join('');
+
+  return `
+    <div style="margin:4px 0 6px;padding:5px 8px;background:#f8fafc;border-radius:4px;border:1px solid #e2e8f0">
+      <div style="font-size:9px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">${escapeHtml(t('vfr.runwayInUse'))}</div>
+      ${rows}
+    </div>`;
+}
+
+function buildAirportPopupHtml(
+  airport: MapAerodrome,
+  metar: ParsedMetar | null,
+  runways: PopupRunway[] | null,
+  suggestedRwy: string | null,
+  t: (key: string) => string,
+): string {
+  const catColor = categoryColorHex(metar?.flightCategory ?? airport.flightCategory ?? null);
+  const cat = metar?.flightCategory ?? airport.flightCategory ?? null;
+
+  const elevHtml = airport.elevation != null
+    ? `<span style="font-size:10px;color:#6b7280;margin-left:6px">${airport.elevation} ft</span>`
+    : '';
+
+  let metarHtml: string;
+  if (metar) {
+    const cloudsTxt = metar.clouds.length > 0
+      ? metar.clouds.map((c) => `${c.cover} ${c.base}`).join(' / ')
+      : '—';
+
+    metarHtml = `
+      <div style="margin:6px 0;padding:6px 8px;background:#f1f5f9;border-radius:4px;border:1px solid #e2e8f0">
+        <div style="font-family:monospace;font-size:10px;color:#334155;margin-bottom:5px;word-break:break-all;line-height:1.4">${escapeHtml(metar.raw)}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 12px;font-size:10px;color:#475569">
+          <span><b>${escapeHtml(t('vfr.wind'))}:</b> ${formatPopupWind(metar.windDirection, metar.windSpeed)}</span>
+          <span><b>${escapeHtml(t('vfr.visibility'))}:</b> ${metar.visibility ?? '—'}</span>
+          ${metar.ceiling != null ? `<span><b>${escapeHtml(t('vfr.ceiling'))}:</b> ${metar.ceiling} ft</span>` : ''}
+          <span><b>${escapeHtml(t('vfr.qnh'))}:</b> ${metar.altimeter ?? '—'} hPa</span>
+          <span><b>☁:</b> ${cloudsTxt}</span>
+        </div>
+      </div>`;
+  } else {
+    metarHtml = `<div style="margin:6px 0;font-size:10px;color:#9ca3af;font-style:italic">${escapeHtml(t('vfr.noMetar'))}</div>`;
+  }
+
+  const runwayHtml = runways ? buildRunwayHtml(runways, suggestedRwy, t) : '';
+
+  const catBadge = cat
+    ? `<span style="display:inline-block;background:${catColor};color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:6px;vertical-align:middle">${cat}</span>`
+    : '';
+
+  return `
+    <div style="min-width:260px;max-width:360px;font-family:system-ui,sans-serif">
+      <div style="display:flex;align-items:baseline;margin-bottom:1px">
+        <span style="font-weight:700;font-size:15px;color:#1a1d26">${escapeHtml(airport.icao)}</span>
+        ${catBadge}${elevHtml}
+      </div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(airport.name)}</div>
+      ${metarHtml}
+      ${runwayHtml}
+      <div style="display:flex;gap:4px">
+        <button data-role="origin" style="flex:1;padding:5px 4px;background:#2563eb;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer">
+          ${escapeHtml(t('vfr.origin'))}
+        </button>
+        <button data-role="destination" style="flex:1;padding:5px 4px;background:#2563eb;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer">
+          ${escapeHtml(t('vfr.destination'))}
+        </button>
+        <button data-role="alternate" style="flex:1;padding:5px 4px;background:#2563eb;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer">
+          ${escapeHtml(t('vfr.alternate'))}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function bindPopupRoleButtons(
+  popup: any,
+  airport: MapAerodrome,
+  map: any,
+  refs: { origin: { current: ((a: Aerodrome) => void) | null }; dest: { current: ((a: Aerodrome) => void) | null }; alt: { current: ((a: Aerodrome) => void) | null } },
+) {
+  const popupEl = popup.getElement();
+  if (!popupEl) return;
+  popupEl.querySelectorAll('button[data-role]').forEach((btn: any) => {
+    btn.addEventListener('click', (e: any) => {
+      const role = e.currentTarget.getAttribute('data-role');
+      const aerodrome: Aerodrome = {
+        icao: airport.icao, iata: airport.iata, name: airport.name,
+        city: airport.city, country: airport.country,
+        latitude: airport.latitude, longitude: airport.longitude,
+        elevation: airport.elevation, type: airport.type,
+      };
+      if (role === 'origin') refs.origin.current?.(aerodrome);
+      else if (role === 'destination') refs.dest.current?.(aerodrome);
+      else if (role === 'alternate') refs.alt.current?.(aerodrome);
+      map.closePopup();
+    });
+  });
 }
 
 // --------------- Satellite image URL ---------------

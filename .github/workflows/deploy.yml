@@ -90,8 +90,6 @@ jobs:
       - name: Wait for rollout
         run: |
           kubectl rollout status deployment/api -n fs-suite --timeout=300s
-          kubectl rollout status statefulset/postgres -n fs-suite --timeout=300s
-          kubectl rollout status deployment/redis -n fs-suite --timeout=300s
 
       - name: Verify health
         run: |

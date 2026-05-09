@@ -173,6 +173,7 @@ export class AirportsController {
     return this.chartsService.searchCharts(icao);
   }
 
+  @Public()
   @Get(':icao')
   @ApiOperation({ summary: 'Get aerodrome details by ICAO code, including runways' })
   async findOne(@Param('icao') icao: string): Promise<unknown> {

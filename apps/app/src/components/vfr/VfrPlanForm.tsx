@@ -16,7 +16,7 @@ import { ChecklistPanel } from './ChecklistPanel';
 import { MetarDisplay, type ParsedMetar } from './MetarDisplay';
 import { ReaChartsPanel } from './ReaChartsPanel';
 import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
-import { type RouteWaypoint, buildVfrRouteText, calculateRouteLegs, haversineDistanceNm, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo } from './vfrNavigation';
+import { type RouteWaypoint, buildVfrRouteText, calculateRouteLegs, haversineDistanceNm, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance } from './vfrNavigation';
 import { NearbyPoisPanel } from './NearbyPoisPanel';
 
 // ---------- Types ----------
@@ -407,18 +407,29 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
     }
   }, [minFuelKg, fuelManuallyEdited]);
 
-  // Suggested cruise level based on average magnetic course and departure region
+  const originCategory = origin ? metars[origin.icao]?.flightCategory : undefined;
+  const isImc = originCategory === 'IFR' || originCategory === 'LIFR';
+
+  // Suggested cruise level based on average magnetic course, departure region, and weather
   const cruiseSuggestion = useMemo(
     () => hasIfr
       ? suggestIfrCruiseLevel(routeLegs, origin?.icao)
-      : suggestCruiseLevel(routeLegs, origin?.icao),
-    [routeLegs, origin?.icao, hasIfr],
+      : suggestCruiseLevel(routeLegs, origin?.icao, isImc),
+    [routeLegs, origin?.icao, hasIfr, isImc],
   );
 
   const ruleInfo = useMemo(
     () => origin?.icao ? getVfrRuleInfo(origin.icao) : null,
     [origin?.icao],
   );
+
+  const cruiseAltClearance: AltitudeClearance[] | null = useMemo(() => {
+    if (!cruiseSuggestion || hasIfr) return null;
+    const originMetar = origin ? metars[origin.icao] : undefined;
+    if (!originMetar || originMetar.clouds.length === 0) return null;
+    const elev = origin?.elevation ?? 0;
+    return filterAltitudesByCloudClearance(cruiseSuggestion.altitudes, originMetar.clouds, elev);
+  }, [cruiseSuggestion, hasIfr, origin, metars]);
 
   // Auto-suggest TOD distance for IFR
   const suggestedTodNm = useMemo(() => {
@@ -782,12 +793,14 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
                 {t('vfr.avgMagCourse')}: {cruiseSuggestion.averageMC}°
                 {hasVfr && ruleInfo ? ` · ${t(`vfr.rule.${ruleInfo.name}`)}` : ''}
                 {hasIfr ? ` · ${t('vfr.ifrRule')}` : ''}
+                {hasVfr && isImc ? ` · ${t('vfr.imcAltitudes')}` : ''}
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View className="flex-row gap-1.5">
                   {cruiseSuggestion.altitudes.filter((a) => hasIfr ? a >= 2000 && a <= 25000 : true).map((alt) => {
                     const fl = `FL${String(Math.round(alt / 100)).padStart(3, '0')}`;
                     const isSelected = cruiseLevel === fl;
+                    const blocked = cruiseAltClearance?.find((c) => c.altitude === alt)?.blocked ?? false;
                     return (
                       <Pressable
                         key={alt}
@@ -795,17 +808,19 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
                         className={`rounded-sm border px-2.5 py-1.5 ${
                           isSelected
                             ? 'border-primary bg-primary/10'
-                            : 'border-border bg-surface'
+                            : blocked
+                              ? 'border-destructive/40 bg-destructive/5'
+                              : 'border-border bg-surface'
                         }`}
                       >
                         <Text
                           className={`text-[11px] font-bold ${
-                            isSelected ? 'text-primary' : 'text-foreground'
+                            isSelected ? 'text-primary' : blocked ? 'text-destructive/60' : 'text-foreground'
                           }`}
                         >
-                          {fl}
+                          {blocked ? `⛅ ${fl}` : fl}
                         </Text>
-                        <Text className="text-[9px] text-muted-foreground">
+                        <Text className={`text-[9px] ${blocked ? 'text-destructive/50' : 'text-muted-foreground'}`}>
                           {alt.toLocaleString()} ft
                         </Text>
                       </Pressable>
@@ -813,6 +828,11 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
                   })}
                 </View>
               </ScrollView>
+              {cruiseAltClearance?.some((c) => c.blocked) ? (
+                <Text className="mt-1 text-[10px] text-destructive/70">
+                  ⛅ {t('vfr.cloudClearanceWarning')}
+                </Text>
+              ) : null}
             </>
           ) : (
             <Input

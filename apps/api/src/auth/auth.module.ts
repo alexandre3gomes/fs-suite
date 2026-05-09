@@ -10,6 +10,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { VatsimStrategy } from './strategies/vatsim.strategy';
 
 @Module({
   imports: [
@@ -32,7 +33,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, GoogleStrategy, JwtStrategy],
+  providers: [AuthService, GoogleStrategy, VatsimStrategy, JwtStrategy],
   exports: [AuthService],
 })
 export class AuthModule {}

@@ -4,5 +4,8 @@ kind: Kustomization
 resources:
   - ../../base
 
-# Production uses the base values as-is (api.fssuite.app, TLS, letsencrypt-prod).
-# Add production-specific patches here if needed in the future.
+patches:
+  - path: patch-deployment-external-db.yaml
+    target:
+      kind: Deployment
+      name: api

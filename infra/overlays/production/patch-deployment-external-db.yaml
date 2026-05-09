@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: fs-suite
+spec:
+  template:
+    spec:
+      # Override init container to use external DATABASE_URL from secret
+      initContainers:
+        - name: migrate
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: DATABASE_URL
+      containers:
+        - name: api
+          env:
+            # Override DATABASE_URL — external Neon instead of in-cluster Postgres
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: DATABASE_URL
+            # Override REDIS_URL — external Upstash instead of in-cluster Redis
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: REDIS_URL
+            # VATSIM OAuth
+            - name: VATSIM_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: VATSIM_CLIENT_ID
+            - name: VATSIM_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: VATSIM_CLIENT_SECRET
+            - name: VATSIM_CALLBACK_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: api-config
+                  key: VATSIM_CALLBACK_URL
+            - name: VATSIM_OAUTH_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: api-config
+                  key: VATSIM_OAUTH_BASE_URL

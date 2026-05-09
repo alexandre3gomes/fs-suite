@@ -1,27 +1,44 @@
 import { Button, Card, CardContent, logoSource, Separator, Text } from '@fs-suite/ui';
 import { Redirect } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Image, View } from 'react-native';
 
-import { signInWithGoogle } from '../../../src/services/auth.service';
+import { apiClient } from '../../../src/services/api.client';
+import { signInWithGoogle, signInWithVatsim } from '../../../src/services/auth.service';
 import { useAuthStore } from '../../../src/stores/auth.store';
 
 export default function LoginScreen(): JSX.Element {
   const { t } = useTranslation();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<'google' | 'vatsim' | null>(null);
+  const [providers, setProviders] = useState<string[]>(['google']);
+
+  useEffect(() => {
+    apiClient.get<{ providers: string[] }>('/auth/providers')
+      .then((res) => setProviders(res.providers))
+      .catch(() => {});
+  }, []);
 
   if (isAuthenticated) {
     return <Redirect href="/(auth)/dashboard" />;
   }
 
-  const handleSignIn = async (): Promise<void> => {
-    setLoading(true);
+  const handleGoogleSignIn = async (): Promise<void> => {
+    setLoading('google');
     try {
       await signInWithGoogle();
     } finally {
-      setLoading(false);
+      setLoading(null);
+    }
+  };
+
+  const handleVatsimSignIn = async (): Promise<void> => {
+    setLoading('vatsim');
+    try {
+      await signInWithVatsim();
+    } finally {
+      setLoading(null);
     }
   };
 
@@ -55,15 +72,15 @@ export default function LoginScreen(): JSX.Element {
 
             <Separator className="my-8" />
 
-            {/* Sign in button */}
+            {/* Sign in buttons */}
             <Button
               variant="outline"
               size="lg"
               className="w-full gap-3 border-border bg-card shadow-sm"
-              onPress={() => { void handleSignIn(); }}
-              disabled={loading}
+              onPress={() => { void handleGoogleSignIn(); }}
+              disabled={loading !== null}
             >
-              {loading ? (
+              {loading === 'google' ? (
                 <ActivityIndicator size="small" color="hsl(221.2, 83.2%, 53.3%)" />
               ) : (
                 <Text style={{ fontSize: 18, fontWeight: '700', color: '#4285F4' }}>G</Text>
@@ -72,6 +89,25 @@ export default function LoginScreen(): JSX.Element {
                 {t('login.signInButton')}
               </Text>
             </Button>
+
+            {providers.includes('vatsim') ? (
+              <Button
+                variant="outline"
+                size="lg"
+                className="mt-3 w-full gap-3 border-border bg-card shadow-sm"
+                onPress={() => { void handleVatsimSignIn(); }}
+                disabled={loading !== null}
+              >
+                {loading === 'vatsim' ? (
+                  <ActivityIndicator size="small" color="#29B473" />
+                ) : (
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#29B473' }}>V</Text>
+                )}
+                <Text className="text-sm font-medium text-foreground">
+                  {t('login.signInVatsim')}
+                </Text>
+              </Button>
+            ) : null}
 
             {/* Terms */}
             <Text variant="muted" className="mt-8 text-center text-xs leading-5">

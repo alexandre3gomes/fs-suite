@@ -147,12 +147,13 @@ function isInOddRange(mc: number, rule: SemicircularRule): boolean {
   return mc >= start || mc < end;
 }
 
-function generateAltitudes(odd: boolean, maxFL: number): number[] {
+function generateAltitudes(odd: boolean, maxFL: number, imc: boolean): number[] {
   const result: number[] = [];
+  const offset = imc ? 0 : 500;
   const start = odd ? 3 : 4;
   const maxAlt = maxFL * 100;
-  for (let n = start; n * 1000 + 500 <= maxAlt; n += 2) {
-    result.push(n * 1000 + 500);
+  for (let n = start; n * 1000 + offset <= maxAlt; n += 2) {
+    result.push(n * 1000 + offset);
   }
   return result;
 }
@@ -161,12 +162,13 @@ function generateAltitudes(odd: boolean, maxFL: number): number[] {
  * VFR semicircular altitude rule — region-aware.
  * Returns valid cruising altitudes (in feet) based on magnetic course
  * and the departure aerodrome's ICAO prefix.
+ * When imc=true (IFR/LIFR conditions), uses full thousands instead of +500.
  */
-export function suggestedVfrAltitudes(magneticCourse: number, icaoPrefix?: string): number[] {
+export function suggestedVfrAltitudes(magneticCourse: number, icaoPrefix?: string, imc = false): number[] {
   const mc = ((magneticCourse % 360) + 360) % 360;
   const rule = icaoPrefix ? getRuleForIcao(icaoPrefix) : RULE_ICAO;
   const odd = isInOddRange(mc, rule);
-  return generateAltitudes(odd, rule.maxFL);
+  return generateAltitudes(odd, rule.maxFL, imc);
 }
 
 /**
@@ -184,11 +186,13 @@ export function getVfrRuleInfo(icaoPrefix: string): { name: string; oddRange: [n
 
 /**
  * Suggest a single cruise level for the entire route based on the average
- * magnetic course and the departure aerodrome prefix.
+ * magnetic course, the departure aerodrome prefix, and weather conditions.
+ * When imc=true (IFR/LIFR), altitudes use full thousands (ICA 100-12).
  */
 export function suggestCruiseLevel(
   routeLegs: RouteLeg[],
   departureIcao?: string,
+  imc = false,
 ): { altitudes: number[]; averageMC: number } | null {
   if (routeLegs.length === 0) return null;
 
@@ -204,7 +208,7 @@ export function suggestCruiseLevel(
   const avgMC = ((toDeg(Math.atan2(sinSum, cosSum)) % 360) + 360) % 360;
 
   return {
-    altitudes: suggestedVfrAltitudes(avgMC, departureIcao),
+    altitudes: suggestedVfrAltitudes(avgMC, departureIcao, imc),
     averageMC: Math.round(avgMC),
   };
 }
@@ -290,6 +294,48 @@ export function calculateTodDistance(cruiseAltFt: number, destElevationFt: numbe
   const descent = cruiseAltFt - destElevationFt;
   if (descent <= 0) return 0;
   return Math.round((descent / 1000) * 3);
+}
+
+// --------------- Cloud Clearance Filter ---------------
+
+export interface CloudLayer {
+  cover: string;
+  base: number; // AGL in feet (as reported in METAR)
+}
+
+export interface AltitudeClearance {
+  altitude: number;
+  blocked: boolean;
+}
+
+/**
+ * VFR cloud clearance — 1000 ft vertical from BKN/OVC layers.
+ * Cloud bases are AGL; elevationFt converts them to MSL for comparison.
+ * Altitudes above the lowest OVC layer are also blocked (no ground reference).
+ */
+export function filterAltitudesByCloudClearance(
+  altitudes: number[],
+  clouds: CloudLayer[],
+  elevationFt: number,
+): AltitudeClearance[] {
+  const significant = clouds.filter((c) => c.cover === 'BKN' || c.cover === 'OVC');
+  if (significant.length === 0) {
+    return altitudes.map((a) => ({ altitude: a, blocked: false }));
+  }
+
+  const basesMsl = significant.map((c) => c.base + elevationFt);
+  const lowestOvc = clouds
+    .filter((c) => c.cover === 'OVC')
+    .map((c) => c.base + elevationFt)
+    .sort((a, b) => a - b)[0];
+
+  return altitudes.map((alt) => {
+    if (lowestOvc !== undefined && alt >= lowestOvc) {
+      return { altitude: alt, blocked: true };
+    }
+    const tooClose = basesMsl.some((base) => Math.abs(alt - base) < 1000);
+    return { altitude: alt, blocked: tooClose };
+  });
 }
 
 /** Calculate navigation data for every leg of a route */
