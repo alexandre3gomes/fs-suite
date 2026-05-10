@@ -6,7 +6,6 @@ namespace: fs-suite
 resources:
   - namespace.yaml
   - api/configmap.yaml
-  - api/secret.yaml
   - api/deployment.yaml
   - api/service.yaml
   - ingress/ingress.yaml
