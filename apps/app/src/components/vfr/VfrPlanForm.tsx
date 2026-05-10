@@ -7,6 +7,7 @@ import { type AircraftSpec, findAircraftByIcao } from '../../data/aircraftCatalo
 import { getChecklistsForAircraft } from '../../data/checklistCatalog';
 import { apiClient } from '../../services/api.client';
 
+
 import { AerodromeMap } from './AerodromeMap';
 import { AerodromeSearch, type Aerodrome } from './AerodromeSearch';
 import { AircraftSelect } from './AircraftSelect';
@@ -17,6 +18,7 @@ import { NearbyPoisPanel } from './NearbyPoisPanel';
 import { ReaChartsPanel } from './ReaChartsPanel';
 import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
 import { VfrPlanLayout } from './VfrPlanLayout';
+import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
 import { type RouteWaypoint, buildVfrRouteText, calculateRouteLegs, haversineDistanceNm, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance } from './vfrNavigation';
 
 // ---------- Types ----------
@@ -1444,20 +1446,14 @@ function OfpViewer({ pdfUrl }: { pdfUrl: string }) {
   const [expanded, setExpanded] = useState(false);
   const iframeRef = useRef<View>(null);
   const [maximized, setMaximized] = useState(false);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
-
-  const getDoc = (): Document | undefined => (globalThis as Record<string, unknown>).document as Document | undefined;
-  const openUrl = (url: string) => {
-    const w = (globalThis as Record<string, unknown>).window as { open?: (url: string, target: string) => void } | undefined;
-    w?.open(url, '_blank');
-  };
+  const overlayRef = useRef<DomElement | null>(null);
 
   // Inline PDF iframe
   useEffect(() => {
     if (Platform.OS !== 'web' || !expanded || !iframeRef.current) return;
     const doc = getDoc();
     if (!doc) return;
-    const el = iframeRef.current as unknown as HTMLDivElement;
+    const el = iframeRef.current as unknown as DomElement;
     el.innerHTML = '';
     const iframe = doc.createElement('iframe');
     iframe.src = pdfUrl;
@@ -1498,7 +1494,7 @@ function OfpViewer({ pdfUrl }: { pdfUrl: string }) {
       'background:none;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-size:12px;cursor:pointer;padding:4px 10px;border-radius:4px;flex-shrink:0;';
     extBtn.textContent = '↗';
     extBtn.title = 'Open in new tab';
-    extBtn.onclick = () => openUrl(pdfUrl);
+    extBtn.onclick = () => openExternal(pdfUrl);
     header.appendChild(extBtn);
 
     const closeBtn = doc.createElement('button');
@@ -1521,7 +1517,7 @@ function OfpViewer({ pdfUrl }: { pdfUrl: string }) {
     doc.body.appendChild(overlay);
     overlayRef.current = overlay;
 
-    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMaximized(false); };
+    const handleEsc = (e: DomKeyboardEvent) => { if (e.key === 'Escape') setMaximized(false); };
     doc.addEventListener('keydown', handleEsc);
 
     return () => {
@@ -1550,7 +1546,7 @@ function OfpViewer({ pdfUrl }: { pdfUrl: string }) {
               SimBrief OFP
             </Text>
             <Pressable
-              onPress={() => openUrl(pdfUrl)}
+              onPress={() => openExternal(pdfUrl)}
               className="rounded-sm border border-border px-2 py-0.5 active:bg-muted"
             >
               <Text className="text-[10px] text-muted-foreground">↗</Text>

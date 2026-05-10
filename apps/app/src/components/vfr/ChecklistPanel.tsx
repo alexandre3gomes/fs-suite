@@ -3,17 +3,10 @@ import { Platform, Pressable, Text, View } from 'react-native';
 
 import { type ChecklistEntry, getChecklistsForAircraft } from '../../data/checklistCatalog';
 
+import { type DomElement, getDoc, openExternal } from './dom-types';
+
 interface Props {
   icaoType: string | null;
-}
-
-function getDoc(): Document | undefined {
-  return (globalThis as Record<string, unknown>).document as Document | undefined;
-}
-
-function openExternal(url: string): void {
-  const w = (globalThis as Record<string, unknown>).window as { open?: (url: string, target: string) => void } | undefined;
-  w?.open(url, '_blank');
 }
 
 const VIEWER_HEIGHT = 500;
@@ -22,7 +15,7 @@ export function ChecklistPanel({ icaoType }: Props) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [maximized, setMaximized] = useState(false);
   const iframeRef = useRef<View>(null);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<DomElement | null>(null);
 
   const checklists = useMemo(
     () => (icaoType ? getChecklistsForAircraft(icaoType) : []),
@@ -39,7 +32,7 @@ export function ChecklistPanel({ icaoType }: Props) {
     if (Platform.OS !== 'web' || !iframeRef.current || !selected) return;
     const doc = getDoc();
     if (!doc) return;
-    const el = iframeRef.current as unknown as HTMLDivElement;
+    const el = iframeRef.current as unknown as DomElement;
     el.innerHTML = '';
     const iframe = doc.createElement('iframe');
     iframe.src = selected.pdfUrl;

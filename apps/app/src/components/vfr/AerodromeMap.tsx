@@ -7,38 +7,10 @@ import { apiClient } from '../../services/api.client';
 
 import type { Aerodrome } from './AerodromeSearch';
 import type { ParsedMetar } from './MetarDisplay';
+import { type DomDocument, type DomElement, type DomEvent } from './dom-types';
 import { type RouteWaypoint, haversineDistanceNm, initialBearing, getMagneticDeclination } from './vfrNavigation';
 
 type LeafletModule = typeof L;
-
-interface DomDocument {
-  createElement(tag: string): DomElement;
-  head: DomElement;
-  body: DomElement;
-  fullscreenElement: DomElement | null;
-  exitFullscreen(): void;
-  addEventListener(event: string, handler: () => void): void;
-  removeEventListener(event: string, handler: () => void): void;
-}
-
-interface DomElement {
-  rel?: string;
-  href?: string;
-  crossOrigin?: string;
-  textContent?: string;
-  value?: string;
-  style?: Record<string, string>;
-  appendChild(child: DomElement): void;
-  requestFullscreen?(): void;
-  querySelector?(selector: string): DomElement | null;
-  querySelectorAll?(selector: string): DomElement[];
-  addEventListener(event: string, handler: (e: DomEvent) => void): void;
-  getAttribute?(attr: string): string | null;
-}
-
-interface DomEvent {
-  currentTarget: DomElement | null;
-}
 
 interface WmsFeatureProperties {
   typ?: string;

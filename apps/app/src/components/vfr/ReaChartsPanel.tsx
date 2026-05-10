@@ -4,6 +4,8 @@ import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { API_URL, apiClient } from '../../services/api.client';
 
+import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
+
 interface ReaRegionInfo {
   regionId: string;
   chartName: string;
@@ -12,15 +14,6 @@ interface ReaRegionInfo {
 
 interface Props {
   highlightRegionIds?: string[];
-}
-
-function getDoc(): Document | undefined {
-  return (globalThis as Record<string, unknown>).document as Document | undefined;
-}
-
-function openExternal(url: string): void {
-  const w = (globalThis as Record<string, unknown>).window as { open?: (url: string, target: string) => void } | undefined;
-  w?.open(url, '_blank');
 }
 
 const AISWEB_HOST = 'aisweb.decea.mil.br';
@@ -42,7 +35,7 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [maximized, setMaximized] = useState(false);
   const iframeRef = useRef<View>(null);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<DomElement | null>(null);
 
   const highlightSet = new Set(highlightRegionIds);
 
@@ -69,7 +62,7 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
     if (Platform.OS !== 'web' || !iframeRef.current || !selectedRegion) return;
     const doc = getDoc();
     if (!doc) return;
-    const el = iframeRef.current as unknown as HTMLDivElement;
+    const el = iframeRef.current as unknown as DomElement;
     el.innerHTML = '';
     const iframe = doc.createElement('iframe');
     iframe.src = viewerUrl(selectedRegion.chartPdfUrl);
@@ -163,13 +156,13 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
   // Update overlay iframe + chip highlights when switching charts
   useEffect(() => {
     if (!maximized || !overlayRef.current || !selectedRegion) return;
-    const iframe = overlayRef.current.querySelector('iframe');
+    const iframe = overlayRef.current.querySelector?.('iframe');
     if (iframe) iframe.src = viewerUrl(selectedRegion.chartPdfUrl);
 
-    const chipBtns = overlayRef.current.querySelectorAll(
+    const chipBtns = overlayRef.current.querySelectorAll?.(
       'div:first-child > div:first-child > button',
-    );
-    chipBtns.forEach((chip: HTMLElement, idx: number) => {
+    ) ?? [];
+    chipBtns.forEach((chip: DomElement, idx: number) => {
       const active = idx === selectedIdx;
       const highlighted = highlightSet.has(regions[idx]?.regionId ?? '');
       chip.style.borderColor = active ? 'rgba(96,165,250,0.6)' : highlighted ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.2)';
@@ -183,7 +176,7 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
     if (Platform.OS !== 'web' || !maximized) return;
     const doc = getDoc();
     if (!doc) return;
-    const handler = (e: KeyboardEvent) => {
+    const handler = (e: DomKeyboardEvent) => {
       if (e.key === 'Escape') setMaximized(false);
     };
     doc.addEventListener('keydown', handler);

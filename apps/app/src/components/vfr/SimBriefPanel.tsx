@@ -7,10 +7,7 @@ import { Dropdown } from 'react-native-element-dropdown';
 
 import { apiClient } from '../../services/api.client';
 
-function openExternal(url: string): void {
-  const w = (globalThis as Record<string, unknown>).window as { open?: (url: string, target: string) => void } | undefined;
-  w?.open(url, '_blank');
-}
+import { openExternal } from './dom-types';
 
 const SIMBRIEF_DISPATCH_URL = 'https://dispatch.simbrief.com/options/custom';
 
