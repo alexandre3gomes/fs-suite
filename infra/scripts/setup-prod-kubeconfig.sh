@@ -93,7 +93,6 @@ fi
 
 echo ""
 echo "Done. Use:"
-echo "  kubectl --context k3d-fs-suite ...      # local"
 echo "  kubectl --context fs-suite-prod ...     # production"
 echo ""
 echo "Or source the helper aliases:"

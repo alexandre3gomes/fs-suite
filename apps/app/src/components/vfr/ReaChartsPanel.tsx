@@ -14,8 +14,13 @@ interface Props {
   highlightRegionIds?: string[];
 }
 
-function getDoc(): any {
-  return (globalThis as any).document;
+function getDoc(): Document | undefined {
+  return (globalThis as Record<string, unknown>).document as Document | undefined;
+}
+
+function openExternal(url: string): void {
+  const w = (globalThis as Record<string, unknown>).window as { open?: (url: string, target: string) => void } | undefined;
+  w?.open(url, '_blank');
 }
 
 const AISWEB_HOST = 'aisweb.decea.mil.br';
@@ -37,7 +42,7 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [maximized, setMaximized] = useState(false);
   const iframeRef = useRef<View>(null);
-  const overlayRef = useRef<any>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
 
   const highlightSet = new Set(highlightRegionIds);
 
@@ -55,7 +60,6 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
       })
       .catch(() => setRegions([]))
       .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedRegion = selectedIdx !== null ? regions[selectedIdx] : undefined;
@@ -65,7 +69,7 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
     if (Platform.OS !== 'web' || !iframeRef.current || !selectedRegion) return;
     const doc = getDoc();
     if (!doc) return;
-    const el = iframeRef.current as any;
+    const el = iframeRef.current as unknown as HTMLDivElement;
     el.innerHTML = '';
     const iframe = doc.createElement('iframe');
     iframe.src = viewerUrl(selectedRegion.chartPdfUrl);
@@ -125,7 +129,7 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
       'background:none;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-size:12px;cursor:pointer;padding:4px 10px;border-radius:4px;flex-shrink:0;';
     extBtn.textContent = '↗';
     extBtn.title = 'Open in new tab';
-    extBtn.onclick = () => (globalThis as any).window?.open(selectedRegion!.chartPdfUrl, '_blank');
+    extBtn.onclick = () => openExternal(selectedRegion!.chartPdfUrl);
     header.appendChild(extBtn);
 
     const closeBtn = doc.createElement('button');
@@ -154,7 +158,6 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
         overlayRef.current = null;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maximized, selectedRegion, regions, selectedIdx]);
 
   // Update overlay iframe + chip highlights when switching charts
@@ -166,14 +169,13 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
     const chipBtns = overlayRef.current.querySelectorAll(
       'div:first-child > div:first-child > button',
     );
-    chipBtns.forEach((chip: any, idx: number) => {
+    chipBtns.forEach((chip: HTMLElement, idx: number) => {
       const active = idx === selectedIdx;
       const highlighted = highlightSet.has(regions[idx]?.regionId ?? '');
       chip.style.borderColor = active ? 'rgba(96,165,250,0.6)' : highlighted ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.2)';
       chip.style.background = active ? 'rgba(96,165,250,0.15)' : highlighted ? 'rgba(239,68,68,0.08)' : 'transparent';
       chip.style.color = active ? '#93c5fd' : highlighted ? '#fca5a5' : 'rgba(255,255,255,0.7)';
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIdx, maximized, selectedRegion]);
 
   // Escape closes overlay
@@ -181,7 +183,7 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
     if (Platform.OS !== 'web' || !maximized) return;
     const doc = getDoc();
     if (!doc) return;
-    const handler = (e: any) => {
+    const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setMaximized(false);
     };
     doc.addEventListener('keydown', handler);
@@ -248,7 +250,7 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
               DECEA AISWEB — {selectedRegion.chartName}
             </Text>
             <Pressable
-              onPress={() => (globalThis as any).window?.open(selectedRegion.chartPdfUrl, '_blank')}
+              onPress={() => openExternal(selectedRegion.chartPdfUrl)}
               className="rounded-sm border border-border px-2 py-0.5 active:bg-muted"
             >
               <Text className="text-[10px] text-muted-foreground">↗</Text>

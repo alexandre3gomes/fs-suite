@@ -87,7 +87,6 @@ export function initialBearing(lat1: number, lon1: number, lat2: number, lon2: n
  */
 export function getMagneticDeclination(lat: number, lng: number): number {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const geomagnetism = require('geomagnetism');
     const info = geomagnetism.model().point([lat, lng]);
     return info.decl;

@@ -1,128 +1,72 @@
-# Infraestrutura — FS Suite
+# Infrastructure — FS Suite
 
-Manifests Kubernetes para deploy em produção, organizados com [Kustomize](https://kustomize.io/).
+Kubernetes manifests for production deployment, organized with [Kustomize](https://kustomize.io/).
 
-> A infraestrutura do cluster (bootstrap, namespaces, quotas, monitoring, TLS) está no repositório separado [`infra-k8s`](https://github.com/alexandre3gomes/infra-k8s).
+> Cluster bootstrap (K3s install, node setup, firewall rules) is in the separate [`infra-k8s`](https://github.com/alexandre3gomes/infra-k8s) repository.
 
-## Estrutura
+## Structure
 
 ```
 infra/
-├── base/                          # Manifests base (API, Ingress, Namespace)
+├── base/                          # Base manifests
 │   ├── kustomization.yaml
 │   ├── namespace.yaml
 │   ├── api/                       # Deployment, Service, ConfigMap, Secret
-│   └── ingress/                   # Ingress nginx com TLS
+│   └── ingress/                   # Ingress (nginx, Cloudflare-terminated SSL)
 ├── overlays/
-│   └── production/                # Produção: external DBs (Neon + Upstash)
+│   └── production/                # Production overlay (external DBs, VATSIM patch)
 │       ├── kustomization.yaml
 │       ├── patch-deployment-external-db.yaml
-│       └── setup.sh              # Setup inicial interativo
+│       └── setup.sh              # Interactive initial setup script
 └── scripts/
-    ├── kube-aliases.sh            # Alias kprod para kubectl prod
-    └── setup-prod-kubeconfig.sh   # Configurar kubectl local → VM prod
+    ├── kube-aliases.sh            # Shell alias: kprod → kubectl on production
+    └── setup-prod-kubeconfig.sh   # Configure local kubectl → production VM
 ```
 
-## Ambiente local
+## Local Development
 
-O dev local **não usa Kubernetes**. Roda diretamente:
+Local development does **not** use Kubernetes. Services run directly:
 
-| Componente | Como roda | Porta |
-|------------|-----------|-------|
-| API (NestJS) | `pnpm dev` (nest start --watch) | `localhost:3001` |
-| App (Expo) | `pnpm dev` (expo start --web) | `localhost:8081` |
-| PostgreSQL | Docker container `fs-suite-postgres` | `localhost:5433` |
-| Redis | Docker container `fs-suite-redis` | `localhost:6380` |
-
-## Produção
-
-| Componente | Tipo | Serviço |
-|------------|------|---------|
-| API (NestJS) | Deployment K8s | `ghcr.io/alexandre3gomes/fs-suite/api` |
-| PostgreSQL | Externo | **Neon** (serverless) |
-| Redis | Externo | **Upstash** (serverless, TLS) |
-| Cluster | K3s single-node | OCI VM (`158.179.221.244`) |
-
-### Setup inicial
+| Component | How | Port |
+|-----------|-----|------|
+| API (NestJS) | `pnpm dev` | `localhost:3001` |
+| App (Expo) | `pnpm dev` | `localhost:8081` |
+| PostgreSQL | Docker container | `localhost:5432` |
+| Redis | Docker container | `localhost:6379` |
 
 ```bash
-# 1. Configurar kubectl local → produção
-./infra/scripts/setup-prod-kubeconfig.sh ubuntu@oci-vm
+# Start databases
+docker compose up -d
 
-# 2. Carregar alias
-source infra/scripts/kube-aliases.sh
-
-# 3. Setup do ambiente (cria namespace, secrets, aplica manifests)
-./infra/overlays/production/setup.sh
-
-# 4. Verificar
-kprod get pods
+# Start all services
+pnpm dev
 ```
 
-### CI/CD
+## Production
 
-O branching model é **feature branches → PR → merge em main**.
+### Topology
 
-| Workflow | Trigger | O que faz |
-|----------|---------|-----------|
-| `ci.yml` | Push em `main` + PRs para `main` | Install, lint, typecheck, build, test |
-| `deploy.yml` | Push em `main` (paths: `apps/api/`, `infra/`, `packages/`) | Build Docker → GHCR, apply K8s manifests, rollout |
-| `deploy-app.yml` | Push em `main` (paths: `apps/app/`, `packages/ui/`, `packages/types/`) | Build Expo web → Cloudflare Pages |
+| Component | Service | Details |
+|-----------|---------|---------|
+| Frontend | Cloudflare Pages | Project `fs-suite-app` |
+| API | K3s Deployment | OCI VM (`158.179.221.244`), ARM64 |
+| Database | Neon | Serverless PostgreSQL, TLS |
+| Cache | Upstash | Serverless Redis, TLS |
+| DNS/SSL | Cloudflare | Automatic TLS, auto-renew |
+| Container Registry | GHCR | `ghcr.io/alexandre3gomes/fs-suite/api` |
 
-### GitHub Secrets necessários
+### Domain and DNS
 
-| Secret | Onde criar | Usado por |
-|--------|-----------|-----------|
-| `KUBECONFIG` | Environment `production` | `deploy.yml` — acesso kubectl ao cluster K8s |
-| `CLOUDFLARE_API_TOKEN` | Repo secrets | `deploy-app.yml` — deploy Cloudflare Pages (precisa permissão Pages:Edit) |
-| `CLOUDFLARE_ACCOUNT_ID` | Repo secrets | `deploy-app.yml` — identificação da conta Cloudflare |
+Domain `fs-suite.com` is managed via Cloudflare (nameservers migrated from IONOS).
 
-### Deploy API (K8s)
-
-A cada merge em `main` que altere código da API:
-
-1. Builda imagem Docker multi-platform (amd64 + arm64) e pusha para GHCR
-2. Aplica os manifests via Kustomize com a imagem taggeada pelo git sha
-3. Aguarda rollout e verifica health dos pods
-
-### Deploy App (Cloudflare Pages)
-
-A cada merge em `main` que altere código do frontend:
-
-1. Instala dependências e builda o Expo web (`expo export --platform web`)
-2. Deploya os static files para Cloudflare Pages via wrangler
-3. CDN global distribui automaticamente
-
-## Secrets
-
-O `base/api/secret.yaml` contém placeholders. Em produção, o `setup.sh` cria o secret interativamente:
-
-| Secret | Descrição |
-|--------|-----------|
-| `DATABASE_URL` | Connection string PostgreSQL (Neon) |
-| `REDIS_URL` | Connection string Redis (Upstash) |
-| `GOOGLE_CLIENT_ID/SECRET` | Google OAuth |
-| `VATSIM_CLIENT_ID/SECRET` | VATSIM OAuth (opcional) |
-| `JWT_PRIVATE_KEY/PUBLIC_KEY` | RS256 keypair |
-| `ENCRYPTION_KEY` | AES-256-GCM (32-byte hex) |
-| `SENTRY_DSN/AUTH_TOKEN` | Sentry (opcional) |
-
-**Nunca commitar secrets reais.**
-
-## Domínio e DNS
-
-O domínio `fs-suite.com` é gerenciado via **Cloudflare** (nameservers migrados do IONOS).
-
-| Registro | Tipo | Destino | Proxy |
-|----------|------|---------|-------|
+| Record | Type | Target | Proxy |
+|--------|------|--------|-------|
 | `fs-suite.com` | CNAME | `fs-suite-app.pages.dev` | Proxied |
 | `api.fs-suite.com` | A | `158.179.221.244` | Proxied |
 
-- SSL automático via Cloudflare (auto-renew, sem cert-manager)
-- Frontend: Cloudflare Pages (`fs-suite-app`)
-- API: K8s cluster na OCI VM
+SSL is handled entirely by Cloudflare (mode: **Full**). No cert-manager or Let's Encrypt needed on the cluster.
 
-## Diagrama de rede (produção)
+### Network Diagram
 
 ```
 Internet → Cloudflare (SSL/CDN)
@@ -141,6 +85,93 @@ Internet → Cloudflare (SSL/CDN)
                        │
         ┌──────────────┼──────────────┐
         │              │              │
-  Neon (Postgres) Upstash (Redis) VATSIM/Google
-  (externo TLS)  (externo TLS)   (OAuth externo)
+  Neon (Postgres) Upstash (Redis) Google/VATSIM
+  (external TLS) (external TLS)  (OAuth)
 ```
+
+### Initial Setup
+
+```bash
+# 1. Configure local kubectl → production cluster
+./infra/scripts/setup-prod-kubeconfig.sh ubuntu@158.179.221.244
+
+# 2. Load shell aliases
+source infra/scripts/kube-aliases.sh
+
+# 3. Run interactive setup (creates namespace, secrets, applies manifests)
+./infra/overlays/production/setup.sh
+
+# 4. Verify
+kprod get pods
+```
+
+### Adding Nodes to the Cluster
+
+To add a new worker node to the K3s cluster:
+
+1. **On the control plane node**, get the join token:
+   ```bash
+   sudo cat /var/lib/rancher/k3s/server/node-token
+   ```
+
+2. **On the new node**, install K3s as agent:
+   ```bash
+   curl -sfL https://get.k3s.io | K3S_URL=https://158.179.221.244:6443 K3S_TOKEN=<token> sh -
+   ```
+
+3. **Verify** the node joined:
+   ```bash
+   kprod get nodes
+   ```
+
+4. If the new node is a different architecture, ensure the Docker image supports it (currently builds ARM64 only via `deploy.yml`).
+
+## CI/CD
+
+Branching model: **feature branches → PR → merge to main**.
+
+| Workflow | Trigger | Action |
+|----------|---------|--------|
+| `ci.yml` | Push to `main` + PRs | Install, lint, typecheck, build, test |
+| `deploy.yml` | Push to `main` (API/infra paths) | Build Docker (ARM64) → GHCR, apply K8s manifests, rollout |
+| `deploy-app.yml` | Push to `main` (app/UI paths) | Expo web export → Cloudflare Pages |
+
+### GitHub Secrets
+
+| Secret | Scope | Used by |
+|--------|-------|---------|
+| `KUBECONFIG` | Environment: `production` | `deploy.yml` — kubectl access to K8s cluster |
+| `CLOUDFLARE_API_TOKEN` | Repository | `deploy-app.yml` — Cloudflare Pages deploy (needs Pages:Edit permission) |
+| `CLOUDFLARE_ACCOUNT_ID` | Repository | `deploy-app.yml` — Cloudflare account identification |
+
+### Deploy API (K8s)
+
+On each merge to `main` that changes API code:
+
+1. Builds ARM64 Docker image and pushes to GHCR (tagged with git SHA + `latest`)
+2. Applies Kustomize manifests with the new image tag
+3. Waits for rollout and verifies pod health
+
+### Deploy App (Cloudflare Pages)
+
+On each merge to `main` that changes frontend code:
+
+1. Installs dependencies and builds Expo web (`expo export --platform web`)
+2. Deploys static files to Cloudflare Pages via `wrangler`
+3. Global CDN distributes automatically
+
+## Secrets
+
+`base/api/secret.yaml` contains placeholders. In production, `setup.sh` creates the secret interactively:
+
+| Secret | Description |
+|--------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string (Neon) |
+| `REDIS_URL` | Redis connection string (Upstash, `rediss://` for TLS) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials |
+| `VATSIM_CLIENT_ID` / `VATSIM_CLIENT_SECRET` | VATSIM OAuth (optional) |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | RS256 keypair |
+| `ENCRYPTION_KEY` | AES-256-GCM key (32-byte hex) |
+| `SENTRY_DSN` / `SENTRY_AUTH_TOKEN` | Sentry error tracking (optional) |
+
+**Never commit real secrets.**

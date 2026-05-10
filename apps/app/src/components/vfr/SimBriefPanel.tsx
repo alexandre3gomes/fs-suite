@@ -7,6 +7,11 @@ import { Dropdown } from 'react-native-element-dropdown';
 
 import { apiClient } from '../../services/api.client';
 
+function openExternal(url: string): void {
+  const w = (globalThis as Record<string, unknown>).window as { open?: (url: string, target: string) => void } | undefined;
+  w?.open(url, '_blank');
+}
+
 const SIMBRIEF_DISPATCH_URL = 'https://dispatch.simbrief.com/options/custom';
 
 interface SimBriefAircraft {
@@ -128,7 +133,7 @@ export function SimBriefPanel({ originIcao, destinationIcao, alternateIcao, call
     params.set('find_sidstar', '1');
 
     const url = `${SIMBRIEF_DISPATCH_URL}?${params.toString()}`;
-    (globalThis as any).window?.open(url, '_blank');
+    openExternal(url);
   }, [originIcao, destinationIcao, alternateIcao, selectedAircraft, callsign, pilotId, t]);
 
   const handleImportOfp = useCallback(async () => {
@@ -141,8 +146,9 @@ export function SimBriefPanel({ originIcao, destinationIcao, alternateIcao, call
       const data = await apiClient.get<SimBriefOfpData>('/integrations/simbrief/ofp');
       onImport(data);
       Alert.alert(t('vfr.simbrief'), t('vfr.simbriefImported'));
-    } catch (err: any) {
-      Alert.alert(t('common.error'), err?.message ?? 'Could not import OFP.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Could not import OFP.';
+      Alert.alert(t('common.error'), message);
     }
     setImporting(false);
   }, [pilotId, onImport, t]);

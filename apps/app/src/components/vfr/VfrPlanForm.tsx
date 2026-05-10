@@ -9,15 +9,15 @@ import { apiClient } from '../../services/api.client';
 
 import { AerodromeMap } from './AerodromeMap';
 import { AerodromeSearch, type Aerodrome } from './AerodromeSearch';
-import { VfrPlanLayout } from './VfrPlanLayout';
 import { AircraftSelect } from './AircraftSelect';
 import { ChartsPanel } from './ChartsPanel';
 import { ChecklistPanel } from './ChecklistPanel';
 import { MetarDisplay, type ParsedMetar } from './MetarDisplay';
+import { NearbyPoisPanel } from './NearbyPoisPanel';
 import { ReaChartsPanel } from './ReaChartsPanel';
 import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
+import { VfrPlanLayout } from './VfrPlanLayout';
 import { type RouteWaypoint, buildVfrRouteText, calculateRouteLegs, haversineDistanceNm, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance } from './vfrNavigation';
-import { NearbyPoisPanel } from './NearbyPoisPanel';
 
 // ---------- Types ----------
 
@@ -90,10 +90,6 @@ function fuelKgConversions(kg: number): string {
 function fuelFlowConversions(kgH: number): string {
   const lH = kgH / AVGAS_KG_PER_L;
   return `${lH.toFixed(1)} L/h  ·  ${(lH * L_TO_GAL_US).toFixed(1)} gal/h  ·  ${(kgH * KG_TO_LBS).toFixed(1)} lbs/h`;
-}
-
-function distNmConversion(nm: number): string {
-  return `${(nm * NM_TO_KM).toFixed(1)} km`;
 }
 
 interface Props {
@@ -191,7 +187,6 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
       setAlternate({ icao: initialData.alternateIcao, name: initialData.alternateName ?? '', iata: null, city: null, country: null, latitude: 0, longitude: 0, elevation: initialData.alternateElevationFt ?? null, type: null });
       setAltRunway(initialData.alternateRunwayInUse ?? '');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetch aerodrome detail + METAR when selected
@@ -615,7 +610,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
       onSelectOrigin={handleSelectOrigin}
       onSelectDestination={handleSelectDestination}
       onSelectAlternate={handleSelectAlternate}
-      onMapReady={(flyTo) => { (mapFlyToRef as any).current = flyTo; }}
+      onMapReady={(flyTo) => { (mapFlyToRef as React.MutableRefObject<((lat: number, lng: number) => void) | null>).current = flyTo; }}
       routeOrigin={routeOriginPos}
       routeDestination={routeDestPos}
       routeAlternate={routeAltPos}
@@ -1444,36 +1439,25 @@ function AerodromeInfo({
   );
 }
 
-function TextInputNotes({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
-  return (
-    <View className="ml-7 mt-1">
-      <Input
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        className="py-1 text-xs"
-        multiline
-      />
-    </View>
-  );
-}
-
 function OfpViewer({ pdfUrl }: { pdfUrl: string }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const iframeRef = useRef<View>(null);
   const [maximized, setMaximized] = useState(false);
-  const overlayRef = useRef<any>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
 
-  const getDoc = () => (globalThis as any).document;
-  const openUrl = (url: string) => (globalThis as any).window?.open(url, '_blank');
+  const getDoc = (): Document | undefined => (globalThis as Record<string, unknown>).document as Document | undefined;
+  const openUrl = (url: string) => {
+    const w = (globalThis as Record<string, unknown>).window as { open?: (url: string, target: string) => void } | undefined;
+    w?.open(url, '_blank');
+  };
 
   // Inline PDF iframe
   useEffect(() => {
     if (Platform.OS !== 'web' || !expanded || !iframeRef.current) return;
     const doc = getDoc();
     if (!doc) return;
-    const el = iframeRef.current as any;
+    const el = iframeRef.current as unknown as HTMLDivElement;
     el.innerHTML = '';
     const iframe = doc.createElement('iframe');
     iframe.src = pdfUrl;
@@ -1537,7 +1521,7 @@ function OfpViewer({ pdfUrl }: { pdfUrl: string }) {
     doc.body.appendChild(overlay);
     overlayRef.current = overlay;
 
-    const handleEsc = (e: any) => { if (e.key === 'Escape') setMaximized(false); };
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMaximized(false); };
     doc.addEventListener('keydown', handleEsc);
 
     return () => {

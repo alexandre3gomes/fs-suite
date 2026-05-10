@@ -16,8 +16,9 @@ export default function NewVfrPlanScreen() {
     try {
       await apiClient.post('/vfr-flight-plans', data);
       router.replace('/(auth)/flight-plans');
-    } catch (err: any) {
-      const msg = err?.response?.data?.message ?? err?.message ?? t('common.error');
+    } catch (err: unknown) {
+      const e = err as Record<string, Record<string, Record<string, unknown>>>;
+      const msg = e?.response?.data?.message ?? (err instanceof Error ? err.message : t('common.error'));
       Alert.alert(t('common.error'), Array.isArray(msg) ? msg.join('\n') : String(msg));
       setSaving(false);
     }

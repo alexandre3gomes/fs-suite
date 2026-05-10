@@ -36,8 +36,8 @@ function filterChartsByRules(charts: AerodromeChart[], rules?: string): Aerodrom
 
 // --------------- Helpers ---------------
 
-function getDoc(): any {
-  return (globalThis as any).document;
+function getDoc(): Document | undefined {
+  return (globalThis as Record<string, unknown>).document as Document | undefined;
 }
 
 /** Build a proxy URL that serves the PDF inline (strips Content-Disposition: attachment) */
@@ -56,7 +56,7 @@ export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [maximized, setMaximized] = useState(false);
   const iframeRef = useRef<View>(null);
-  const overlayRef = useRef<any>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
 
   // Fetch charts on mount / icao change
   useEffect(() => {
@@ -80,7 +80,7 @@ export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
     if (Platform.OS !== 'web' || !iframeRef.current || !selectedChart) return;
     const doc = getDoc();
     if (!doc) return;
-    const el = iframeRef.current as any;
+    const el = iframeRef.current as unknown as HTMLDivElement;
 
     el.innerHTML = '';
     const iframe = doc.createElement('iframe');
@@ -143,7 +143,7 @@ export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
       'background:none;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-size:12px;cursor:pointer;padding:4px 10px;border-radius:4px;flex-shrink:0;';
     extBtn.textContent = '↗';
     extBtn.title = 'Open in new tab';
-    extBtn.onclick = () => (globalThis as any).window?.open(selectedChart.url, '_blank');
+    extBtn.onclick = () => (globalThis as Record<string, unknown>).window && window.open(selectedChart.url, '_blank');
     header.appendChild(extBtn);
 
     const closeBtn = doc.createElement('button');
@@ -185,11 +185,12 @@ export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
     const chipBtns = overlayRef.current.querySelectorAll(
       'div:first-child > div:first-child > button',
     );
-    chipBtns.forEach((chip: any, idx: number) => {
+    chipBtns.forEach((chip: Element, idx: number) => {
       const active = idx === selectedIdx;
-      chip.style.borderColor = active ? 'rgba(96,165,250,0.6)' : 'rgba(255,255,255,0.2)';
-      chip.style.background = active ? 'rgba(96,165,250,0.15)' : 'transparent';
-      chip.style.color = active ? '#93c5fd' : 'rgba(255,255,255,0.7)';
+      const s = (chip as HTMLElement).style;
+      s.borderColor = active ? 'rgba(96,165,250,0.6)' : 'rgba(255,255,255,0.2)';
+      s.background = active ? 'rgba(96,165,250,0.15)' : 'transparent';
+      s.color = active ? '#93c5fd' : 'rgba(255,255,255,0.7)';
     });
   }, [selectedIdx, maximized, selectedChart]);
 
@@ -198,7 +199,7 @@ export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
     if (Platform.OS !== 'web' || !maximized) return;
     const doc = getDoc();
     if (!doc) return;
-    const handler = (e: any) => {
+    const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setMaximized(false);
     };
     doc.addEventListener('keydown', handler);
@@ -206,7 +207,7 @@ export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
   }, [maximized]);
 
   const openUrl = (url: string) => {
-    (globalThis as any).window?.open(url, '_blank');
+    if ((globalThis as Record<string, unknown>).window) window.open(url, '_blank');
   };
 
   // ---- Loading ----

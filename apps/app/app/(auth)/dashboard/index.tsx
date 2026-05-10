@@ -4,8 +4,8 @@ import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal, Platform, Pressable, View } from 'react-native';
 
-import { setLanguage, type SupportedLocale } from '../../../src/i18n';
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
+import { setLanguage, type SupportedLocale } from '../../../src/i18n';
 import { signOut } from '../../../src/services/auth.service';
 
 const LANGUAGES: { code: SupportedLocale; flag: string }[] = [

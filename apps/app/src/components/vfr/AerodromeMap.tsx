@@ -1,3 +1,4 @@
+import type L from 'leaflet';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, Text, View } from 'react-native';
@@ -7,6 +8,57 @@ import { apiClient } from '../../services/api.client';
 import type { Aerodrome } from './AerodromeSearch';
 import type { ParsedMetar } from './MetarDisplay';
 import { type RouteWaypoint, haversineDistanceNm, initialBearing, getMagneticDeclination } from './vfrNavigation';
+
+type LeafletModule = typeof L;
+
+interface DomDocument {
+  createElement(tag: string): DomElement;
+  head: DomElement;
+  body: DomElement;
+  fullscreenElement: DomElement | null;
+  exitFullscreen(): void;
+  addEventListener(event: string, handler: () => void): void;
+  removeEventListener(event: string, handler: () => void): void;
+}
+
+interface DomElement {
+  rel?: string;
+  href?: string;
+  crossOrigin?: string;
+  textContent?: string;
+  value?: string;
+  style?: Record<string, string>;
+  appendChild(child: DomElement): void;
+  requestFullscreen?(): void;
+  querySelector?(selector: string): DomElement | null;
+  querySelectorAll?(selector: string): DomElement[];
+  addEventListener(event: string, handler: (e: DomEvent) => void): void;
+  getAttribute?(attr: string): string | null;
+}
+
+interface DomEvent {
+  currentTarget: DomElement | null;
+}
+
+interface WmsFeatureProperties {
+  typ?: string;
+  nam?: string;
+  ident?: string;
+  upperlimit?: number;
+  uplimituni?: string;
+  lowerlimi1?: number;
+  lowerlimit?: string;
+  codedistv1?: string;
+  relatedfir?: string;
+}
+
+interface WmsFeature {
+  properties?: WmsFeatureProperties;
+}
+
+interface WmsFeatureInfoResponse {
+  features?: WmsFeature[];
+}
 
 // --------------- Types ---------------
 
@@ -110,7 +162,7 @@ let cssInjected = false;
 function injectLeafletCSS() {
   if (cssInjected || Platform.OS !== 'web') return;
   cssInjected = true;
-  const doc = (globalThis as any).document;
+  const doc = (globalThis as Record<string, unknown>).document as DomDocument;
   const link = doc.createElement('link');
   link.rel = 'stylesheet';
   link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
@@ -132,20 +184,20 @@ export function AerodromeMap({
   const { t } = useTranslation();
   const wrapperRef = useRef<View>(null);
   const containerRef = useRef<View>(null);
-  const mapRef = useRef<any>(null);
-  const tileLayerRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-  const routeLayerRef = useRef<any>(null);
-  const reaLayerRef = useRef<any>(null);
-  const openAipLayerRef = useRef<any>(null);
-  const chartLayersRef = useRef<Record<string, any>>({});
+  const mapRef = useRef<L.Map | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const markersRef = useRef<L.Marker[]>([]);
+  const routeLayerRef = useRef<L.LayerGroup | null>(null);
+  const reaLayerRef = useRef<L.LayerGroup | null>(null);
+  const openAipLayerRef = useRef<L.TileLayer | null>(null);
+  const chartLayersRef = useRef<Record<string, L.TileLayer.WMS>>({});
   const [ready, setReady] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeLayer, setActiveLayer] = useState<LayerKey>('map');
   const [showAirspace, setShowAirspace] = useState(false);
   const [activeChart, setActiveChart] = useState<ChartOverlayKey | null>(null);
   const fetchingRef = useRef(false);
-  const routeBoundsRef = useRef<any>(null);
+  const routeBoundsRef = useRef<L.LatLngBounds | null>(null);
   const [hasRoute, setHasRoute] = useState(false);
 
   // Stable refs for callbacks
@@ -175,7 +227,7 @@ export function AerodromeMap({
   // Fullscreen change listener
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const doc = (globalThis as any).document;
+    const doc = (globalThis as Record<string, unknown>).document as DomDocument;
     const handler = () => {
       const isFull = !!doc.fullscreenElement;
       setIsFullscreen(isFull);
@@ -186,9 +238,9 @@ export function AerodromeMap({
   }, []);
 
   const toggleFullscreen = useCallback(() => {
-    const el = wrapperRef.current as any;
+    const el = wrapperRef.current as unknown as DomElement | null;
     if (!el) return;
-    const doc = (globalThis as any).document;
+    const doc = (globalThis as Record<string, unknown>).document as DomDocument;
     if (doc.fullscreenElement) {
       doc.exitFullscreen();
     } else {
@@ -200,27 +252,27 @@ export function AerodromeMap({
   useEffect(() => {
     if (!ready || Platform.OS !== 'web') return;
 
-    const L = require('leaflet') as any;
-    const el = containerRef.current as any;
+    const Leaf = require('leaflet') as LeafletModule;
+    const el = containerRef.current as unknown as DomElement | null;
     if (!el || mapRef.current) return;
 
-    const map = L.map(el, { zoomControl: true }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+    const map = Leaf.map(el, { zoomControl: true }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
     const defaultTile = TILE_LAYERS.map;
-    tileLayerRef.current = L.tileLayer(defaultTile.url, { attribution: defaultTile.attr, maxZoom: 18 }).addTo(map);
+    tileLayerRef.current = Leaf.tileLayer(defaultTile.url, { attribution: defaultTile.attr, maxZoom: 18 }).addTo(map);
     mapRef.current = map;
 
     // Fetch airports on move
     let debounce: ReturnType<typeof setTimeout>;
     const loadAirports = () => {
       if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(() => void fetchAndRender(map, L), 400);
+      debounce = setTimeout(() => void fetchAndRender(map, Leaf), 400);
     };
 
     map.on('moveend', loadAirports);
     map.on('zoomend', loadAirports);
 
     // Context menu — right-click to add waypoint
-    map.on('contextmenu', (e: any) => {
+    map.on('contextmenu', (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng;
       const wpNum = wpCountRef.current + 1;
       const defaultName = `WPT${String(wpNum).padStart(2, '0')}`;
@@ -239,13 +291,13 @@ export function AerodromeMap({
         </div>
       `;
 
-      const popup = L.popup({ closeButton: true }).setLatLng(e.latlng).setContent(popupHtml).openOn(map);
-      const popupEl = popup.getElement();
+      const popup = Leaf.popup({ closeButton: true }).setLatLng(e.latlng).setContent(popupHtml).openOn(map);
+      const popupEl = popup.getElement() as unknown as DomElement | undefined;
       if (popupEl) {
-        const btn = popupEl.querySelector('button[data-action="add-waypoint"]');
+        const btn = popupEl.querySelector?.('button[data-action="add-waypoint"]');
         btn?.addEventListener('click', () => {
-          const nameInput = popupEl.querySelector('#wp-name-input') as any;
-          const name = (nameInput?.value as string)?.trim() || defaultName;
+          const nameInput = popupEl.querySelector?.('#wp-name-input');
+          const name = (nameInput?.value as string | undefined)?.trim() || defaultName;
           onAddWpRef.current?.({ lat, lng, name });
           map.closePopup();
         });
@@ -253,7 +305,7 @@ export function AerodromeMap({
     });
 
     // Initial load
-    void fetchAndRender(map, L);
+    void fetchAndRender(map, Leaf);
 
     // Expose flyTo to parent
     onMapReady?.((lat: number, lng: number) => {
@@ -267,30 +319,28 @@ export function AerodromeMap({
       map.remove();
       mapRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
   // Switch tile layer
   useEffect(() => {
     if (!mapRef.current || Platform.OS !== 'web') return;
-    const L = require('leaflet') as any;
+    const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
     const layer = TILE_LAYERS[activeLayer];
     if (tileLayerRef.current) map.removeLayer(tileLayerRef.current);
-    tileLayerRef.current = L.tileLayer(layer.url, { attribution: layer.attr, maxZoom: 18 }).addTo(map);
+    tileLayerRef.current = Leaf.tileLayer(layer.url, { attribution: layer.attr, maxZoom: 18 }).addTo(map);
   }, [activeLayer]);
 
   // Toggle OpenAIP airspace overlay
   useEffect(() => {
     if (!mapRef.current || Platform.OS !== 'web') return;
-    const L = require('leaflet') as any;
+    const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
 
     if (showAirspace && !openAipLayerRef.current) {
-      openAipLayerRef.current = L.tileLayer(OPENAIP_TILE_URL, {
+      openAipLayerRef.current = Leaf.tileLayer(OPENAIP_TILE_URL, {
         maxZoom: 14,
         minZoom: 4,
-        transparent: true,
         opacity: 0.65,
         attribution: '&copy; <a href="https://www.openaip.net">OpenAIP</a>',
       }).addTo(map);
@@ -303,19 +353,20 @@ export function AerodromeMap({
   // DECEA WMS chart overlay (mutually exclusive — only one active at a time)
   useEffect(() => {
     if (!mapRef.current || Platform.OS !== 'web') return;
-    const L = require('leaflet') as any;
+    const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
 
     // Remove all existing chart layers
     for (const k of Object.keys(chartLayersRef.current)) {
-      map.removeLayer(chartLayersRef.current[k]);
+      const layer = chartLayersRef.current[k];
+      if (layer) map.removeLayer(layer);
     }
     chartLayersRef.current = {};
 
     // Add the active one
     if (activeChart) {
       const cfg = DECEA_CHART_OVERLAYS[activeChart];
-      chartLayersRef.current[activeChart] = L.tileLayer.wms(DECEA_WMS_BASE, {
+      chartLayersRef.current[activeChart] = Leaf.tileLayer.wms(DECEA_WMS_BASE, {
         layers: cfg.layers,
         format: 'image/png',
         transparent: true,
@@ -326,14 +377,13 @@ export function AerodromeMap({
         attribution: '&copy; DECEA/ICA',
       }).addTo(map);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChart]);
 
   // ResizeObserver — invalidate map size when container resizes (sidebar collapse, etc.)
   useEffect(() => {
     if (Platform.OS !== 'web' || !ready) return;
-    const el = wrapperRef.current as any;
-    const RO = (globalThis as any).ResizeObserver;
+    const el = wrapperRef.current as unknown as DomElement | null;
+    const RO = (globalThis as Record<string, unknown>).ResizeObserver as (new (cb: () => void) => { observe(el: unknown): void; disconnect(): void }) | undefined;
     if (!el || !RO) return;
     const observer = new RO(() => {
       setTimeout(() => mapRef.current?.invalidateSize(), 50);
@@ -368,12 +418,12 @@ export function AerodromeMap({
   // WMS GetFeatureInfo on click — shows popup with feature details when airspace layer is active
   useEffect(() => {
     if (!mapRef.current || Platform.OS !== 'web') return;
-    const L = require('leaflet') as any;
+    const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
 
     if (activeChart !== 'airspaceDecea') return;
 
-    const handleClick = async (e: any) => {
+    const handleClick = async (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng;
       const bounds = map.getBounds();
       const size = map.getSize();
@@ -398,11 +448,11 @@ export function AerodromeMap({
 
       try {
         const wmsUrl = `${DECEA_WMS_BASE}?${params}`;
-        const data = await apiClient.get<any>(`/aerodromes/wms-proxy?url=${encodeURIComponent(wmsUrl)}`);
+        const data = await apiClient.get<WmsFeatureInfoResponse>(`/aerodromes/wms-proxy?url=${encodeURIComponent(wmsUrl)}`);
         const features = data?.features;
         if (!features || features.length === 0) return;
 
-        const html = features.map((f: any) => {
+        const html = features.map((f: WmsFeature) => {
           const p = f.properties ?? {};
           const typ = p.typ ?? '';
           const name = p.nam ?? p.ident ?? '';
@@ -417,7 +467,7 @@ export function AerodromeMap({
             </div>`;
         }).join('');
 
-        L.popup({ maxWidth: 300 })
+        Leaf.popup({ maxWidth: 300 })
           .setLatLng([lat, lng])
           .setContent(`<div style="max-height:200px;overflow-y:auto">${html}</div>`)
           .openOn(map);
@@ -426,7 +476,6 @@ export function AerodromeMap({
 
     map.on('click', handleClick);
     return () => { map.off('click', handleClick); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChart]);
 
   // Route rendering — redraws when waypoints / origin / destination change
@@ -435,7 +484,7 @@ export function AerodromeMap({
 
   useEffect(() => {
     if (!mapRef.current || Platform.OS !== 'web') return;
-    const L = require('leaflet') as any;
+    const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
 
     // Clear previous route layer
@@ -460,23 +509,23 @@ export function AerodromeMap({
 
     if (fullRoute.length < 2) return;
 
-    const group = L.layerGroup().addTo(map);
+    const group = Leaf.layerGroup().addTo(map);
 
     // Polyline — semi-transparent route
-    const latlngs = fullRoute.map((p) => [p.lat, p.lng]);
-    L.polyline(latlngs, { color: ROUTE_COLOR, weight: 9, opacity: 0.55, lineCap: 'round', lineJoin: 'round' }).addTo(group);
+    const latlngs = fullRoute.map((p) => [p.lat, p.lng] as L.LatLngTuple);
+    Leaf.polyline(latlngs, { color: ROUTE_COLOR, weight: 9, opacity: 0.55, lineCap: 'round', lineJoin: 'round' }).addTo(group);
 
     // Intermediate waypoint markers (numbered circles) — hover shows visual reference
     if (routeWaypoints) {
       routeWaypoints.forEach((wp, wpIdx) => {
-        const icon = L.divIcon({
+        const icon = Leaf.divIcon({
           className: 'leg-label-tooltip',
           html: `<div style="width:22px;height:22px;border-radius:50%;background:${ROUTE_COLOR};color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);cursor:pointer">${wpIdx + 1}</div>`,
-          iconSize: [22, 22],
-          iconAnchor: [11, 11],
+          iconSize: [22, 22] as L.PointTuple,
+          iconAnchor: [11, 11] as L.PointTuple,
         });
 
-        const marker = L.marker([wp.lat, wp.lng], { icon }).addTo(group);
+        const marker = Leaf.marker([wp.lat, wp.lng], { icon }).addTo(group);
 
         // Hover → visual reference popup (satellite only)
         marker.on('mouseover', () => {
@@ -488,15 +537,15 @@ export function AerodromeMap({
               <img src="${satUrl}" style="width:320px;height:200px;border-radius:4px;border:1px solid #e5e7eb;object-fit:cover;display:block" />
             </div>
           `;
-          L.popup({ maxWidth: 360, closeButton: true, autoPan: true })
+          Leaf.popup({ maxWidth: 360, closeButton: true, autoPan: true })
             .setLatLng([wp.lat, wp.lng])
             .setContent(popupHtml)
             .openOn(map);
         });
 
         // Right-click to remove waypoint
-        marker.on('contextmenu', (e: any) => {
-          L.DomEvent.stopPropagation(e);
+        marker.on('contextmenu', (e: L.LeafletMouseEvent) => {
+          Leaf.DomEvent.stopPropagation(e);
           const removeHtml = `
             <div style="font-family:system-ui,sans-serif;min-width:120px">
               <div style="font-weight:700;font-size:12px;margin-bottom:2px;color:#1a1d26">${escapeHtml(wp.name)}</div>
@@ -507,10 +556,10 @@ export function AerodromeMap({
               </button>
             </div>
           `;
-          const popup = L.popup({ closeButton: true }).setLatLng([wp.lat, wp.lng]).setContent(removeHtml).openOn(map);
-          const popupEl = popup.getElement();
+          const popup = Leaf.popup({ closeButton: true }).setLatLng([wp.lat, wp.lng]).setContent(removeHtml).openOn(map);
+          const popupEl = popup.getElement() as unknown as DomElement | undefined;
           if (popupEl) {
-            popupEl.querySelector('button[data-action="remove-wp"]')?.addEventListener('click', () => {
+            popupEl.querySelector?.('button[data-action="remove-wp"]')?.addEventListener('click', () => {
               onRemoveWpRef.current?.(wpIdx);
               map.closePopup();
             });
@@ -534,27 +583,27 @@ export function AerodromeMap({
       if (rot > 90) rot -= 180;
       if (rot < -90) rot += 180;
 
-      const labelIcon = L.divIcon({
+      const labelIcon = Leaf.divIcon({
         className: 'leg-label-tooltip',
         html: `<div style="display:inline-block;transform:translate(-50%,-50%)"><div style="transform:rotate(${rot.toFixed(1)}deg);background:${ROUTE_COLOR};color:#fff;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:0.3px;font-family:system-ui,sans-serif;opacity:0.55">${dist.toFixed(0)}NM ${mc.toFixed(0)}&deg;</div></div>`,
-        iconSize: [0, 0],
-        iconAnchor: [0, 0],
+        iconSize: [0, 0] as L.PointTuple,
+        iconAnchor: [0, 0] as L.PointTuple,
       });
-      L.marker([midLat, midLng], { icon: labelIcon, interactive: false }).addTo(group);
+      Leaf.marker([midLat, midLng], { icon: labelIcon, interactive: false }).addTo(group);
     }
 
     // Alternate route: solid line from destination to alternate
     if (routeDestination && routeAlternate) {
       const altLatlngs: [number, number][] = [[routeDestination.lat, routeDestination.lng], [routeAlternate.lat, routeAlternate.lng]];
-      L.polyline(altLatlngs, { color: ALT_ROUTE_COLOR, weight: 7, opacity: 0.55, lineCap: 'round', lineJoin: 'round' }).addTo(group);
+      Leaf.polyline(altLatlngs, { color: ALT_ROUTE_COLOR, weight: 7, opacity: 0.55, lineCap: 'round', lineJoin: 'round' }).addTo(group);
 
       // Alternate marker
-      const altIcon = L.divIcon({
+      const altIcon = Leaf.divIcon({
         className: '',
         html: `<div style="width:22px;height:22px;border-radius:50%;background:${ALT_ROUTE_COLOR};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)">ALT</div>`,
-        iconAnchor: [11, 11],
+        iconAnchor: [11, 11] as L.PointTuple,
       });
-      L.marker([routeAlternate.lat, routeAlternate.lng], { icon: altIcon }).addTo(group);
+      Leaf.marker([routeAlternate.lat, routeAlternate.lng], { icon: altIcon }).addTo(group);
 
       // Leg label at midpoint
       const altDist = haversineDistanceNm(routeDestination.lat, routeDestination.lng, routeAlternate.lat, routeAlternate.lng);
@@ -568,20 +617,20 @@ export function AerodromeMap({
       if (altRot > 90) altRot -= 180;
       if (altRot < -90) altRot += 180;
 
-      const altLabelIcon = L.divIcon({
+      const altLabelIcon = Leaf.divIcon({
         className: 'leg-label-tooltip',
         html: `<div style="display:inline-block;transform:translate(-50%,-50%)"><div style="transform:rotate(${altRot.toFixed(1)}deg);background:${ALT_ROUTE_COLOR};color:#fff;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:0.3px;font-family:system-ui,sans-serif;opacity:0.55">${altDist.toFixed(0)}NM ${altMc.toFixed(0)}&deg;</div></div>`,
-        iconSize: [0, 0],
-        iconAnchor: [0, 0],
+        iconSize: [0, 0] as L.PointTuple,
+        iconAnchor: [0, 0] as L.PointTuple,
       });
-      L.marker([altMidLat, altMidLng], { icon: altLabelIcon, interactive: false }).addTo(group);
+      Leaf.marker([altMidLat, altMidLng], { icon: altLabelIcon, interactive: false }).addTo(group);
     }
 
     routeLayerRef.current = group;
 
-    const allPoints = [...fullRoute.map((p) => [p.lat, p.lng] as [number, number])];
+    const allPoints: L.LatLngTuple[] = [...fullRoute.map((p) => [p.lat, p.lng] as L.LatLngTuple)];
     if (routeAlternate) allPoints.push([routeAlternate.lat, routeAlternate.lng]);
-    routeBoundsRef.current = allPoints.length >= 2 ? L.latLngBounds(allPoints) : null;
+    routeBoundsRef.current = allPoints.length >= 2 ? Leaf.latLngBounds(allPoints) : null;
     setHasRoute(!!routeBoundsRef.current);
 
     return () => {
@@ -592,7 +641,6 @@ export function AerodromeMap({
       routeBoundsRef.current = null;
       setHasRoute(false);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeOrigin, routeDestination, routeAlternate, waypointsKey]);
 
   // REA corridor overlay
@@ -600,7 +648,7 @@ export function AerodromeMap({
 
   useEffect(() => {
     if (!mapRef.current || Platform.OS !== 'web') return;
-    const L = require('leaflet') as any;
+    const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
 
     if (reaLayerRef.current) {
@@ -610,7 +658,7 @@ export function AerodromeMap({
 
     if (!reaSegments || reaSegments.length === 0) return;
 
-    const group = L.layerGroup().addTo(map);
+    const group = Leaf.layerGroup().addTo(map);
 
     for (const seg of reaSegments) {
       const isMandatory = seg.tipo === 'Obrig';
@@ -623,8 +671,8 @@ export function AerodromeMap({
         : [seg.geometry.coordinates[0] as number[][]];
 
       for (const ring of coordSets) {
-        const latlngs = ring.map((c: number[]) => [c[1], c[0]]);
-        const polygon = L.polygon(latlngs, {
+        const latlngs = ring.map((c: number[]) => [c[1]!, c[0]!] as L.LatLngTuple);
+        const polygon = Leaf.polygon(latlngs, {
           color,
           weight: 1.5,
           fillColor,
@@ -654,10 +702,9 @@ export function AerodromeMap({
         reaLayerRef.current = null;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reaKey]);
 
-  const fetchAndRender = useCallback(async (map: any, L: any) => {
+  const fetchAndRender = useCallback(async (map: L.Map, Leaf: LeafletModule) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
 
@@ -697,18 +744,18 @@ export function AerodromeMap({
           ? (CATEGORY_COLORS[airport.flightCategory] ?? DEFAULT_DOT_COLOR)
           : DEFAULT_DOT_COLOR;
 
-        const icon = L.divIcon({
+        const icon = Leaf.divIcon({
           className: '',
           html: `<div style="background:${color};color:#fff;font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;white-space:nowrap;cursor:pointer;font-family:system-ui,sans-serif;line-height:1;letter-spacing:0.3px;box-shadow:0 1px 2px rgba(0,0,0,0.3);display:inline-block">${escapeHtml(airport.icao)}</div>`,
-          iconSize: [0, 0],
-          iconAnchor: [0, 8],
+          iconSize: [0, 0] as L.PointTuple,
+          iconAnchor: [0, 8] as L.PointTuple,
         });
 
-        const marker = L.marker([airport.latitude, airport.longitude], { icon }).addTo(map);
+        const marker = Leaf.marker([airport.latitude, airport.longitude], { icon }).addTo(map);
 
         marker.on('click', () => {
           const roleRefs = { origin: onSelectOriginRef, dest: onSelectDestRef, alt: onSelectAltRef };
-          const popup = L.popup({ maxWidth: 360 })
+          const popup = Leaf.popup({ maxWidth: 360 })
             .setLatLng([airport.latitude, airport.longitude])
             .setContent(buildAirportPopupHtml(airport, null, null, null, tRef.current))
             .openOn(map);
@@ -1011,16 +1058,17 @@ function buildAirportPopupHtml(
 }
 
 function bindPopupRoleButtons(
-  popup: any,
+  popup: L.Popup,
   airport: MapAerodrome,
-  map: any,
+  map: L.Map,
   refs: { origin: { current: ((a: Aerodrome) => void) | null }; dest: { current: ((a: Aerodrome) => void) | null }; alt: { current: ((a: Aerodrome) => void) | null } },
 ) {
-  const popupEl = popup.getElement();
+  const popupEl = popup.getElement() as unknown as DomElement | undefined;
   if (!popupEl) return;
-  popupEl.querySelectorAll('button[data-role]').forEach((btn: any) => {
-    btn.addEventListener('click', (e: any) => {
-      const role = e.currentTarget.getAttribute('data-role');
+  const buttons = popupEl.querySelectorAll?.('button[data-role]') ?? [];
+  buttons.forEach((btn: DomElement) => {
+    btn.addEventListener('click', (e: DomEvent) => {
+      const role = e.currentTarget?.getAttribute?.('data-role') ?? null;
       const aerodrome: Aerodrome = {
         icao: airport.icao, iata: airport.iata, name: airport.name,
         city: airport.city, country: airport.country,

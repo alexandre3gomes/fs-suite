@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, Text, View } from 'react-native';
 
 import { type ChecklistEntry, getChecklistsForAircraft } from '../../data/checklistCatalog';
@@ -8,18 +7,22 @@ interface Props {
   icaoType: string | null;
 }
 
-function getDoc(): any {
-  return (globalThis as any).document;
+function getDoc(): Document | undefined {
+  return (globalThis as Record<string, unknown>).document as Document | undefined;
+}
+
+function openExternal(url: string): void {
+  const w = (globalThis as Record<string, unknown>).window as { open?: (url: string, target: string) => void } | undefined;
+  w?.open(url, '_blank');
 }
 
 const VIEWER_HEIGHT = 500;
 
 export function ChecklistPanel({ icaoType }: Props) {
-  const { t } = useTranslation();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [maximized, setMaximized] = useState(false);
   const iframeRef = useRef<View>(null);
-  const overlayRef = useRef<any>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
 
   const checklists = useMemo(
     () => (icaoType ? getChecklistsForAircraft(icaoType) : []),
@@ -36,7 +39,7 @@ export function ChecklistPanel({ icaoType }: Props) {
     if (Platform.OS !== 'web' || !iframeRef.current || !selected) return;
     const doc = getDoc();
     if (!doc) return;
-    const el = iframeRef.current as any;
+    const el = iframeRef.current as unknown as HTMLDivElement;
     el.innerHTML = '';
     const iframe = doc.createElement('iframe');
     iframe.src = selected.pdfUrl;
@@ -94,7 +97,7 @@ export function ChecklistPanel({ icaoType }: Props) {
       'background:none;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-size:12px;cursor:pointer;padding:4px 10px;border-radius:4px;flex-shrink:0;';
     extBtn.textContent = '↗';
     extBtn.title = 'Open in new tab';
-    extBtn.onclick = () => (globalThis as any).window?.open(selected!.pdfUrl, '_blank');
+    extBtn.onclick = () => openExternal(selected!.pdfUrl);
     header.appendChild(extBtn);
 
     const closeBtn = doc.createElement('button');
@@ -155,7 +158,7 @@ export function ChecklistPanel({ icaoType }: Props) {
               <Pressable onPress={() => setMaximized(true)}>
                 <Text className="text-xs text-primary">⛶</Text>
               </Pressable>
-              <Pressable onPress={() => (globalThis as any).window?.open(selected.pdfUrl, '_blank')}>
+              <Pressable onPress={() => openExternal(selected.pdfUrl)}>
                 <Text className="text-xs text-primary">↗</Text>
               </Pressable>
             </View>
