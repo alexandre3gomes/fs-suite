@@ -7,21 +7,14 @@ metadata:
     app.kubernetes.io/name: api
     app.kubernetes.io/part-of: fs-suite
   annotations:
-    # Nginx Ingress Controller annotations
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
-    # cert-manager for automatic TLS via Let's Encrypt
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
   ingressClassName: nginx
-  tls:
-    - hosts:
-        - api.fssuite.app
-      secretName: api-tls
   rules:
-    - host: api.fssuite.app
+    - host: api.fs-suite.com
       http:
         paths:
           - path: /

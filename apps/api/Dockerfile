@@ -1,7 +1,8 @@
 # ── Stage 1: Build ──────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
-RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+RUN apk add --no-cache openssl && \
+    corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 WORKDIR /app
 

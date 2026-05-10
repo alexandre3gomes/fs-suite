@@ -109,19 +109,38 @@ O `base/api/secret.yaml` contém placeholders. Em produção, o `setup.sh` cria 
 
 **Nunca commitar secrets reais.**
 
+## Domínio e DNS
+
+O domínio `fs-suite.com` é gerenciado via **Cloudflare** (nameservers migrados do IONOS).
+
+| Registro | Tipo | Destino | Proxy |
+|----------|------|---------|-------|
+| `fs-suite.com` | CNAME | `fs-suite-app.pages.dev` | Proxied |
+| `api.fs-suite.com` | A | `158.179.221.244` | Proxied |
+
+- SSL automático via Cloudflare (auto-renew, sem cert-manager)
+- Frontend: Cloudflare Pages (`fs-suite-app`)
+- API: K8s cluster na OCI VM
+
 ## Diagrama de rede (produção)
 
 ```
-Internet → OCI Security List → ingress-nginx (:443 TLS)
-                                      │
-                              namespace: fs-suite
-                              ┌─────────┐
-                              │   API   │
-                              │  :3001  │
-                              └────┬────┘
-                                   │
-                    ┌──────────────┼──────────────┐
-                    │              │              │
-              Neon (Postgres) Upstash (Redis) VATSIM/Google
-              (externo TLS)  (externo TLS)   (OAuth externo)
+Internet → Cloudflare (SSL/CDN)
+                │
+        ┌───────┴────────┐
+        │                │
+  fs-suite.com    api.fs-suite.com
+        │                │
+  Cloudflare Pages   OCI VM → ingress-nginx
+  (static files)         │
+                  namespace: fs-suite
+                  ┌─────────┐
+                  │   API   │
+                  │  :3001  │
+                  └────┬────┘
+                       │
+        ┌──────────────┼──────────────┐
+        │              │              │
+  Neon (Postgres) Upstash (Redis) VATSIM/Google
+  (externo TLS)  (externo TLS)   (OAuth externo)
 ```

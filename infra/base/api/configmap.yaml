@@ -9,10 +9,10 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "3001"
-  GOOGLE_CALLBACK_URL: "https://api.fssuite.app/v1/auth/google/callback"
-  VATSIM_CALLBACK_URL: "https://api.fssuite.app/v1/auth/vatsim/callback"
+  GOOGLE_CALLBACK_URL: "https://api.fs-suite.com/v1/auth/google/callback"
+  VATSIM_CALLBACK_URL: "https://api.fs-suite.com/v1/auth/vatsim/callback"
   VATSIM_OAUTH_BASE_URL: "https://auth.vatsim.net"
-  WEB_ORIGIN: "https://fssuite.app"
+  WEB_ORIGIN: "https://fs-suite.com"
   JWT_ACCESS_EXPIRES_IN: "15m"
   JWT_REFRESH_EXPIRES_IN: "30d"
   SENTRY_RELEASE: "__DEPLOY_RELEASE__"

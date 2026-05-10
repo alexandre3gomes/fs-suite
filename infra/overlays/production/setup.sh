@@ -148,7 +148,7 @@ $K create secret docker-registry ghcr-pull-secret \
   --docker-server=ghcr.io \
   --docker-username=alexandre3gomes \
   --docker-password="${GHCR_PAT}" \
-  --docker-email=noreply@fssuite.app \
+  --docker-email=noreply@fs-suite.com \
   --dry-run=client -o yaml | $K apply -f -
 
 # ── Apply manifests ─────────────────────────────────────────
@@ -170,4 +170,4 @@ echo "✓ Production environment ready."
 echo ""
 echo "Verify health:"
 echo "  kprod logs -l app.kubernetes.io/name=api --tail=20"
-echo "  curl -s https://api.fssuite.app/v1/health"
+echo "  curl -s https://api.fs-suite.com/v1/health"
