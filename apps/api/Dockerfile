@@ -53,11 +53,10 @@ COPY packages/config/package.json packages/config/
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod
 
-# Copy Prisma schema, generated client, and CLI from builder
+# Copy Prisma schema and CLI, then regenerate client for target platform
 COPY apps/api/prisma/ apps/api/prisma/
-COPY --from=builder /app/node_modules/.prisma/ node_modules/.prisma/
 COPY --from=builder /app/node_modules/prisma/ node_modules/prisma/
-COPY --from=builder /app/node_modules/@prisma/engines/ node_modules/@prisma/engines/
+RUN cd apps/api && npx prisma generate
 
 # Copy built application
 COPY --from=builder /app/apps/api/dist/ apps/api/dist/
