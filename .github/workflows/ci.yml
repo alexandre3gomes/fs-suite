@@ -31,6 +31,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: pnpm --filter @fs-suite/api prisma:generate
+
       - name: Cache pnpm store and node_modules
         uses: actions/cache/save@v4
         with:
@@ -38,6 +41,7 @@ jobs:
             node_modules
             apps/*/node_modules
             packages/*/node_modules
+            node_modules/.prisma
           key: modules-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
   lint:
@@ -63,6 +67,7 @@ jobs:
             node_modules
             apps/*/node_modules
             packages/*/node_modules
+            node_modules/.prisma
           key: modules-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Lint
@@ -91,6 +96,7 @@ jobs:
             node_modules
             apps/*/node_modules
             packages/*/node_modules
+            node_modules/.prisma
           key: modules-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Type check
@@ -119,6 +125,7 @@ jobs:
             node_modules
             apps/*/node_modules
             packages/*/node_modules
+            node_modules/.prisma
           key: modules-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Build
@@ -150,6 +157,7 @@ jobs:
             node_modules
             apps/*/node_modules
             packages/*/node_modules
+            node_modules/.prisma
           key: modules-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Test
