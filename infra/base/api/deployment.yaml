@@ -22,6 +22,7 @@ spec:
       initContainers:
         - name: migrate
           image: ghcr.io/alexandre3gomes/fs-suite/api:latest
+          imagePullPolicy: Always
           command: ["npx", "prisma", "migrate", "deploy"]
           workingDir: /app/apps/api
           env:
@@ -33,6 +34,7 @@ spec:
       containers:
         - name: api
           image: ghcr.io/alexandre3gomes/fs-suite/api:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 3001
               protocol: TCP
