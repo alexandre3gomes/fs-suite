@@ -1,12 +1,13 @@
-import { useCallback, useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { PanResponder, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
 import { useIsDesktop } from '../../hooks/useIsDesktop';
 
-const SIDEBAR_NORMAL_WIDTH = 400;
-const MOBILE_MAP_HEIGHT = 280;
-
 type SidebarMode = 'collapsed' | 'normal' | 'expanded';
+
+const HANDLE_HEIGHT = 20;
+const MIN_MAP_RATIO = 0.15;
+const MAX_MAP_RATIO = 0.85;
 
 interface Props {
   mapElement: React.ReactNode;
@@ -15,11 +16,50 @@ interface Props {
 
 export function VfrPlanLayout({ mapElement, sidebarContent }: Props) {
   const isDesktop = useIsDesktop();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('normal');
+  const [mapHeight, setMapHeight] = useState<number | null>(null);
+  const dragStartHeight = useRef(0);
 
-  const collapse = useCallback(() => setSidebarMode('collapsed'), []);
-  const normalize = useCallback(() => setSidebarMode('normal'), []);
-  const expand = useCallback(() => setSidebarMode('expanded'), []);
+  const minMap = Math.round(windowHeight * MIN_MAP_RATIO);
+  const maxMap = Math.round(windowHeight * MAX_MAP_RATIO);
+  const defaultMapHeight = Math.round(windowHeight * 0.33);
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_e, gs) => Math.abs(gs.dy) > 4,
+    onPanResponderGrant: () => {
+      dragStartHeight.current = mapHeight ?? defaultMapHeight;
+    },
+    onPanResponderMove: (_e, gs) => {
+      const next = Math.max(minMap, Math.min(maxMap, dragStartHeight.current + gs.dy));
+      setMapHeight(next);
+    },
+    onPanResponderRelease: (_e, gs) => {
+      const final = Math.max(minMap, Math.min(maxMap, dragStartHeight.current + gs.dy));
+      setMapHeight(final);
+      if (final > windowHeight * 0.6) {
+        setSidebarMode('collapsed');
+      } else if (final < windowHeight * 0.28) {
+        setSidebarMode('expanded');
+      } else {
+        setSidebarMode('normal');
+      }
+    },
+  }), [mapHeight, defaultMapHeight, minMap, maxMap, windowHeight]);
+
+  const collapse = useCallback(() => {
+    setSidebarMode('collapsed');
+    setMapHeight(Math.round(windowHeight * 0.7));
+  }, [windowHeight]);
+  const normalize = useCallback(() => {
+    setSidebarMode('normal');
+    setMapHeight(null);
+  }, []);
+  const expand = useCallback(() => {
+    setSidebarMode('expanded');
+    setMapHeight(Math.round(windowHeight * 0.25));
+  }, [windowHeight]);
 
   if (Platform.OS !== 'web') {
     return (
@@ -30,23 +70,41 @@ export function VfrPlanLayout({ mapElement, sidebarContent }: Props) {
   }
 
   if (!isDesktop) {
+    const currentMapHeight = mapHeight ?? defaultMapHeight;
+    const formVisible = currentMapHeight < maxMap - 20;
+
     return (
       <View className="flex-1 bg-background">
-        <View style={{ height: MOBILE_MAP_HEIGHT }}>
+        <View style={{ height: currentMapHeight }}>
           {mapElement}
         </View>
-        <View style={{ flex: 1, margin: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.97)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 8, overflow: 'hidden' }}>
-          <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 80 }}>
-            {sidebarContent(expand)}
-          </ScrollView>
+        {/* Drag handle */}
+        <View
+          {...panResponder.panHandlers}
+          style={{
+            height: HANDLE_HEIGHT,
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'row-resize',
+          } as never}
+        >
+          <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#d1d5db' }} />
         </View>
+        {formVisible && (
+          <View style={{ flex: 1, marginHorizontal: 8, marginBottom: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.97)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 8, overflow: 'hidden' }}>
+            <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 80 }}>
+              {sidebarContent(expand)}
+            </ScrollView>
+          </View>
+        )}
       </View>
     );
   }
 
+  const sidebarNormalWidth = Math.min(400, Math.round(windowWidth * 0.35));
   const sidebarStyle =
     sidebarMode === 'normal'
-      ? { width: SIDEBAR_NORMAL_WIDTH }
+      ? { width: sidebarNormalWidth }
       : { flex: 3 };
 
   const mapFlex = sidebarMode === 'expanded' ? 2 : 1;

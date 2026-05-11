@@ -4,6 +4,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -15,6 +16,7 @@ import type { User } from '@prisma/client';
 import type { Request, Response } from 'express';
 
 import { Public } from '../common/guards/jwt-auth.guard';
+import { PrismaService } from '../prisma/prisma.service';
 
 import { AuthService } from './auth.service';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
@@ -30,6 +32,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Public()
@@ -40,7 +43,55 @@ export class AuthController {
     if (this.config.get<string>('VATSIM_CLIENT_ID')) {
       providers.push('vatsim');
     }
+    if (this.config.get<string>('NODE_ENV') !== 'production') {
+      providers.push('dev');
+    }
     return { providers };
+  }
+
+  @Public()
+  @Get('dev-login')
+  @ApiOperation({ summary: 'Dev-only login bypass — creates session for first user' })
+  async devLogin(
+    @Query('platform') platform: string | undefined,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (this.config.get<string>('NODE_ENV') === 'production') {
+      res.status(404).json({ message: 'Not found' });
+      return;
+    }
+
+    const user = await this.prisma.user.findFirst({ orderBy: { createdAt: 'asc' } });
+    if (!user) {
+      res.status(400).json({ message: 'No users in database — sign in with OAuth first' });
+      return;
+    }
+
+    const { accessToken, refreshToken } = await this.authService.createSession(user, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
+
+    if (platform === 'native') {
+      const params = new URLSearchParams({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      res.redirect(`fssuite://auth/callback?${params.toString()}`);
+      return;
+    }
+
+    const isProduction = false;
+    res.cookie(REFRESH_COOKIE, refreshToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      maxAge: COOKIE_MAX_AGE_MS,
+    });
+
+    const callbackUrl = `${this.authService.getWebOrigin()}/auth/callback?access_token=${encodeURIComponent(accessToken)}`;
+    res.redirect(callbackUrl);
   }
 
   @Get('google')
@@ -75,10 +126,11 @@ export class AuthController {
     }
 
     // Web: set httpOnly cookie for refresh token, redirect with access token in URL
+    const isProduction = process.env['NODE_ENV'] === 'production';
     res.cookie(REFRESH_COOKIE, refreshToken, {
       httpOnly: true,
-      secure: process.env['NODE_ENV'] === 'production',
-      sameSite: 'strict',
+      secure: isProduction,
+      sameSite: isProduction ? 'strict' : 'lax',
       maxAge: COOKIE_MAX_AGE_MS,
     });
 
@@ -117,10 +169,11 @@ export class AuthController {
       return;
     }
 
+    const isProduction = process.env['NODE_ENV'] === 'production';
     res.cookie(REFRESH_COOKIE, refreshToken, {
       httpOnly: true,
-      secure: process.env['NODE_ENV'] === 'production',
-      sameSite: 'strict',
+      secure: isProduction,
+      sameSite: isProduction ? 'strict' : 'lax',
       maxAge: COOKIE_MAX_AGE_MS,
     });
 

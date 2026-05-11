@@ -66,11 +66,18 @@ interface PopupAerodromeDetail {
   runways: PopupRunway[];
 }
 
+interface MapReadyHandle {
+  flyTo: (lat: number, lng: number) => void;
+  getContainer: () => HTMLElement | null;
+  fitRouteBounds: () => { center: [number, number]; zoom: number } | null;
+  setView: (center: [number, number], zoom: number) => void;
+}
+
 interface Props {
   onSelectOrigin: (a: Aerodrome) => void;
   onSelectDestination: (a: Aerodrome) => void;
   onSelectAlternate: (a: Aerodrome) => void;
-  onMapReady?: (flyTo: (lat: number, lng: number) => void) => void;
+  onMapReady?: (handle: MapReadyHandle) => void;
   routeOrigin?: { lat: number; lng: number; name: string } | null;
   routeDestination?: { lat: number; lng: number; name: string } | null;
   routeAlternate?: { lat: number; lng: number; name: string } | null;
@@ -78,6 +85,7 @@ interface Props {
   onAddWaypoint?: (wp: RouteWaypoint) => void;
   onRemoveWaypoint?: (index: number) => void;
   reaSegments?: ReaCorridorSegment[];
+  selectedReaCorridorName?: string | null;
   flightRules?: 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
 }
 
@@ -89,7 +97,14 @@ const CATEGORY_COLORS: Record<string, string> = {
   IFR: '#dc2626',
   LIFR: '#d946ef',
 };
+const CATEGORY_BG_COLORS: Record<string, string> = {
+  VFR: 'rgba(20,83,45,0.8)',
+  MVFR: 'rgba(30,58,95,0.8)',
+  IFR: 'rgba(127,29,29,0.8)',
+  LIFR: 'rgba(107,33,168,0.8)',
+};
 const DEFAULT_DOT_COLOR = '#94a3b8';
+const DEFAULT_BADGE_BG = 'rgba(55,65,81,0.8)';
 const MAX_METAR_FETCH = 50;
 const DEFAULT_CENTER: [number, number] = [-15.78, -47.93];
 const DEFAULT_ZOOM = 5;
@@ -125,8 +140,11 @@ const DECEA_CHART_OVERLAYS: Record<ChartOverlayKey, { layers: string; i18nKey: s
   airspaceDecea: { layers: 'ICA:SETOR_FIR,ICA:TMA,ICA:CTR,ICA:ATZ', i18nKey: 'vfr.layerAirspaceDecea', minZoom: 5, maxZoom: 14, opacity: 0.5 },
 };
 
-const ROUTE_COLOR = '#7c3aed';
+const ROUTE_COLOR = '#a855f7';
+const ROUTE_OUTLINE = '#4c1d95';
+const WP_LABEL_BG = '#16a34a';
 const ALT_ROUTE_COLOR = '#f59e0b';
+const ALT_ROUTE_OUTLINE = '#78350f';
 
 // --------------- CSS injection ---------------
 
@@ -142,7 +160,7 @@ function injectLeafletCSS() {
   doc.head.appendChild(link);
 
   const style = doc.createElement('style');
-  style.textContent = '.leg-label-tooltip { background:none !important; border:none !important; box-shadow:none !important; margin:0 !important; padding:0 !important; }';
+  style.textContent = '.leg-label-tooltip { background:none !important; border:none !important; box-shadow:none !important; padding:0 !important; } .route-leg-pill { background:none !important; border:none !important; box-shadow:none !important; padding:0 !important; }';
   doc.head.appendChild(style);
 }
 
@@ -151,7 +169,7 @@ function injectLeafletCSS() {
 export function AerodromeMap({
   onSelectOrigin, onSelectDestination, onSelectAlternate, onMapReady,
   routeOrigin, routeDestination, routeAlternate, routeWaypoints, onAddWaypoint, onRemoveWaypoint,
-  reaSegments, flightRules,
+  reaSegments, selectedReaCorridorName, flightRules,
 }: Props) {
   const { t } = useTranslation();
   const wrapperRef = useRef<View>(null);
@@ -168,6 +186,8 @@ export function AerodromeMap({
   const [activeLayer, setActiveLayer] = useState<LayerKey>('map');
   const [showAirspace, setShowAirspace] = useState(false);
   const [activeChart, setActiveChart] = useState<ChartOverlayKey | null>(null);
+  const fullscreenBtnRef = useRef<View>(null);
+  const fitRouteBtnRef = useRef<View>(null);
   const fetchingRef = useRef(false);
   const routeBoundsRef = useRef<L.LatLngBounds | null>(null);
   const [hasRoute, setHasRoute] = useState(false);
@@ -229,6 +249,11 @@ export function AerodromeMap({
     if (!el || mapRef.current) return;
 
     const map = Leaf.map(el, { zoomControl: true }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+
+    // Custom pane for route elements (below default markerPane z-index 600)
+    const routePane = map.createPane('routeLabels');
+    (routePane as unknown as DomElement).style['zIndex'] = '450';
+
     const defaultTile = TILE_LAYERS.map;
     tileLayerRef.current = Leaf.tileLayer(defaultTile.url, { attribution: defaultTile.attr, maxZoom: 18 }).addTo(map);
     mapRef.current = map;
@@ -279,9 +304,21 @@ export function AerodromeMap({
     // Initial load
     void fetchAndRender(map, Leaf);
 
-    // Expose flyTo to parent
-    onMapReady?.((lat: number, lng: number) => {
-      map.flyTo([lat, lng], 13, { duration: 1.2 });
+    // Expose handle to parent
+    onMapReady?.({
+      flyTo: (lat: number, lng: number) => {
+        map.flyTo([lat, lng], 13, { duration: 1.2 });
+      },
+      getContainer: () => map.getContainer(),
+      fitRouteBounds: () => {
+        if (!routeBoundsRef.current) return null;
+        const prev = { center: [map.getCenter().lat, map.getCenter().lng] as [number, number], zoom: map.getZoom() };
+        map.fitBounds(routeBoundsRef.current, { padding: [40, 40], animate: false });
+        return prev;
+      },
+      setView: (center: [number, number], zoom: number) => {
+        map.setView(center, zoom, { animate: false });
+      },
     });
 
     return () => {
@@ -369,6 +406,14 @@ export function AerodromeMap({
       mapRef.current.fitBounds(routeBoundsRef.current, { padding: [40, 40], maxZoom: 12 });
     }
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const fsEl = fullscreenBtnRef.current as unknown as DomElement | null;
+    if (fsEl) fsEl.title = t(isFullscreen ? 'vfr.exitFullscreen' : 'vfr.fullscreen');
+    const frEl = fitRouteBtnRef.current as unknown as DomElement | null;
+    if (frEl) frEl.title = t('vfr.fitRoute');
+  }, [isFullscreen, t]);
 
   const toggleChart = useCallback((key: ChartOverlayKey) => {
     setActiveChart((prev) => (prev === key ? null : key));
@@ -483,42 +528,101 @@ export function AerodromeMap({
 
     const group = Leaf.layerGroup().addTo(map);
 
-    // Polyline — semi-transparent route
-    const latlngs = fullRoute.map((p) => [p.lat, p.lng] as L.LatLngTuple);
-    Leaf.polyline(latlngs, { color: ROUTE_COLOR, weight: 9, opacity: 0.55, lineCap: 'round', lineJoin: 'round' }).addTo(group);
+    // Route polyline — emblems (white-filled, higher z-index) cover the line ends
+    const routeLatlngs = fullRoute.map((p) => [p.lat, p.lng] as L.LatLngTuple);
+    Leaf.polyline(routeLatlngs, { color: ROUTE_OUTLINE, weight: 8, opacity: 0.6, lineCap: 'butt', lineJoin: 'round' }).addTo(group);
+    Leaf.polyline(routeLatlngs, { color: ROUTE_COLOR, weight: 5, opacity: 0.85, lineCap: 'butt', lineJoin: 'round' }).addTo(group);
 
-    // Intermediate waypoint markers (numbered circles) — hover shows visual reference
+    // Airport emblem SVG — circle with tick marks (standard chart symbol)
+    const airportEmblem = (color: string, size: number) => {
+      const s = size;
+      const c = s / 2;
+      const r = s / 2 - 2;
+      const t = 4;
+      return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" xmlns="http://www.w3.org/2000/svg">` +
+        `<circle cx="${c}" cy="${c}" r="${r}" fill="#fff" stroke="${color}" stroke-width="2.5"/>` +
+        `<line x1="${c}" y1="${c - r}" x2="${c}" y2="${c - r + t}" stroke="${color}" stroke-width="2" stroke-linecap="round"/>` +
+        `<line x1="${c}" y1="${c + r}" x2="${c}" y2="${c + r - t}" stroke="${color}" stroke-width="2" stroke-linecap="round"/>` +
+        `<line x1="${c - r}" y1="${c}" x2="${c - r + t}" y2="${c}" stroke="${color}" stroke-width="2" stroke-linecap="round"/>` +
+        `<line x1="${c + r}" y1="${c}" x2="${c + r - t}" y2="${c}" stroke="${color}" stroke-width="2" stroke-linecap="round"/>` +
+        `</svg>`;
+    };
+
+    // Airport emblems at origin and destination
+    const emblemSize = 22;
+    if (routeOrigin) {
+      const oIcon = Leaf.divIcon({
+        className: 'leg-label-tooltip',
+        html: airportEmblem(ROUTE_COLOR, emblemSize),
+        iconSize: [emblemSize, emblemSize] as L.PointTuple,
+        iconAnchor: [emblemSize / 2, emblemSize / 2] as L.PointTuple,
+      });
+      Leaf.marker([routeOrigin.lat, routeOrigin.lng], { icon: oIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
+    }
+    if (routeDestination) {
+      const dIcon = Leaf.divIcon({
+        className: 'leg-label-tooltip',
+        html: airportEmblem(ROUTE_COLOR, emblemSize),
+        iconSize: [emblemSize, emblemSize] as L.PointTuple,
+        iconAnchor: [emblemSize / 2, emblemSize / 2] as L.PointTuple,
+      });
+      Leaf.marker([routeDestination.lat, routeDestination.lng], { icon: dIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
+    }
+
+    // Waypoint diamond SVG — proper centered diamond
+    const diamondSvg = (stroke: string) =>
+      `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">` +
+      `<path d="M8 1 L15 8 L8 15 L1 8 Z" fill="#fff" stroke="${stroke}" stroke-width="2"/>` +
+      `</svg>`;
+
+    // Waypoint markers — diamond + green name label above
     if (routeWaypoints) {
       routeWaypoints.forEach((wp, wpIdx) => {
+        // Name label — same pattern as airport badge but more transparent
+        const nameIcon = Leaf.divIcon({
+          className: 'leg-label-tooltip',
+          html: `<div style="transform:translate(-50%,-100%);margin-top:-8px"><div style="display:inline-flex;align-items:center;gap:4px;background:rgba(76,29,149,0.55);color:#fff;font-size:11px;font-weight:700;padding:3px 7px;border-radius:4px;white-space:nowrap;font-family:system-ui,sans-serif;line-height:1;letter-spacing:0.4px;border:1px solid rgba(255,255,255,0.12)"><span style="width:8px;height:8px;border-radius:4px;background:${ROUTE_COLOR};flex-shrink:0"></span>${escapeHtml(wp.name)}</div><div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:4px solid rgba(76,29,149,0.55);margin:0 auto"></div></div>`,
+          iconSize: [0, 0] as L.PointTuple,
+          iconAnchor: [0, 0] as L.PointTuple,
+        });
+        Leaf.marker([wp.lat, wp.lng], { icon: nameIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
+
+        // Diamond marker
         const icon = Leaf.divIcon({
           className: 'leg-label-tooltip',
-          html: `<div style="width:22px;height:22px;border-radius:50%;background:${ROUTE_COLOR};color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);cursor:pointer">${wpIdx + 1}</div>`,
-          iconSize: [22, 22] as L.PointTuple,
-          iconAnchor: [11, 11] as L.PointTuple,
+          html: diamondSvg(ROUTE_COLOR),
+          iconSize: [16, 16] as L.PointTuple,
+          iconAnchor: [8, 8] as L.PointTuple,
         });
+        const marker = Leaf.marker([wp.lat, wp.lng], { icon, pane: 'routeLabels' }).addTo(group);
 
-        const marker = Leaf.marker([wp.lat, wp.lng], { icon }).addTo(group);
-
-        // Hover → visual reference popup (satellite only)
         marker.on('mouseover', () => {
           const satUrl = buildSatelliteUrl(wp.lat, wp.lng, 0.08, 320, 200);
-          const popupHtml = `
-            <div style="font-family:system-ui,sans-serif;min-width:320px">
-              <div style="font-weight:700;font-size:12px;margin-bottom:2px;color:#1a1d26">${escapeHtml(wp.name)}</div>
-              <div style="font-size:10px;color:#6b7280;margin-bottom:6px">${wp.lat.toFixed(4)}, ${wp.lng.toFixed(4)}</div>
-              <img src="${satUrl}" style="width:320px;height:200px;border-radius:4px;border:1px solid #e5e7eb;object-fit:cover;display:block" />
-            </div>
-          `;
-          Leaf.popup({ maxWidth: 360, closeButton: true, autoPan: true })
+          const wpPopup = Leaf.popup({ maxWidth: 360, closeButton: false, autoPan: false })
             .setLatLng([wp.lat, wp.lng])
-            .setContent(popupHtml)
+            .setContent(`
+              <div style="font-family:system-ui,sans-serif;min-width:320px">
+                <div style="font-weight:700;font-size:12px;margin-bottom:2px;color:#1a1d26">${escapeHtml(wp.name)}</div>
+                <div style="font-size:10px;color:#6b7280;margin-bottom:6px">${wp.lat.toFixed(4)}, ${wp.lng.toFixed(4)}</div>
+                <img src="${satUrl}" style="width:320px;height:200px;border-radius:4px;border:1px solid #e5e7eb;object-fit:cover;display:block" />
+              </div>
+            `)
             .openOn(map);
+          const popupEl = wpPopup.getElement() as unknown as DomElement | undefined;
+          let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+          const scheduleClose = () => { hoverTimeout = setTimeout(() => map.closePopup(wpPopup), 200); };
+          const cancelClose = () => { if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; } };
+          marker.on('mouseout', scheduleClose);
+          if (popupEl) {
+            popupEl.addEventListener('mouseenter', cancelClose);
+            popupEl.addEventListener('mouseleave', () => { map.closePopup(wpPopup); });
+          }
+          wpPopup.on('remove', () => { marker.off('mouseout', scheduleClose); cancelClose(); });
         });
 
-        // Right-click to remove waypoint
         marker.on('contextmenu', (e: L.LeafletMouseEvent) => {
           Leaf.DomEvent.stopPropagation(e);
-          const removeHtml = `
+          const popup = Leaf.popup({ closeButton: true }).setLatLng([wp.lat, wp.lng]).setContent(`
             <div style="font-family:system-ui,sans-serif;min-width:120px">
               <div style="font-weight:700;font-size:12px;margin-bottom:2px;color:#1a1d26">${escapeHtml(wp.name)}</div>
               <div style="font-size:10px;color:#6b7280;margin-bottom:6px">${wp.lat.toFixed(4)}, ${wp.lng.toFixed(4)}</div>
@@ -527,8 +631,7 @@ export function AerodromeMap({
                 ${escapeHtml(tRef.current('vfr.removeWaypoint'))}
               </button>
             </div>
-          `;
-          const popup = Leaf.popup({ closeButton: true }).setLatLng([wp.lat, wp.lng]).setContent(removeHtml).openOn(map);
+          `).openOn(map);
           const popupEl = popup.getElement() as unknown as DomElement | undefined;
           if (popupEl) {
             popupEl.querySelector?.('button[data-action="remove-wp"]')?.addEventListener('click', () => {
@@ -540,7 +643,10 @@ export function AerodromeMap({
       });
     }
 
-    // Leg labels at midpoints — dark pill rotated along route bearing (Navigraph-style)
+    // Leg info labels — dark pill at midpoint, rotated along bearing
+    interface LegLabelInfo { from: L.LatLngTuple; to: L.LatLngTuple; marker: L.Marker }
+    const legLabels: LegLabelInfo[] = [];
+
     for (let i = 0; i < fullRoute.length - 1; i++) {
       const from = fullRoute[i]!;
       const to = fullRoute[i + 1]!;
@@ -556,28 +662,30 @@ export function AerodromeMap({
       if (rot < -90) rot += 180;
 
       const labelIcon = Leaf.divIcon({
-        className: 'leg-label-tooltip',
-        html: `<div style="display:inline-block;transform:translate(-50%,-50%)"><div style="transform:rotate(${rot.toFixed(1)}deg);background:${ROUTE_COLOR};color:#fff;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:0.3px;font-family:system-ui,sans-serif;opacity:0.55">${dist.toFixed(0)}NM ${mc.toFixed(0)}&deg;</div></div>`,
+        className: 'leg-label-tooltip route-leg-pill',
+        html: `<div style="display:inline-block;transform:translate(-50%,-50%)"><div style="transform:rotate(${rot.toFixed(1)}deg);background:${ROUTE_OUTLINE};color:#fff;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap;letter-spacing:0.2px;font-family:system-ui,sans-serif;text-align:center;line-height:1">${dist.toFixed(0)}NM ${mc.toFixed(0)}&deg;</div></div>`,
         iconSize: [0, 0] as L.PointTuple,
         iconAnchor: [0, 0] as L.PointTuple,
       });
-      Leaf.marker([midLat, midLng], { icon: labelIcon, interactive: false }).addTo(group);
+      const m = Leaf.marker([midLat, midLng], { icon: labelIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
+      legLabels.push({ from: [from.lat, from.lng], to: [to.lat, to.lng], marker: m });
     }
 
-    // Alternate route: solid line from destination to alternate
+    // Alternate route — same pattern
     if (routeDestination && routeAlternate) {
-      const altLatlngs: [number, number][] = [[routeDestination.lat, routeDestination.lng], [routeAlternate.lat, routeAlternate.lng]];
-      Leaf.polyline(altLatlngs, { color: ALT_ROUTE_COLOR, weight: 7, opacity: 0.55, lineCap: 'round', lineJoin: 'round' }).addTo(group);
+      const altLatlngs: L.LatLngTuple[] = [[routeDestination.lat, routeDestination.lng], [routeAlternate.lat, routeAlternate.lng]];
+      Leaf.polyline(altLatlngs, { color: ALT_ROUTE_OUTLINE, weight: 8, opacity: 0.6, lineCap: 'butt', lineJoin: 'round' }).addTo(group);
+      Leaf.polyline(altLatlngs, { color: ALT_ROUTE_COLOR, weight: 5, opacity: 0.85, lineCap: 'butt', lineJoin: 'round' }).addTo(group);
 
-      // Alternate marker
-      const altIcon = Leaf.divIcon({
-        className: '',
-        html: `<div style="width:22px;height:22px;border-radius:50%;background:${ALT_ROUTE_COLOR};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)">ALT</div>`,
-        iconAnchor: [11, 11] as L.PointTuple,
+      // ALT airport emblem
+      const altEmblemIcon = Leaf.divIcon({
+        className: 'leg-label-tooltip',
+        html: airportEmblem(ALT_ROUTE_COLOR, emblemSize),
+        iconSize: [emblemSize, emblemSize] as L.PointTuple,
+        iconAnchor: [emblemSize / 2, emblemSize / 2] as L.PointTuple,
       });
-      Leaf.marker([routeAlternate.lat, routeAlternate.lng], { icon: altIcon }).addTo(group);
+      Leaf.marker([routeAlternate.lat, routeAlternate.lng], { icon: altEmblemIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
 
-      // Leg label at midpoint
       const altDist = haversineDistanceNm(routeDestination.lat, routeDestination.lng, routeAlternate.lat, routeAlternate.lng);
       const altTc = initialBearing(routeDestination.lat, routeDestination.lng, routeAlternate.lat, routeAlternate.lng);
       const altMidLat = (routeDestination.lat + routeAlternate.lat) / 2;
@@ -590,12 +698,13 @@ export function AerodromeMap({
       if (altRot < -90) altRot += 180;
 
       const altLabelIcon = Leaf.divIcon({
-        className: 'leg-label-tooltip',
-        html: `<div style="display:inline-block;transform:translate(-50%,-50%)"><div style="transform:rotate(${altRot.toFixed(1)}deg);background:${ALT_ROUTE_COLOR};color:#fff;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:0.3px;font-family:system-ui,sans-serif;opacity:0.55">${altDist.toFixed(0)}NM ${altMc.toFixed(0)}&deg;</div></div>`,
+        className: 'leg-label-tooltip route-leg-pill',
+        html: `<div style="display:inline-block;transform:translate(-50%,-50%)"><div style="transform:rotate(${altRot.toFixed(1)}deg);background:${ALT_ROUTE_OUTLINE};color:#fff;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap;letter-spacing:0.2px;font-family:system-ui,sans-serif;text-align:center;line-height:1">${altDist.toFixed(0)}NM ${altMc.toFixed(0)}&deg;</div></div>`,
         iconSize: [0, 0] as L.PointTuple,
         iconAnchor: [0, 0] as L.PointTuple,
       });
-      Leaf.marker([altMidLat, altMidLng], { icon: altLabelIcon, interactive: false }).addTo(group);
+      const altM = Leaf.marker([altMidLat, altMidLng], { icon: altLabelIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
+      legLabels.push({ from: [routeDestination.lat, routeDestination.lng], to: [routeAlternate.lat, routeAlternate.lng], marker: altM });
     }
 
     routeLayerRef.current = group;
@@ -605,7 +714,23 @@ export function AerodromeMap({
     routeBoundsRef.current = allPoints.length >= 2 ? Leaf.latLngBounds(allPoints) : null;
     setHasRoute(!!routeBoundsRef.current);
 
+    const LABEL_BOX_PX = 55;
+    const updateLabelVisibility = () => {
+      for (const leg of legLabels) {
+        const pxFrom = map.latLngToContainerPoint(leg.from);
+        const pxTo = map.latLngToContainerPoint(leg.to);
+        const linePx = Math.sqrt((pxTo.x - pxFrom.x) ** 2 + (pxTo.y - pxFrom.y) ** 2);
+        const el = (leg.marker as unknown as { _icon?: { style: { display: string } } })._icon;
+        if (el) {
+          el.style.display = LABEL_BOX_PX > linePx * 0.7 ? 'none' : '';
+        }
+      }
+    };
+    updateLabelVisibility();
+    map.on('zoomend', updateLabelVisibility);
+
     return () => {
+      map.off('zoomend', updateLabelVisibility);
       if (routeLayerRef.current) {
         map.removeLayer(routeLayerRef.current);
         routeLayerRef.current = null;
@@ -634,8 +759,9 @@ export function AerodromeMap({
 
     for (const seg of reaSegments) {
       const isMandatory = seg.tipo === 'Obrig';
-      const color = isMandatory ? '#dc2626' : '#2563eb';
-      const fillColor = isMandatory ? '#fca5a5' : '#93c5fd';
+      const isSelected = selectedReaCorridorName != null && seg.nome === selectedReaCorridorName;
+      const color = isSelected ? '#16a34a' : isMandatory ? '#dc2626' : '#2563eb';
+      const fillColor = isSelected ? '#86efac' : isMandatory ? '#fca5a5' : '#93c5fd';
 
       // Convert GeoJSON coordinates to Leaflet-compatible [lat, lng] arrays
       const coordSets = seg.geometry.type === 'MultiPolygon'
@@ -646,10 +772,10 @@ export function AerodromeMap({
         const latlngs = ring.map((c: number[]) => [c[1]!, c[0]!] as L.LatLngTuple);
         const polygon = Leaf.polygon(latlngs, {
           color,
-          weight: 1.5,
+          weight: isSelected ? 3 : 1.5,
           fillColor,
-          fillOpacity: 0.2,
-          dashArray: isMandatory ? undefined : '5,5',
+          fillOpacity: isSelected ? 0.35 : 0.2,
+          dashArray: isSelected ? undefined : isMandatory ? undefined : '5,5',
         }).addTo(group);
 
         const altInfo = seg.altMinAtoB && seg.altMaxAtoB
@@ -674,7 +800,7 @@ export function AerodromeMap({
         reaLayerRef.current = null;
       }
     };
-  }, [reaKey]);
+  }, [reaKey, selectedReaCorridorName]);
 
   const fetchAndRender = useCallback(async (map: L.Map, Leaf: LeafletModule) => {
     if (fetchingRef.current) return;
@@ -704,9 +830,9 @@ export function AerodromeMap({
 
       const zoom = map.getZoom();
       const filtered = enriched.filter((a) => {
-        if (zoom >= 9) return true;
-        if (zoom >= 7) return a.type !== 'heliport' && a.type !== 'closed';
-        if (zoom >= 5) return a.type === 'large_airport' || a.type === 'medium_airport';
+        if (zoom >= 10) return true;
+        if (zoom >= 8) return a.type !== 'heliport' && a.type !== 'closed';
+        if (zoom >= 6) return a.type === 'large_airport' || a.type === 'medium_airport';
         return a.type === 'large_airport';
       });
 
@@ -715,15 +841,18 @@ export function AerodromeMap({
         const color = airport.flightCategory
           ? (CATEGORY_COLORS[airport.flightCategory] ?? DEFAULT_DOT_COLOR)
           : DEFAULT_DOT_COLOR;
+        const bgColor = airport.flightCategory
+          ? (CATEGORY_BG_COLORS[airport.flightCategory] ?? DEFAULT_BADGE_BG)
+          : DEFAULT_BADGE_BG;
 
         const icon = Leaf.divIcon({
           className: '',
-          html: `<div style="background:${color};color:#fff;font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;white-space:nowrap;cursor:pointer;font-family:system-ui,sans-serif;line-height:1;letter-spacing:0.3px;box-shadow:0 1px 2px rgba(0,0,0,0.3);display:inline-block">${escapeHtml(airport.icao)}</div>`,
+          html: `<div style="transform:translate(-50%,-100%);margin-top:-10px"><div style="display:inline-flex;align-items:center;gap:4px;background:${bgColor};color:#fff;font-size:11px;font-weight:700;padding:3px 7px;border-radius:4px;white-space:nowrap;cursor:pointer;font-family:system-ui,sans-serif;line-height:1;letter-spacing:0.4px;border:1px solid rgba(255,255,255,0.12)"><span style="width:8px;height:8px;border-radius:4px;background:${color};flex-shrink:0"></span>${escapeHtml(airport.icao)}</div><div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:4px solid ${bgColor};margin:0 auto"></div></div>`,
           iconSize: [0, 0] as L.PointTuple,
-          iconAnchor: [0, 8] as L.PointTuple,
+          iconAnchor: [0, 0] as L.PointTuple,
         });
 
-        const marker = Leaf.marker([airport.latitude, airport.longitude], { icon }).addTo(map);
+        const marker = Leaf.marker([airport.latitude, airport.longitude], { icon, zIndexOffset: 1000 }).addTo(map);
 
         marker.on('click', () => {
           const roleRefs = { origin: onSelectOriginRef, dest: onSelectDestRef, alt: onSelectAltRef };
@@ -793,6 +922,7 @@ export function AerodromeMap({
         </View>
         {/* Fullscreen */}
         <Pressable
+          ref={fullscreenBtnRef}
           onPress={toggleFullscreen}
           style={{
             backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 4,
@@ -804,6 +934,7 @@ export function AerodromeMap({
         </Pressable>
         {hasRoute ? (
           <Pressable
+            ref={fitRouteBtnRef}
             onPress={fitToRoute}
             style={{
               backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 4,
@@ -811,7 +942,11 @@ export function AerodromeMap({
               width: 32, height: 32, alignItems: 'center', justifyContent: 'center',
             }}
           >
-            <Text style={{ fontSize: 13, color: '#374151', fontWeight: '700' }}>{"\u21E4"}</Text>
+            <View style={{ width: 18, height: 18 }} ref={(el) => {
+              if (el && Platform.OS === 'web') {
+                (el as unknown as DomElement).innerHTML = '<svg viewBox="0 0 18 18" width="18" height="18"><rect x="0.5" y="1" width="3.5" height="3.5" rx="0.7" fill="#374151"/><rect x="12" y="4" width="3.5" height="3.5" rx="0.7" fill="#374151"/><rect x="2" y="12" width="3.5" height="3.5" rx="0.7" fill="#374151"/><rect x="12.5" y="12.5" width="3.5" height="3.5" rx="0.7" fill="#374151"/><line x1="4" y1="3" x2="12" y2="5.7" stroke="#374151" stroke-width="1.3" stroke-dasharray="2 1.5"/><line x1="13.7" y1="7.5" x2="5.5" y2="13.5" stroke="#374151" stroke-width="1.3" stroke-dasharray="2 1.5"/><line x1="5.5" y1="14" x2="12.5" y2="14.2" stroke="#374151" stroke-width="1.3" stroke-dasharray="2 1.5"/></svg>';
+              }
+            }} />
           </Pressable>
         ) : null}
         </View>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
 import { API_URL, apiClient } from '../../services/api.client';
 
@@ -45,10 +45,14 @@ function proxyUrl(chartUrl: string): string {
 
 // --------------- Component ---------------
 
-const VIEWER_HEIGHT = 450;
+function useViewerHeight(base: number): number {
+  const { height } = useWindowDimensions();
+  return height < 700 ? Math.round(height * 0.45) : base;
+}
 
 export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
   const { t } = useTranslation();
+  const viewerHeight = useViewerHeight(450);
   const [data, setData] = useState<ChartSearchResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -284,7 +288,7 @@ export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
                 ) : null}
               </View>
               <View
-                style={fullscreen ? { flex: 1, borderRadius: 6, overflow: 'hidden' } : { height: VIEWER_HEIGHT, borderRadius: 6, overflow: 'hidden' }}
+                style={fullscreen ? { flex: 1, borderRadius: 6, overflow: 'hidden' } : { height: viewerHeight, borderRadius: 6, overflow: 'hidden' }}
                 className="border border-border"
               >
                 <View ref={iframeRef} style={{ flex: 1 }} />

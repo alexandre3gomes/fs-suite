@@ -89,6 +89,14 @@ export function MetarDisplay({ metar, loading }: Props) {
         ) : null}
 
         <View className="flex-row items-center gap-1">
+          <Text className="text-xs text-muted-foreground">{t('vfr.temperature')}:</Text>
+          <Text className="text-xs font-medium text-foreground">
+            {metar.temperature !== null ? `${metar.temperature}°C` : '—'}
+            {metar.dewpoint !== null ? ` / ${metar.dewpoint}°C` : ''}
+          </Text>
+        </View>
+
+        <View className="flex-row items-center gap-1">
           <Text className="text-xs text-muted-foreground">{t('vfr.qnh')}:</Text>
           <Text className="text-xs font-medium text-foreground">
             {metar.altimeter ?? '—'} hPa

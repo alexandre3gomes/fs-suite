@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
 import { API_URL, apiClient } from '../../services/api.client';
 
@@ -26,10 +26,14 @@ function viewerUrl(chartUrl: string): string {
   return `${API_URL}/v1/aerodromes/chart-proxy?url=${encodeURIComponent(chartUrl)}`;
 }
 
-const VIEWER_HEIGHT = 450;
+function useViewerHeight(base: number): number {
+  const { height } = useWindowDimensions();
+  return height < 700 ? Math.round(height * 0.45) : base;
+}
 
 export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
   const { t } = useTranslation();
+  const viewerHeight = useViewerHeight(450);
   const [regions, setRegions] = useState<ReaRegionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
@@ -256,7 +260,7 @@ export function ReaChartsPanel({ highlightRegionIds = [] }: Props) {
             </Pressable>
           </View>
           <View
-            style={{ height: VIEWER_HEIGHT, borderRadius: 6, overflow: 'hidden' }}
+            style={{ height: viewerHeight, borderRadius: 6, overflow: 'hidden' }}
             className="border border-border"
           >
             <View ref={iframeRef} style={{ flex: 1 }} />

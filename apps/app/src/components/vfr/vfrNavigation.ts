@@ -1,4 +1,5 @@
 // VFR navigation calculations — Haversine, bearings, magnetic declination, altitudes
+// Regulatory sources documented in docs/vfr-regulatory-references.md
 
 export interface RouteWaypoint {
   lat: number;
@@ -34,21 +35,155 @@ export function toVfrCoord(lat: number, lng: number): string {
 }
 
 /**
- * Build VFR route text from origin ICAO, intermediate waypoint coordinates, and destination ICAO.
- * Format: SBSP DCT 2338S04640W DCT 2345S04655W DCT SBGR
+ * Build VFR route text per ICAO Doc 4444 Item 15 / MCA 100-11.
+ *
+ * Standard VFR (no DCT between consecutive coordinates):
+ *   SBSP DCT 2338S04640W 2345S04655W DCT SBGR
+ *
+ * Following a REA corridor (only entry and exit coordinates):
+ *   SBJD DCT 2337S04640W REA 2345S04655W DCT SBMT
+ *   Corridor name goes in Item 18 remarks via buildReaRemarks().
  */
 export function buildVfrRouteText(
   originIcao: string | null,
   waypoints: RouteWaypoint[],
   destinationIcao: string | null,
+  corridorName?: string | null,
 ): string {
+  if (corridorName && waypoints.length >= 2) {
+    const parts: string[] = [];
+    if (originIcao) parts.push(originIcao, 'DCT');
+    parts.push(toVfrCoord(waypoints[0]!.lat, waypoints[0]!.lng));
+    parts.push('REA');
+    parts.push(toVfrCoord(waypoints[waypoints.length - 1]!.lat, waypoints[waypoints.length - 1]!.lng));
+    if (destinationIcao) parts.push('DCT', destinationIcao);
+    return parts.join(' ');
+  }
+
   const parts: string[] = [];
   if (originIcao) parts.push(originIcao);
-  for (const wp of waypoints) {
-    parts.push(toVfrCoord(wp.lat, wp.lng));
+
+  for (let i = 0; i < waypoints.length; i++) {
+    const coord = toVfrCoord(waypoints[i]!.lat, waypoints[i]!.lng);
+    if (i === 0 && originIcao) parts.push('DCT');
+    parts.push(coord);
   }
-  if (destinationIcao) parts.push(destinationIcao);
-  return parts.join(' DCT ');
+
+  if (destinationIcao) {
+    if (parts.length > 0) parts.push('DCT');
+    parts.push(destinationIcao);
+  }
+
+  return parts.join(' ');
+}
+
+/**
+ * Build Item 18 REA remarks text.
+ * Format: RMK/REA FOXTROT
+ * Source: MCA 100-11 / AIC-N-20/21
+ */
+export function buildReaRemarks(corridorName: string | null): string {
+  if (!corridorName) return '';
+  const clean = corridorName.toUpperCase().replace(/^REA[\s-]*/i, '').trim();
+  return `RMK/REA ${clean}`;
+}
+
+// Default transition altitudes (feet) per region.
+// Below TA: altitude on QNH (expressed as "A045").
+// Above TA: flight level on 1013.25 hPa (expressed as "F055").
+const TRANSITION_ALTITUDES: [string[], number][] = [
+  [['SB', 'SD', 'SI', 'SJ', 'SN', 'SS', 'SW'], 5000], // Brazil — varies 3000-7000; 5000 covers most TMAs
+  [['K', 'PA', 'PH', 'PB', 'PF', 'PM', 'PP', 'TJ', 'C'], 18000], // USA/Canada — FL180
+];
+
+export function getDefaultTransitionAltitude(icaoPrefix?: string): number {
+  if (!icaoPrefix) return 5000;
+  const upper = icaoPrefix.toUpperCase();
+  for (const [prefixes, ta] of TRANSITION_ALTITUDES) {
+    for (const p of prefixes) {
+      if (upper.startsWith(p)) return ta;
+    }
+  }
+  return 5000;
+}
+
+export function formatAltitudeDisplay(altFt: number, icaoPrefix?: string): string {
+  const ta = getDefaultTransitionAltitude(icaoPrefix);
+  if (altFt < ta) return `${altFt} ft`;
+  return `FL${String(Math.round(altFt / 100)).padStart(3, '0')}`;
+}
+
+export function formatAltitudeIcao(altFt: number, icaoPrefix?: string): string {
+  const ta = getDefaultTransitionAltitude(icaoPrefix);
+  if (altFt < ta) return `A${String(Math.round(altFt / 100)).padStart(3, '0')}`;
+  return `F${String(Math.round(altFt / 100)).padStart(3, '0')}`;
+}
+
+export function parseCruiseLevelFt(cruiseLevel: string): number | null {
+  const flMatch = cruiseLevel.match(/^FL(\d{2,3})$/i);
+  if (flMatch) return parseInt(flMatch[1]!, 10) * 100;
+  const aMatch = cruiseLevel.match(/^A(\d{3})$/i);
+  if (aMatch) return parseInt(aMatch[1]!, 10) * 100;
+  const fMatch = cruiseLevel.match(/^F(\d{3})$/i);
+  if (fMatch) return parseInt(fMatch[1]!, 10) * 100;
+  // Display format: "4500 ft" or "4500"
+  const ftMatch = cruiseLevel.match(/^(\d{3,5})\s*(?:ft)?$/i);
+  if (ftMatch) return parseInt(ftMatch[1]!, 10);
+  return null;
+}
+
+export function getPerformanceCategory(cruiseSpeedKts: number): string {
+  // ICAO Doc 8168 — approach speed ≈ 1.3 × Vs0 ≈ ~65% of cruise for light pistons
+  const approxVat = cruiseSpeedKts * 0.65;
+  if (approxVat < 91) return 'A';
+  if (approxVat <= 120) return 'B';
+  if (approxVat <= 140) return 'C';
+  if (approxVat <= 165) return 'D';
+  return 'E';
+}
+
+/**
+ * Build full Item 18 (Other Information) text.
+ * Auto-generates DOF, REA, PER, and appends user remarks.
+ * Source: ICAO Doc 4444 Appendix 2 — Item 18
+ */
+export function buildItem18(opts: {
+  corridorName?: string | null;
+  corridorAltRange?: { min: number; max: number } | null;
+  corridorCompAlt?: number | null;
+  userRemarks?: string;
+  dateOfFlight?: Date;
+  performanceCategory?: string | null;
+}): string {
+  const parts: string[] = [];
+
+  if (opts.dateOfFlight) {
+    const yy = String(opts.dateOfFlight.getFullYear()).slice(-2);
+    const mm = String(opts.dateOfFlight.getMonth() + 1).padStart(2, '0');
+    const dd = String(opts.dateOfFlight.getDate()).padStart(2, '0');
+    parts.push(`DOF/${yy}${mm}${dd}`);
+  }
+
+  if (opts.corridorName) {
+    const clean = opts.corridorName.toUpperCase().replace(/^REA[\s-]*/i, '').trim();
+    let reaText = `REA ${clean}`;
+    if (opts.corridorCompAlt != null) {
+      reaText += ` ${opts.corridorCompAlt}FT`;
+    } else if (opts.corridorAltRange) {
+      reaText += ` ${opts.corridorAltRange.min}/${opts.corridorAltRange.max}FT`;
+    }
+    parts.push(reaText);
+  }
+
+  if (opts.performanceCategory) {
+    parts.push(`PER/${opts.performanceCategory}`);
+  }
+
+  if (opts.userRemarks?.trim()) {
+    parts.push(`RMK/${opts.userRemarks.trim()}`);
+  }
+
+  return parts.join(' ');
 }
 
 const R_NM = 3440.065; // Earth radius in nautical miles
@@ -105,6 +240,7 @@ interface SemicircularRule {
 }
 
 const RULE_ICAO: SemicircularRule = { oddRange: [0, 180], maxFL: 195 };
+const RULE_BRAZIL: SemicircularRule = { oddRange: [0, 180], maxFL: 145 };
 const RULE_SOUTH: SemicircularRule = { oddRange: [90, 270], maxFL: 195 };
 const RULE_NZ: SemicircularRule = { oddRange: [270, 90], maxFL: 150 };
 const RULE_USA: SemicircularRule = { oddRange: [0, 180], maxFL: 175 };
@@ -113,7 +249,7 @@ const RULE_AUS: SemicircularRule = { oddRange: [0, 180], maxFL: 200 };
 // ICAO prefix → rule. More specific prefixes checked first.
 const REGION_RULES: [string[], SemicircularRule][] = [
   // Americas
-  [['SB', 'SD', 'SI', 'SJ', 'SN', 'SS', 'SW'], RULE_ICAO],   // Brazil
+  [['SB', 'SD', 'SI', 'SJ', 'SN', 'SS', 'SW'], RULE_BRAZIL], // Brazil — ICA 100-12 caps VFR at FL145
   [['K', 'PA', 'PH', 'PB', 'PF', 'PM', 'PP', 'TJ'], RULE_USA], // USA
   [['C'], RULE_USA],                                              // Canada
   // Southern-split Europe (France, Italy, Portugal, Spain mainland)

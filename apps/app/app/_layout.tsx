@@ -12,6 +12,7 @@ import { Text, View } from 'react-native';
 
 import { restoreLanguage } from '../src/i18n';
 import { refreshAccessToken } from '../src/services/auth.service';
+import { restoreUnits } from '../src/stores/units.store';
 
 Sentry.init({
   dsn: process.env['EXPO_PUBLIC_SENTRY_DSN'],
@@ -82,7 +83,7 @@ function RootLayout(): JSX.Element | null {
     initialized.current = true;
 
     // Restore persisted language + attempt silent token refresh
-    Promise.all([restoreLanguage(), refreshAccessToken().catch(() => undefined)])
+    Promise.all([restoreLanguage(), restoreUnits(), refreshAccessToken().catch(() => undefined)])
       .finally(() => {
         setReady(true);
         void SplashScreen.hideAsync();

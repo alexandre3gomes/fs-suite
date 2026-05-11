@@ -46,7 +46,7 @@ export default function VfrPlansListScreen() {
           <Text className="text-sm font-medium text-primary">{t('common.back')}</Text>
         </Pressable>
         <Text className="text-base font-bold text-foreground">{t('dashboard.flightPlanning')}</Text>
-        <View style={{ width: 50 }} />
+        <View className="w-12 md:w-[50px]" />
       </View>
 
       {/* Content — centered on desktop */}

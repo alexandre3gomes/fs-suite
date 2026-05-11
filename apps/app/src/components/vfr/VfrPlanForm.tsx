@@ -1,11 +1,15 @@
 import { Input } from '@fs-suite/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { type AircraftSpec, findAircraftByIcao } from '../../data/aircraftCatalog';
 import { getChecklistsForAircraft } from '../../data/checklistCatalog';
-import { apiClient } from '../../services/api.client';
+import { apiClient, API_URL } from '../../services/api.client';
+import { toPng } from 'html-to-image';
+
+import { buildFlightPlanDoc, exportFlightPlanWithAttachments } from '../../services/pdf-export';
+import { useUnitsStore, formatWeight, formatVolume, formatFuelWeight, formatSpeed, formatFuelFlow } from '../../stores/units.store';
 
 
 import { AerodromeMap } from './AerodromeMap';
@@ -19,7 +23,7 @@ import { ReaChartsPanel } from './ReaChartsPanel';
 import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
 import { VfrPlanLayout } from './VfrPlanLayout';
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
-import { type RouteWaypoint, buildVfrRouteText, calculateRouteLegs, haversineDistanceNm, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance } from './vfrNavigation';
+import { type RouteWaypoint, buildVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeDisplay, formatAltitudeIcao, parseCruiseLevelFt, getPerformanceCategory } from './vfrNavigation';
 
 // ---------- Types ----------
 
@@ -33,6 +37,16 @@ interface AerodromeWithRunways extends Aerodrome {
     ident: string;
     lengthFt: number | null;
   }[];
+}
+
+export interface PlanRouteLeg {
+  from: string;
+  to: string;
+  distanceNm: number;
+  trueCourse: number;
+  magneticDeclination: number;
+  magneticCourse: number;
+  suggestedAltitudes: number[];
 }
 
 export interface VfrPlanData {
@@ -70,6 +84,22 @@ export interface VfrPlanData {
   callsign?: string;
   simbriefOfpId?: string;
   status?: 'DRAFT' | 'COMPLETED';
+  routeLegs?: PlanRouteLeg[];
+  totalDistanceNm?: number;
+  tripMinutes?: number;
+  cruiseSpeedKts?: number;
+  tripFuelKg?: number;
+  altFuelKg?: number;
+  altDistanceNm?: number;
+  contingencyPct?: number;
+  contingencyFuelKg?: number;
+  reserveFuelKg?: number;
+  minFuelKg?: number;
+  flightCondition?: 'day' | 'night';
+  emptyWeightKg?: number;
+  payloadKg?: number;
+  fuelCapacityL?: number;
+  remarks?: string;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -80,19 +110,19 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 const AVGAS_KG_PER_L = 0.72;
-const KG_TO_LBS = 2.20462;
-const L_TO_GAL_US = 0.264172;
-const NM_TO_KM = 1.852;
 
-function fuelKgConversions(kg: number): string {
-  const l = kg / AVGAS_KG_PER_L;
-  return `${l.toFixed(1)} L  ·  ${(l * L_TO_GAL_US).toFixed(1)} gal  ·  ${(kg * KG_TO_LBS).toFixed(1)} lbs`;
-}
-
-function fuelFlowConversions(kgH: number): string {
-  const lH = kgH / AVGAS_KG_PER_L;
-  return `${lH.toFixed(1)} L/h  ·  ${(lH * L_TO_GAL_US).toFixed(1)} gal/h  ·  ${(kgH * KG_TO_LBS).toFixed(1)} lbs/h`;
-}
+// Runway-dependent gate selection per AIC N32/25 (SBMT/SBJD sector operations)
+// Key: ICAO code; Value: map of runway designator to { entry gate, exit gate }
+const RWY_GATE_MAP: Record<string, Record<string, { entry: string; exit: string }>> = {
+  SBMT: {
+    '30': { entry: 'Abril', exit: 'Penteado' },
+    '12': { entry: 'Penteado', exit: 'Abril' },
+  },
+  SBJD: {
+    '18': { entry: 'Lagoa', exit: 'Estádio' },
+    '36': { entry: 'Estádio', exit: 'Lagoa' },
+  },
+};
 
 interface Props {
   initialData?: VfrPlanData;
@@ -104,6 +134,7 @@ interface Props {
 
 export function VfrPlanForm({ initialData, onSave, saving }: Props) {
   const { t } = useTranslation();
+  const { weight: wu, volume: vu, speed: su } = useUnitsStore();
 
   // Flight rules
   type FlightRulesType = 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
@@ -129,10 +160,18 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
 
   // Map state
 
-  const mapFlyToRef = useRef<(lat: number, lng: number) => void>(null);
+  const mapHandleRef = useRef<{
+    flyTo: (lat: number, lng: number) => void;
+    getContainer: () => HTMLElement | null;
+    fitRouteBounds: () => { center: [number, number]; zoom: number } | null;
+    setView: (center: [number, number], zoom: number) => void;
+  } | null>(null);
 
   // Route waypoints (intermediate, added via map context menu)
   const [routeWaypoints, setRouteWaypoints] = useState<RouteWaypoint[]>([]);
+  const [followedCorridorName, setFollowedCorridorName] = useState<string | null>(null);
+  const [corridorAltRange, setCorridorAltRange] = useState<{ min: number; max: number } | null>(null);
+  const [corridorCompAlt, setCorridorCompAlt] = useState<number | null>(null);
 
   // METAR state
   const [metars, setMetars] = useState<Record<string, ParsedMetar>>({});
@@ -150,6 +189,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
   // Route
   const [routeText, setRouteText] = useState(initialData?.routeText ?? '');
   const [cruiseLevel, setCruiseLevel] = useState(initialData?.cruiseLevel ?? '');
+  const toFL = (ft: number) => `FL${String(Math.round(ft / 100)).padStart(3, '0')}`;
   const [todMinutes, setTodMinutes] = useState(initialData?.todMinutes?.toString() ?? '');
   const [todDistanceNm, setTodDistanceNm] = useState(initialData?.todDistanceNm?.toString() ?? '');
 
@@ -216,19 +256,26 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
   const handleSelectOrigin = useCallback((a: Aerodrome) => {
     setOrigin(a);
     void fetchAerodromeInfo(a.icao, 'origin');
-    mapFlyToRef.current?.(a.latitude, a.longitude);
+    mapHandleRef.current?.flyTo(a.latitude, a.longitude);
   }, [fetchAerodromeInfo]);
 
   const handleSelectDestination = useCallback((a: Aerodrome) => {
     setDestination(a);
     void fetchAerodromeInfo(a.icao, 'destination');
-    mapFlyToRef.current?.(a.latitude, a.longitude);
   }, [fetchAerodromeInfo]);
 
   const handleSelectAlternate = useCallback((a: Aerodrome) => {
     setAlternate(a);
-    mapFlyToRef.current?.(a.latitude, a.longitude);
   }, []);
+
+  // Auto-fit map to show entire route when destination or alternate changes
+  useEffect(() => {
+    if (!origin || !destination) return;
+    const timer = setTimeout(() => {
+      mapHandleRef.current?.fitRouteBounds();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [destination?.icao, alternate?.icao]);
 
   // Fetch METAR for all selected aerodromes
   useEffect(() => {
@@ -329,11 +376,17 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
   // Route waypoint handlers
   const handleAddWaypoint = useCallback((wp: RouteWaypoint) => {
     setRouteWaypoints((prev) => [...prev, wp]);
+    setFollowedCorridorName(null);
+    setCorridorAltRange(null);
+    setCorridorCompAlt(null);
   }, []);
 
   const handleRemoveWaypoint = useCallback((idx: number) => {
     setRouteWaypoints((prev) => prev.filter((_, i) => i !== idx));
     setExpandedLegRef(null);
+    setFollowedCorridorName(null);
+    setCorridorAltRange(null);
+    setCorridorCompAlt(null);
   }, []);
 
   // Route origin/destination positions for the map
@@ -405,7 +458,23 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
   }, [minFuelKg, fuelManuallyEdited]);
 
   const originCategory = origin ? metars[origin.icao]?.flightCategory : undefined;
+  const destCategory = destination ? metars[destination.icao]?.flightCategory : undefined;
   const isImc = originCategory === 'IFR' || originCategory === 'LIFR';
+
+  const vfrWeatherWarnings = useMemo(() => {
+    if (!hasVfr) return [];
+    const warnings: { icao: string; category: string; ceiling: number | null; visibility: string | null }[] = [];
+    const checkAd = (ad: Aerodrome | null) => {
+      if (!ad) return;
+      const m = metars[ad.icao];
+      if (!m || m.flightCategory === 'VFR') return;
+      warnings.push({ icao: ad.icao, category: m.flightCategory ?? 'UNKN', ceiling: m.ceiling, visibility: m.visibility });
+    };
+    checkAd(origin);
+    checkAd(destination);
+    checkAd(alternate);
+    return warnings;
+  }, [hasVfr, origin, destination, alternate, metars]);
 
   // Suggested cruise level based on average magnetic course, departure region, and weather
   const cruiseSuggestion = useMemo(
@@ -428,12 +497,63 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
     return filterAltitudesByCloudClearance(cruiseSuggestion.altitudes, originMetar.clouds, elev);
   }, [cruiseSuggestion, hasIfr, origin, metars]);
 
+  // Auto-select valid altitude when corridor restricts range
+  useEffect(() => {
+    if (!cruiseSuggestion) return;
+    // Compulsory altitude takes absolute priority
+    if (corridorCompAlt != null) {
+      setCruiseLevel(toFL(corridorCompAlt));
+      return;
+    }
+    if (!corridorAltRange) return;
+    const currentFt = parseCruiseLevelFt(cruiseLevel);
+    if (currentFt && currentFt >= corridorAltRange.min && currentFt <= corridorAltRange.max) return;
+    const validInRange = cruiseSuggestion.altitudes.filter(
+      (a) => a >= corridorAltRange.min && a <= corridorAltRange.max,
+    );
+    if (validInRange.length > 0) {
+      setCruiseLevel(toFL(validInRange[0]!));
+    } else {
+      const midAlt = Math.round((corridorAltRange.min + corridorAltRange.max) / 2 / 100) * 100;
+      setCruiseLevel(toFL(midAlt));
+    }
+  }, [corridorAltRange, corridorCompAlt, cruiseSuggestion]);
+
+  // Cruise level validation warnings
+  const cruiseLevelWarnings = useMemo(() => {
+    const warnings: { key: string; severity: 'error' | 'warning' }[] = [];
+    const altFt = parseCruiseLevelFt(cruiseLevel);
+    if (!altFt || altFt <= 0) return warnings;
+
+    if (corridorCompAlt != null) {
+      if (altFt !== corridorCompAlt) {
+        warnings.push({ key: 'reaAltViolation', severity: 'error' });
+      }
+    } else if (corridorAltRange) {
+      if (altFt < corridorAltRange.min || altFt > corridorAltRange.max) {
+        warnings.push({ key: 'reaAltViolation', severity: 'error' });
+      }
+    }
+
+    if (cruiseSuggestion && hasVfr && !corridorAltRange && corridorCompAlt == null) {
+      if (!cruiseSuggestion.altitudes.includes(altFt)) {
+        warnings.push({ key: 'semicircularViolation', severity: 'warning' });
+      }
+    }
+
+    const highestElev = Math.max(origin?.elevation ?? 0, destination?.elevation ?? 0);
+    if (altFt < highestElev + 1000) {
+      warnings.push({ key: 'tooLow', severity: 'error' });
+    }
+
+    return warnings;
+  }, [cruiseLevel, corridorAltRange, corridorCompAlt, cruiseSuggestion, hasVfr, origin?.elevation, destination?.elevation]);
+
   // Auto-suggest TOD distance for IFR
   const suggestedTodNm = useMemo(() => {
     if (!hasIfr || !cruiseLevel || !destination?.elevation) return null;
-    const match = cruiseLevel.match(/^FL(\d{2,3})$/);
-    if (!match) return null;
-    const altFt = parseInt(match[1]!, 10) * 100;
+    const altFt = parseCruiseLevelFt(cruiseLevel);
+    if (!altFt) return null;
     return calculateTodDistance(altFt, destination.elevation);
   }, [hasIfr, cruiseLevel, destination?.elevation]);
 
@@ -450,8 +570,10 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
         nome: string; tipo: 'Obrig' | 'Recom'; trecho: number;
         fixoA: { lat: number; lon: number; nome: string };
         fixoB: { lat: number; lon: number; nome: string };
+        rumoAtoB: number | null; rumoBtoA: number | null;
         altMinAtoB: number; altMaxAtoB: number; altMinBtoA: number; altMaxBtoA: number;
-        fca: string;
+        altComp: number | null; altCompAtoB: number | null; altCompBtoA: number | null;
+        fca: string; ats: string;
         geometry: { type: string; coordinates: number[][][][] | number[][][] };
       }[];
     }[];
@@ -485,11 +607,11 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
     return reaRegions.flatMap((r) => r.corridors.flatMap((c) => c.segments));
   }, [reaRegions]);
 
-  // Auto-generate VFR route text with coordinates
+  // Auto-generate VFR route text with coordinates (or REA corridor format)
   useEffect(() => {
-    const text = buildVfrRouteText(origin?.icao ?? null, routeWaypoints, destination?.icao ?? null);
+    const text = buildVfrRouteText(origin?.icao ?? null, routeWaypoints, destination?.icao ?? null, followedCorridorName);
     setRouteText(text);
-  }, [origin?.icao, destination?.icao, routeWaypoints]);
+  }, [origin?.icao, destination?.icao, routeWaypoints, followedCorridorName]);
 
   // Aircraft selection handler
   const handleSelectAircraft = useCallback((aircraft: AircraftSpec) => {
@@ -507,6 +629,32 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
     setStationWeights({});
   }, []);
 
+  // Remarks (Item 18)
+  const [userRemarks, setUserRemarks] = useState('');
+  const performanceCategory = useMemo(
+    () => selectedAircraft ? getPerformanceCategory(selectedAircraft.cruiseSpeedKts) : null,
+    [selectedAircraft],
+  );
+  const autoRemarks = useMemo(() => {
+    return buildItem18({
+      corridorName: followedCorridorName,
+      corridorAltRange,
+      corridorCompAlt,
+      dateOfFlight: new Date(),
+      performanceCategory,
+    });
+  }, [followedCorridorName, corridorAltRange, corridorCompAlt, performanceCategory]);
+  const fullRemarks = useMemo(() => {
+    return buildItem18({
+      corridorName: followedCorridorName,
+      corridorAltRange,
+      corridorCompAlt,
+      userRemarks,
+      dateOfFlight: new Date(),
+      performanceCategory,
+    });
+  }, [followedCorridorName, corridorAltRange, corridorCompAlt, userRemarks, performanceCategory]);
+
   // SimBrief state
   const [callsign, setCallsign] = useState(initialData?.callsign ?? '');
   const [simbriefOfpId, setSimbriefOfpId] = useState(initialData?.simbriefOfpId ?? '');
@@ -519,10 +667,8 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
     if (ofp.route) setRouteText(ofp.route);
     if (ofp.callsign) setCallsign(ofp.callsign);
 
-    // Cruise altitude — SimBrief returns feet (e.g. 37000)
     if (ofp.cruiseAltitudeFt != null && ofp.cruiseAltitudeFt > 0) {
-      const flNum = Math.round(ofp.cruiseAltitudeFt / 100);
-      setCruiseLevel(`FL${String(flNum).padStart(3, '0')}`);
+      setCruiseLevel(toFL(ofp.cruiseAltitudeFt));
     }
 
     if (ofp.todDistanceNm != null) {
@@ -562,14 +708,9 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
     if (ofp.ofpPdfUrl) setOfpPdfUrl(ofp.ofpPdfUrl);
   }, [alternate]);
 
-  // Save
-  const handleSave = () => {
-    if (!origin || !destination) {
-      Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
-      return;
-    }
-
-    const data: VfrPlanData = {
+  const buildPlanData = (): VfrPlanData | null => {
+    if (!origin || !destination) return null;
+    return {
       flightRules,
       originIcao: origin.icao,
       originName: origin.name,
@@ -602,9 +743,132 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
       mtowKg: selectedAircraft?.mtowKg,
       callsign: callsign || undefined,
       simbriefOfpId: simbriefOfpId || undefined,
+      visualReferences: initialData?.visualReferences,
+      routeLegs: routeLegs.length > 0 ? routeLegs.map((leg) => ({
+        from: leg.from.name,
+        to: leg.to.name,
+        distanceNm: leg.distanceNm,
+        trueCourse: leg.trueCourse,
+        magneticDeclination: leg.magneticDeclination,
+        magneticCourse: leg.magneticCourse,
+        suggestedAltitudes: leg.suggestedAltitudes,
+      })) : undefined,
+      totalDistanceNm: totalDistanceNm || undefined,
+      tripMinutes: tripMinutes || undefined,
+      cruiseSpeedKts: cruiseKts || undefined,
+      tripFuelKg: tripFuelKg || undefined,
+      altFuelKg: altFuelKg || undefined,
+      altDistanceNm: altDistNm || undefined,
+      contingencyPct: parseFloat(contingencyPct) || undefined,
+      contingencyFuelKg: contingencyFuelKg || undefined,
+      reserveFuelKg: reserveFuelKg || undefined,
+      minFuelKg: minFuelKg || undefined,
+      flightCondition,
+      emptyWeightKg: selectedAircraft?.emptyWeightKg,
+      payloadKg: payloadKg || undefined,
+      fuelCapacityL: selectedAircraft?.fuelCapacityL,
+      remarks: fullRemarks || undefined,
     };
+  };
 
+  const handleSave = () => {
+    const data = buildPlanData();
+    if (!data) {
+      Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
+      return;
+    }
     void onSave(data);
+  };
+
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportIncludeCharts, setExportIncludeCharts] = useState(false);
+  const [exportIncludeChecklist, setExportIncludeChecklist] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const hasChecklists = !!selectedAircraft && getChecklistsForAircraft(selectedAircraft.icaoType).length > 0;
+
+  const handleExportPdf = () => {
+    const data = buildPlanData();
+    if (!data) {
+      Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
+      return;
+    }
+    setShowExportModal(true);
+  };
+
+  const handleExportConfirm = async () => {
+    const data = buildPlanData();
+    if (!data) return;
+
+    setExporting(true);
+    try {
+      // Capture map screenshot — fit full route first, restore view after
+      let mapImageDataUrl: string | undefined;
+      if (Platform.OS === 'web' && mapHandleRef.current) {
+        let prevView: { center: [number, number]; zoom: number } | null = null;
+        try {
+          prevView = mapHandleRef.current.fitRouteBounds();
+          await new Promise((r) => setTimeout(r, 800));
+          const container = mapHandleRef.current.getContainer();
+          if (container) {
+            // Hide zoom/layer controls for a clean screenshot
+            const controlEl = (container as unknown as { querySelector: (s: string) => { style: { display: string } } | null }).querySelector('.leaflet-control-container');
+            const prevDisplay = controlEl?.style.display ?? '';
+            if (controlEl) controlEl.style.display = 'none';
+            mapImageDataUrl = await (toPng as unknown as (el: unknown, opts?: Record<string, unknown>) => Promise<string>)(container, { cacheBust: true });
+            if (controlEl) controlEl.style.display = prevDisplay;
+          }
+        } catch { /* skip map capture on failure */ }
+        if (prevView) {
+          mapHandleRef.current.setView(prevView.center, prevView.zoom);
+        }
+      }
+
+      const hasAttachments = exportIncludeCharts || exportIncludeChecklist;
+      if (!hasAttachments) {
+        const doc = buildFlightPlanDoc(data, mapImageDataUrl);
+        const filename = `flight-plan_${data.originIcao}-${data.destinationIcao}_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.pdf`;
+        doc.save(filename);
+        setShowExportModal(false);
+        return;
+      }
+
+      const chartUrls: string[] = [];
+      if (exportIncludeCharts) {
+        const icaos = [origin?.icao, destination?.icao, alternate?.icao].filter(Boolean) as string[];
+        for (const icao of icaos) {
+          try {
+            const res = await apiClient.get<{ charts: { url: string; type: string }[] }>(`/aerodromes/${icao}/charts`);
+            const filtered = res.charts.filter((c) => ['ADC', 'PDC', 'VAC', 'INFO'].includes(c.type));
+            for (const chart of filtered) {
+              chartUrls.push(`${API_URL}/v1/aerodromes/chart-proxy?url=${encodeURIComponent(chart.url)}`);
+            }
+          } catch { /* skip */ }
+        }
+      }
+
+      let checklistUrl: string | undefined;
+      if (exportIncludeChecklist && selectedAircraft) {
+        const checklists = getChecklistsForAircraft(selectedAircraft.icaoType);
+        if (checklists[0]) {
+          checklistUrl = checklists[0].pdfUrl;
+        }
+      }
+
+      await exportFlightPlanWithAttachments(data, { chartUrls, checklistUrl }, mapImageDataUrl);
+    } catch (err) {
+      console.error('PDF export error:', err);
+      if (Platform.OS === 'web') {
+        (globalThis as unknown as { alert: (msg: string) => void }).alert(
+          `${t('common.error')}: ${err instanceof Error ? err.message : 'Export failed'}`,
+        );
+      } else {
+        Alert.alert(t('common.error'), 'Export failed');
+      }
+    } finally {
+      setExporting(false);
+      setShowExportModal(false);
+    }
   };
 
   const mapElement = (
@@ -612,7 +876,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
       onSelectOrigin={handleSelectOrigin}
       onSelectDestination={handleSelectDestination}
       onSelectAlternate={handleSelectAlternate}
-      onMapReady={(flyTo) => { (mapFlyToRef as React.MutableRefObject<((lat: number, lng: number) => void) | null>).current = flyTo; }}
+      onMapReady={(handle) => { mapHandleRef.current = handle; }}
       routeOrigin={routeOriginPos}
       routeDestination={routeDestPos}
       routeAlternate={routeAltPos}
@@ -620,6 +884,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
       onAddWaypoint={handleAddWaypoint}
       onRemoveWaypoint={handleRemoveWaypoint}
       reaSegments={reaMapSegments}
+      selectedReaCorridorName={followedCorridorName}
       flightRules={flightRules}
     />
   );
@@ -628,25 +893,43 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
     <>
       {/* ====== FLIGHT RULES ====== */}
       <Section title={t('vfr.flightRules')}>
-        <View className="flex-row flex-wrap gap-2">
-          {FLIGHT_RULES.map((rule) => (
-            <Pressable
-              key={rule.value}
-              onPress={() => setFlightRules(rule.value)}
-              className={`rounded-md border px-4 py-2 ${
-                flightRules === rule.value
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border bg-surface-muted'
-              }`}
-            >
-              <Text
-                className={`text-sm font-semibold ${
-                  flightRules === rule.value ? 'text-primary' : 'text-foreground'
-                }`}
-              >
-                {t(rule.labelKey)}
-              </Text>
-            </Pressable>
+        <View className="gap-2">
+          {[FLIGHT_RULES.slice(0, 2), FLIGHT_RULES.slice(2, 4)].map((row, rowIdx) => (
+            <View key={rowIdx} className="flex-row gap-2">
+              {row.map((rule) => {
+                const disabled = rule.value !== 'VFR';
+                const active = flightRules === rule.value;
+                return (
+                  <Pressable
+                    key={rule.value}
+                    onPress={() => { if (!disabled) setFlightRules(rule.value); }}
+                    disabled={disabled}
+                    className={`flex-1 items-center justify-center rounded-md border px-2 py-2.5 ${
+                      disabled
+                        ? 'border-border bg-muted/30 opacity-50'
+                        : active
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border bg-surface-muted'
+                    }`}
+                  >
+                    <Text
+                      className={`text-center text-sm font-semibold ${
+                        disabled
+                          ? 'text-muted-foreground'
+                          : active ? 'text-primary' : 'text-foreground'
+                      }`}
+                    >
+                      {t(rule.labelKey)}
+                    </Text>
+                    {disabled && (
+                      <Text className="mt-0.5 text-center text-[9px] font-medium text-muted-foreground">
+                        {t('dashboard.comingSoon')}
+                      </Text>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
           ))}
         </View>
       </Section>
@@ -747,6 +1030,22 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
         ) : null}
       </Section>
 
+      {/* ====== VFR WEATHER WARNING ====== */}
+      {vfrWeatherWarnings.length > 0 ? (
+        <View className="mx-1 -mt-1 mb-2 rounded-md border border-amber-400 bg-amber-50 px-3 py-2">
+          <Text className="text-xs font-semibold text-amber-800">
+            {t('vfr.weatherWarningTitle')}
+          </Text>
+          {vfrWeatherWarnings.map((w) => (
+            <Text key={w.icao} className="mt-0.5 text-[11px] text-amber-700">
+              {w.icao}: {w.category}
+              {w.ceiling !== null ? ` · ${t('vfr.ceiling')} ${w.ceiling} ft` : ''}
+              {w.visibility ? ` · ${t('vfr.visibility')} ${w.visibility} SM` : ''}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
       {/* ====== SIMBRIEF (IFR) ====== */}
       {hasIfr ? (
         <Section title={t('vfr.simbrief')}>
@@ -774,7 +1073,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
           label={t('vfr.routeText')}
           value={routeText}
           onChangeText={setRouteText}
-          placeholder={hasIfr ? 'SID AIRWAY WAYPOINT STAR' : 'DCT SBSP DCT SBGR'}
+          placeholder={hasIfr ? 'SID AIRWAY WAYPOINT STAR' : 'SBSP DCT 2338S04640W 2345S04655W DCT SBGR'}
         />
         {(flightRules === 'VFR_IFR' || flightRules === 'IFR_VFR') ? (
           <Text className="mt-1 text-[10px] text-muted-foreground">
@@ -794,8 +1093,11 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View className="flex-row gap-1.5">
-                  {cruiseSuggestion.altitudes.filter((a) => hasIfr ? a >= 2000 && a <= 25000 : true).map((alt) => {
-                    const fl = `FL${String(Math.round(alt / 100)).padStart(3, '0')}`;
+                  {cruiseSuggestion.altitudes
+                    .filter((a) => hasIfr ? a >= 2000 && a <= 25000 : true)
+                    .filter((a) => corridorCompAlt != null ? a === corridorCompAlt : corridorAltRange ? a >= corridorAltRange.min && a <= corridorAltRange.max : true)
+                    .map((alt) => {
+                    const fl = toFL(alt);
                     const isSelected = cruiseLevel === fl;
                     const blocked = cruiseAltClearance?.find((c) => c.altitude === alt)?.blocked ?? false;
                     return (
@@ -832,16 +1134,52 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
               ) : null}
             </>
           ) : (
-            <Input
-              value={cruiseLevel}
-              onChangeText={setCruiseLevel}
-              placeholder="FL045"
-            />
+            <View className="flex-row items-center rounded-md border border-input bg-background">
+              <Text className="pl-3 text-sm font-medium text-muted-foreground">FL</Text>
+              <TextInput
+                value={cruiseLevel.replace(/^FL/i, '')}
+                onChangeText={(v) => setCruiseLevel(v ? `FL${v.replace(/\D/g, '')}` : '')}
+                placeholder="045"
+                keyboardType="numeric"
+                maxLength={3}
+                className="flex-1 px-2 py-2.5 text-sm text-foreground"
+                placeholderTextColor="hsl(220, 8.9%, 46.1%)"
+              />
+            </View>
           )}
-          {cruiseLevel !== '' && cruiseSuggestion && !cruiseSuggestion.altitudes.some((a) => `FL${String(Math.round(a / 100)).padStart(3, '0')}` === cruiseLevel) ? (
-            <Text className="mt-1 text-[10px] text-yellow-500">
-              {t('vfr.cruiseLevelWarning')}
-            </Text>
+          {/* Constraint reason tags */}
+          {corridorAltRange || corridorCompAlt != null || cruiseLevelWarnings.length > 0 ? (
+            <View className="mt-1.5 gap-1">
+              {corridorCompAlt != null ? (
+                <View className="rounded-sm border border-amber-300 bg-amber-50 px-2 py-1">
+                  <Text className="text-[10px] font-bold text-amber-800">
+                    {corridorCompAlt} ft ✦
+                  </Text>
+                </View>
+              ) : corridorAltRange ? (
+                <View className="rounded-sm border border-green-200 bg-green-50 px-2 py-1">
+                  <Text className="text-[10px] font-medium text-green-800">
+                    {t('vfr.reaAltRange', { min: corridorAltRange.min, max: corridorAltRange.max })}
+                  </Text>
+                </View>
+              ) : null}
+              {cruiseLevelWarnings.map((w) => (
+                <View
+                  key={w.key}
+                  className={`rounded-sm border px-2 py-1 ${
+                    w.severity === 'error'
+                      ? 'border-destructive/30 bg-destructive/5'
+                      : 'border-yellow-300 bg-yellow-50'
+                  }`}
+                >
+                  <Text className={`text-[10px] font-medium ${
+                    w.severity === 'error' ? 'text-destructive' : 'text-yellow-700'
+                  }`}>
+                    {t(`vfr.${w.key}`)}
+                  </Text>
+                </View>
+              ))}
+            </View>
           ) : null}
         </View>
 
@@ -876,12 +1214,27 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
             </View>
           ) : null}
           <View className="flex-1">
-            <Input
-              label={t('vfr.cruiseLevelManual')}
-              value={cruiseLevel}
-              onChangeText={setCruiseLevel}
-              placeholder={hasIfr ? 'FL350' : 'FL045'}
-            />
+            <Text className="mb-1.5 text-sm font-medium text-foreground">{t('vfr.cruiseLevelManual')}</Text>
+            <View className="flex-row items-center rounded-md border border-input bg-background">
+              <Text className="pl-3 text-sm font-medium text-muted-foreground">FL</Text>
+              <TextInput
+                value={cruiseLevel.replace(/^FL/i, '')}
+                onChangeText={(v) => setCruiseLevel(v ? `FL${v.replace(/\D/g, '')}` : '')}
+                placeholder="045"
+                keyboardType="numeric"
+                maxLength={3}
+                className="flex-1 px-2 py-2.5 text-sm text-foreground"
+                placeholderTextColor="hsl(220, 8.9%, 46.1%)"
+              />
+            </View>
+            {cruiseLevel ? (() => {
+              const ft = parseCruiseLevelFt(cruiseLevel);
+              return ft ? (
+                <Text className="mt-1 text-[9px] text-muted-foreground">
+                  {ft.toLocaleString()} ft · ICAO: {formatAltitudeIcao(ft, origin?.icao)}
+                </Text>
+              ) : null;
+            })() : null}
           </View>
         </View>
       </Section>
@@ -891,7 +1244,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
         <Section
           title={t('vfr.routeLegs')}
           trailing={
-            <Pressable onPress={() => setRouteWaypoints([])}>
+            <Pressable onPress={() => { setRouteWaypoints([]); setFollowedCorridorName(null); setCorridorAltRange(null); }}>
               <Text className="text-xs font-medium text-destructive">{t('vfr.clearRoute')}</Text>
             </Pressable>
           }
@@ -991,68 +1344,367 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
                   {region.corridors
                     .map((corridor) => {
                       const sorted = [...corridor.segments].sort((a, b) => a.trecho - b.trecho);
-                      const wps: RouteWaypoint[] = [];
-                      const seen = new Set<string>();
+
+                      // Build ordered waypoints following segment sequence (A→B direction)
+                      const wpsAtoB: RouteWaypoint[] = [];
+                      const seenAB = new Set<string>();
                       for (const seg of sorted) {
-                        const keyA = `${seg.fixoA.lat.toFixed(4)},${seg.fixoA.lon.toFixed(4)}`;
-                        if (!seen.has(keyA) && seg.fixoA.nome) {
-                          seen.add(keyA);
-                          wps.push({ lat: seg.fixoA.lat, lng: seg.fixoA.lon, name: seg.fixoA.nome });
+                        const kA = `${seg.fixoA.lat.toFixed(4)},${seg.fixoA.lon.toFixed(4)}`;
+                        if (!seenAB.has(kA) && seg.fixoA.nome) {
+                          seenAB.add(kA);
+                          wpsAtoB.push({ lat: seg.fixoA.lat, lng: seg.fixoA.lon, name: seg.fixoA.nome });
                         }
-                        const keyB = `${seg.fixoB.lat.toFixed(4)},${seg.fixoB.lon.toFixed(4)}`;
-                        if (!seen.has(keyB) && seg.fixoB.nome) {
-                          seen.add(keyB);
-                          wps.push({ lat: seg.fixoB.lat, lng: seg.fixoB.lon, name: seg.fixoB.nome });
+                        const kB = `${seg.fixoB.lat.toFixed(4)},${seg.fixoB.lon.toFixed(4)}`;
+                        if (!seenAB.has(kB) && seg.fixoB.nome) {
+                          seenAB.add(kB);
+                          wpsAtoB.push({ lat: seg.fixoB.lat, lng: seg.fixoB.lon, name: seg.fixoB.nome });
                         }
                       }
-                      if (wps.length > 0 && origin) {
-                        const d0 = haversineDistanceNm(origin.latitude, origin.longitude, wps[0]!.lat, wps[0]!.lng);
-                        const dN = haversineDistanceNm(origin.latitude, origin.longitude, wps[wps.length - 1]!.lat, wps[wps.length - 1]!.lng);
-                        if (dN < d0) wps.reverse();
+
+                      // Find entry (closest to origin) and exit (closest to destination)
+                      // then extract only the relevant sub-path
+                      let wps: RouteWaypoint[] = [];
+                      let reversed = false;
+                      if (wpsAtoB.length >= 2 && origin && destination) {
+                        let entryIdx = 0;
+                        let entryDist = Infinity;
+                        let exitIdx = 0;
+                        let exitDist = Infinity;
+                        for (let i = 0; i < wpsAtoB.length; i++) {
+                          const dO = haversineDistanceNm(origin.latitude, origin.longitude, wpsAtoB[i]!.lat, wpsAtoB[i]!.lng);
+                          const dD = haversineDistanceNm(destination.latitude, destination.longitude, wpsAtoB[i]!.lat, wpsAtoB[i]!.lng);
+                          if (dO < entryDist) { entryDist = dO; entryIdx = i; }
+                          if (dD < exitDist) { exitDist = dD; exitIdx = i; }
+                        }
+                        if (entryIdx <= exitIdx) {
+                          wps = wpsAtoB.slice(entryIdx, exitIdx + 1);
+                        } else {
+                          wps = wpsAtoB.slice(exitIdx, entryIdx + 1).reverse();
+                          reversed = true;
+                        }
+                      } else {
+                        wps = wpsAtoB;
                       }
+
+                      // One-way validation: check if any segment forbids this direction
+                      // rumoAtoB===null means A→B forbidden; rumoBtoA===null means B→A forbidden
+                      const directionBlocked = sorted.some((seg) => {
+                        const kA = `${seg.fixoA.lat.toFixed(4)},${seg.fixoA.lon.toFixed(4)}`;
+                        const kB = `${seg.fixoB.lat.toFixed(4)},${seg.fixoB.lon.toFixed(4)}`;
+                        const usedInPath = wps.some((w) => {
+                          const k = `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`;
+                          return k === kA || k === kB;
+                        });
+                        if (!usedInPath) return false;
+                        if (reversed && seg.rumoBtoA === null) return true;
+                        if (!reversed && seg.rumoAtoB === null) return true;
+                        return false;
+                      });
+                      if (directionBlocked) return { corridor, wps: [] as RouteWaypoint[], altRange: null, compAlt: null as number | null, score: Infinity };
+
+                      // Extract altitude for segments in the used sub-path
+                      // Priority: compulsory direction-specific > compulsory general > directional min/max > general min/max
+                      const usedCoords = new Set(wps.map((w) => `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`));
+                      let altMin = 0;
+                      let altMax = Infinity;
+                      let compAlt: number | null = null;
+                      for (const seg of sorted) {
+                        const kA = `${seg.fixoA.lat.toFixed(4)},${seg.fixoA.lon.toFixed(4)}`;
+                        const kB = `${seg.fixoB.lat.toFixed(4)},${seg.fixoB.lon.toFixed(4)}`;
+                        if (!usedCoords.has(kA) && !usedCoords.has(kB)) continue;
+
+                        // Compulsory altitude (highest priority)
+                        const dirComp = reversed ? seg.altCompBtoA : seg.altCompAtoB;
+                        if (dirComp != null) { compAlt = dirComp; }
+                        else if (seg.altComp != null) { compAlt = seg.altComp; }
+
+                        // Range altitudes (lower priority, used if no compulsory)
+                        const segMin = (reversed ? seg.altMinBtoA : seg.altMinAtoB) || seg.altMinAtoB || seg.altMinBtoA;
+                        const segMax = (reversed ? seg.altMaxBtoA : seg.altMaxAtoB) || seg.altMaxAtoB || seg.altMaxBtoA;
+                        if (segMin > 0) altMin = Math.max(altMin, segMin);
+                        if (segMax > 0) altMax = Math.min(altMax, segMax);
+                      }
+                      const altRange = altMin > 0 && altMax < Infinity ? { min: altMin, max: altMax } : null;
+
                       const score = origin && destination && wps.length > 0
                         ? haversineDistanceNm(origin.latitude, origin.longitude, wps[0]!.lat, wps[0]!.lng)
                           + haversineDistanceNm(destination.latitude, destination.longitude, wps[wps.length - 1]!.lat, wps[wps.length - 1]!.lng)
                         : Infinity;
-                      return { corridor, wps, score };
+                      return { corridor, wps, altRange, compAlt, score };
+                    })
+                    .filter(({ wps }) => {
+                      if (!origin || !destination) return true;
+                      if (wps.length < 2) return false;
+                      const subBearing = initialBearing(wps[0]!.lat, wps[0]!.lng, wps[wps.length - 1]!.lat, wps[wps.length - 1]!.lng);
+                      const odBearing = initialBearing(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
+                      const diff = ((subBearing - odBearing) % 360 + 360) % 360;
+                      const angDiff = diff > 180 ? 360 - diff : diff;
+                      if (angDiff > 90) return false;
+                      const entryDistToDest = haversineDistanceNm(wps[0]!.lat, wps[0]!.lng, destination.latitude, destination.longitude);
+                      const exitDistToDest = haversineDistanceNm(wps[wps.length - 1]!.lat, wps[wps.length - 1]!.lng, destination.latitude, destination.longitude);
+                      const progress = entryDistToDest - exitDistToDest;
+                      let pathDist = 0;
+                      for (let i = 1; i < wps.length; i++) {
+                        pathDist += haversineDistanceNm(wps[i - 1]!.lat, wps[i - 1]!.lng, wps[i]!.lat, wps[i]!.lng);
+                      }
+                      if (pathDist > 0 && progress / pathDist < 0.5) return false;
+                      return true;
                     })
                     .sort((a, b) => a.score - b.score)
-                    .map(({ corridor, wps, score }, cIdx, arr) => {
+                    .map(({ corridor, wps, altRange, compAlt, score }, cIdx, arr) => {
                       const isBest = cIdx === 0 && arr.length > 1 && score < Infinity;
+                      const isFollowed = followedCorridorName === corridor.name;
                       return (
-                        <View
+                        <Pressable
                           key={corridor.name}
-                          className={`px-2 py-1.5 ${cIdx < arr.length - 1 ? 'border-b border-border' : ''}`}
+                          onPress={() => {
+                            if (wps.length === 0) return;
+                            const entry = wps[0]!;
+                            let combinedWps = wps;
+                            let combinedAltRange = altRange;
+                            let combinedName = corridor.name;
+
+                            // Find the correct connecting corridor (portão) based on direction of travel.
+                            // REA corridors have defined headings (rumoAtoB/rumoBtoA). The correct
+                            // portão is the one whose flow direction aligns with our approach bearing
+                            // from origin to the main corridor's entry point.
+                            const angDiff = (a: number, b: number) => { const d = ((a - b) % 360 + 360) % 360; return d > 180 ? 360 - d : d; };
+                            const approachBearing = origin
+                              ? initialBearing(origin.latitude, origin.longitude, entry.lat, entry.lng)
+                              : 0;
+                            const CONNECT_THRESHOLD_NM = 1.5;
+
+                            interface ConnectorCandidate {
+                              wps: RouteWaypoint[];
+                              segments: typeof corridor.segments;
+                              name: string;
+                              bearingDiff: number;
+                            }
+                            const candidates: ConnectorCandidate[] = [];
+
+                            for (const other of region.corridors) {
+                              if (other.name === corridor.name) continue;
+                              const otherSegs = [...other.segments].sort((a, b) => a.trecho - b.trecho);
+                              const uniqueWps: RouteWaypoint[] = [];
+                              const seen2 = new Set<string>();
+                              for (const seg of otherSegs) {
+                                for (const fix of [seg.fixoA, seg.fixoB]) {
+                                  const k = `${fix.lat.toFixed(4)},${fix.lon.toFixed(4)}`;
+                                  if (!seen2.has(k) && fix.nome) {
+                                    seen2.add(k);
+                                    uniqueWps.push({ lat: fix.lat, lng: fix.lon, name: fix.nome });
+                                  }
+                                }
+                              }
+                              if (uniqueWps.length < 2 || !origin) continue;
+
+                              // Find junction (closest wp to main corridor entry)
+                              let junctionIdx = 0;
+                              let junctionDist = Infinity;
+                              for (let i = 0; i < uniqueWps.length; i++) {
+                                const d = haversineDistanceNm(uniqueWps[i]!.lat, uniqueWps[i]!.lng, entry.lat, entry.lng);
+                                if (d < junctionDist) { junctionDist = d; junctionIdx = i; }
+                              }
+                              if (junctionDist >= CONNECT_THRESHOLD_NM) continue;
+
+                              // Find origin-nearest wp in the connector corridor
+                              let originNearestIdx = 0;
+                              let originNearestDist = Infinity;
+                              for (let i = 0; i < uniqueWps.length; i++) {
+                                const d = haversineDistanceNm(uniqueWps[i]!.lat, uniqueWps[i]!.lng, origin.latitude, origin.longitude);
+                                if (d < originNearestDist) { originNearestDist = d; originNearestIdx = i; }
+                              }
+
+                              // Trim to sub-path from origin-nearest wp to junction (handles both long corridors and portões)
+                              const subStart = Math.min(originNearestIdx, junctionIdx);
+                              const subEnd = Math.max(originNearestIdx, junctionIdx);
+                              const subWps = uniqueWps.slice(subStart, subEnd + 1);
+                              if (subWps.length < 1) continue;
+
+                              // Order: origin side first, junction last
+                              const connWps = originNearestIdx <= junctionIdx ? subWps : [...subWps].reverse();
+
+                              // Heading from connector origin toward junction
+                              const connHeading = connWps.length >= 2
+                                ? initialBearing(connWps[0]!.lat, connWps[0]!.lng, connWps[connWps.length - 1]!.lat, connWps[connWps.length - 1]!.lng)
+                                : approachBearing;
+                              const diff = angDiff(connHeading, approachBearing);
+                              if (diff <= 90) {
+                                candidates.push({ wps: connWps, segments: otherSegs, name: other.name, bearingDiff: diff });
+                              }
+                            }
+
+                            // Filter connector candidates by one-way rules and runway-dependent gates
+                            const originGateMap = origin ? RWY_GATE_MAP[origin.icao] : undefined;
+                            const destGateMap = destination ? RWY_GATE_MAP[destination.icao] : undefined;
+                            const requiredEntry = originGateMap?.[originRunway]?.entry;
+                            const requiredExit = destGateMap?.[destRunway]?.exit;
+                            const validCandidates = candidates.filter((c) => {
+                              // Runway-dependent gate: if a required entry gate is set, only allow that portão
+                              if (requiredEntry && c.name.toLowerCase().includes(requiredEntry.toLowerCase()) === false) {
+                                // Check if this is one of the gated aerodromes' portões
+                                const gateNames = originGateMap ? Object.values(originGateMap).flatMap((g) => [g.entry, g.exit]) : [];
+                                if (gateNames.some((gn) => c.name.toLowerCase().includes(gn.toLowerCase()))) return false;
+                              }
+                              if (requiredExit && c.name.toLowerCase().includes(requiredExit.toLowerCase()) === false) {
+                                const gateNames = destGateMap ? Object.values(destGateMap).flatMap((g) => [g.entry, g.exit]) : [];
+                                if (gateNames.some((gn) => c.name.toLowerCase().includes(gn.toLowerCase()))) return false;
+                              }
+                              for (const seg of c.segments) {
+                                const farWp = c.wps[0]!;
+                                const dToA = haversineDistanceNm(farWp.lat, farWp.lng, seg.fixoA.lat, seg.fixoA.lon);
+                                const dToB = haversineDistanceNm(farWp.lat, farWp.lng, seg.fixoB.lat, seg.fixoB.lon);
+                                if (dToA < dToB && seg.rumoAtoB === null) return false;
+                                if (dToB < dToA && seg.rumoBtoA === null) return false;
+                              }
+                              return true;
+                            });
+
+                            let combinedCompAlt = compAlt;
+                            if (validCandidates.length > 0) {
+                              validCandidates.sort((a, b) => a.bearingDiff - b.bearingDiff);
+                              const best = validCandidates[0]!;
+                              const connWithoutJunction = best.wps.slice(0, -1);
+                              combinedWps = [...connWithoutJunction, ...wps];
+                              combinedName = `${best.name} + ${corridor.name}`;
+
+                              // Merge connector altitude constraints
+                              let cAltMin = altRange?.min ?? 0;
+                              let cAltMax = altRange?.max ?? Infinity;
+                              for (const seg of best.segments) {
+                                // Compulsory from connector overrides
+                                const dirComp = seg.altCompAtoB ?? seg.altCompBtoA;
+                                if (dirComp != null) combinedCompAlt = dirComp;
+                                else if (seg.altComp != null) combinedCompAlt = seg.altComp;
+
+                                const sMin = seg.altMinAtoB || seg.altMinBtoA;
+                                const sMax = seg.altMaxAtoB || seg.altMaxBtoA;
+                                if (sMin > 0) cAltMin = Math.max(cAltMin, sMin);
+                                if (sMax > 0) cAltMax = Math.min(cAltMax, sMax);
+                              }
+                              combinedAltRange = cAltMin > 0 && cAltMax < Infinity ? { min: cAltMin, max: cAltMax } : altRange;
+                            }
+
+                            // Exit-side connector: find a corridor that bridges the exit toward destination
+                            if (destination && combinedWps.length >= 2) {
+                              const exitWp = combinedWps[combinedWps.length - 1]!;
+                              const currentExitDist = haversineDistanceNm(exitWp.lat, exitWp.lng, destination.latitude, destination.longitude);
+
+                              interface ExitCandidate {
+                                appendWps: RouteWaypoint[];
+                                junctionIdx: number;
+                                destDist: number;
+                                name: string;
+                                segments: typeof corridor.segments;
+                              }
+                              const exitCandidates: ExitCandidate[] = [];
+
+                              for (const other of region.corridors) {
+                                if (other.name === corridor.name) continue;
+                                if (combinedName.includes(other.name)) continue;
+                                const otherSegs = [...other.segments].sort((a, b) => a.trecho - b.trecho);
+                                const otherWps: RouteWaypoint[] = [];
+                                const seenE = new Set<string>();
+                                for (const seg of otherSegs) {
+                                  for (const fix of [seg.fixoA, seg.fixoB]) {
+                                    const k = `${fix.lat.toFixed(4)},${fix.lon.toFixed(4)}`;
+                                    if (!seenE.has(k) && fix.nome) {
+                                      seenE.add(k);
+                                      otherWps.push({ lat: fix.lat, lng: fix.lon, name: fix.nome });
+                                    }
+                                  }
+                                }
+                                if (otherWps.length < 2) continue;
+
+                                // Find shared waypoint between combinedWps and this corridor
+                                for (let ci = 0; ci < combinedWps.length; ci++) {
+                                  const cw = combinedWps[ci]!;
+                                  const cwKey = `${cw.lat.toFixed(4)},${cw.lng.toFixed(4)}`;
+                                  const otherIdx = otherWps.findIndex((ow) => `${ow.lat.toFixed(4)},${ow.lng.toFixed(4)}` === cwKey);
+                                  if (otherIdx < 0) continue;
+
+                                  // Find destination-nearest wp in other corridor
+                                  let destNearestIdx = 0;
+                                  let destNearestDist = Infinity;
+                                  for (let i = 0; i < otherWps.length; i++) {
+                                    const d = haversineDistanceNm(otherWps[i]!.lat, otherWps[i]!.lng, destination.latitude, destination.longitude);
+                                    if (d < destNearestDist) { destNearestDist = d; destNearestIdx = i; }
+                                  }
+
+                                  // Only useful if the other corridor gets closer to destination
+                                  if (destNearestDist >= currentExitDist) continue;
+
+                                  // Extract sub-path from junction to dest-nearest
+                                  const eStart = Math.min(otherIdx, destNearestIdx);
+                                  const eEnd = Math.max(otherIdx, destNearestIdx);
+                                  const eSub = otherWps.slice(eStart, eEnd + 1);
+                                  // Order: junction first, dest-nearest last
+                                  const ordered = otherIdx <= destNearestIdx ? eSub : [...eSub].reverse();
+                                  // Remove junction (already in combinedWps)
+                                  const appendWps = ordered.slice(1);
+                                  if (appendWps.length === 0) continue;
+
+                                  exitCandidates.push({
+                                    appendWps,
+                                    junctionIdx: ci,
+                                    destDist: destNearestDist,
+                                    name: other.name,
+                                    segments: otherSegs,
+                                  });
+                                }
+                              }
+
+                              if (exitCandidates.length > 0) {
+                                exitCandidates.sort((a, b) => a.destDist - b.destDist);
+                                const bestExit = exitCandidates[0]!;
+                                // Trim main corridor at junction and append exit corridor
+                                combinedWps = [...combinedWps.slice(0, bestExit.junctionIdx + 1), ...bestExit.appendWps];
+                                combinedName = `${combinedName} + ${bestExit.name}`;
+                              }
+                            }
+
+                            setRouteWaypoints(combinedWps);
+                            setFollowedCorridorName(combinedName);
+                            setCorridorAltRange(combinedAltRange);
+                            setCorridorCompAlt(combinedCompAlt);
+                          }}
+                          className={`px-2 py-1.5 ${cIdx < arr.length - 1 ? 'border-b border-border' : ''} ${isFollowed ? 'bg-green-50' : ''}`}
                         >
                           <View className="flex-row items-center gap-2">
                             <View
                               className="w-2 h-2 rounded-full"
-                              style={{ backgroundColor: corridor.tipo === 'Obrig' ? '#dc2626' : '#2563eb' }}
+                              style={{ backgroundColor: isFollowed ? '#16a34a' : corridor.tipo === 'Obrig' ? '#dc2626' : '#2563eb' }}
                             />
                             <Text className="text-xs font-semibold text-foreground">{corridor.name}</Text>
                             <Text className="text-[10px] text-muted-foreground">
                               ({corridor.tipo === 'Obrig' ? t('vfr.reaMandatory') : t('vfr.reaRecommended')})
                             </Text>
+                            {compAlt != null ? (
+                              <Text className="text-[9px] font-semibold text-amber-600">
+                                {compAlt} ft ✦
+                              </Text>
+                            ) : altRange ? (
+                              <Text className="text-[9px] text-muted-foreground">
+                                {altRange.min}–{altRange.max} ft
+                              </Text>
+                            ) : null}
                             {isBest ? (
                               <View className="rounded px-1 py-0.5 bg-green-100">
                                 <Text className="text-[8px] font-bold text-green-700">{t('vfr.reaBestMatch')}</Text>
                               </View>
                             ) : null}
+                            {isFollowed ? (
+                              <View className="rounded px-1 py-0.5 bg-green-600">
+                                <Text className="text-[8px] font-bold text-white">✓ {t('vfr.reaFollow')}</Text>
+                              </View>
+                            ) : null}
                           </View>
                           {wps.length > 0 ? (
-                            <View className="flex-row items-center mt-0.5 ml-4 gap-2">
-                              <Text className="text-[10px] text-muted-foreground flex-1" numberOfLines={1}>
-                                {wps.map((w) => w.name).join(' → ')}
-                              </Text>
-                              <Pressable
-                                onPress={() => setRouteWaypoints(wps)}
-                                className="rounded px-2 py-0.5 bg-blue-600"
-                              >
-                                <Text className="text-[9px] font-semibold text-white">{t('vfr.reaFollow')}</Text>
-                              </Pressable>
-                            </View>
+                            <Text className="text-[10px] text-muted-foreground mt-0.5 ml-4" numberOfLines={1}>
+                              {wps.map((w) => w.name).join(' → ')}
+                            </Text>
                           ) : null}
-                        </View>
+                        </Pressable>
                       );
                     })}
                 </View>
@@ -1074,12 +1726,12 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
         />
 
         {selectedAircraft ? (
-          <View className="mb-3 flex-row flex-wrap gap-1.5">
-            <SpecChip label={t('aircraft.emptyWeight')} value={`${selectedAircraft.emptyWeightKg} kg`} convert={fuelKgConversions(selectedAircraft.emptyWeightKg)} />
-            <SpecChip label={t('aircraft.mtow')} value={`${selectedAircraft.mtowKg} kg`} accent convert={fuelKgConversions(selectedAircraft.mtowKg)} />
-            <SpecChip label={t('aircraft.usefulLoad')} value={`${selectedAircraft.mtowKg - selectedAircraft.emptyWeightKg} kg`} />
-            <SpecChip label={t('aircraft.fuelCapacity')} value={`${Math.round(maxFuelKg)} kg`} convert={fuelKgConversions(Math.round(maxFuelKg))} />
-            <SpecChip label={t('aircraft.cruiseSpeed')} value={`${selectedAircraft.cruiseSpeedKts} kt`} convert={`${Math.round(selectedAircraft.cruiseSpeedKts * NM_TO_KM)} km/h`} />
+          <View className="mb-3 rounded-md border border-border bg-surface-muted px-3 py-2 gap-0.5">
+            <Row label={t('aircraft.emptyWeight')} value={formatWeight(selectedAircraft.emptyWeightKg, wu)} />
+            <Row label={t('aircraft.mtow')} value={formatWeight(selectedAircraft.mtowKg, wu)} bold />
+            <Row label={t('aircraft.usefulLoad')} value={formatWeight(selectedAircraft.mtowKg - selectedAircraft.emptyWeightKg, wu)} />
+            <Row label={t('aircraft.fuelCapacity')} value={formatVolume(selectedAircraft.fuelCapacityL, vu)} />
+            <Row label={t('aircraft.cruiseSpeed')} value={formatSpeed(selectedAircraft.cruiseSpeedKts, su)} />
           </View>
         ) : null}
 
@@ -1110,7 +1762,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
         {selectedAircraft && weightMode === 'simple' ? (
           <View className="mb-3">
             <Input
-              label={`${t('aircraft.payload')} (${t('aircraft.maxLabel')} ${Math.max(0, Math.round(selectedAircraft.mtowKg - selectedAircraft.emptyWeightKg - fuelOnBoardKg))} kg)`}
+              label={`${t('aircraft.payload')} (${t('aircraft.maxLabel')} ${formatWeight(Math.max(0, selectedAircraft.mtowKg - selectedAircraft.emptyWeightKg - fuelOnBoardKg), wu)})`}
               value={simpleTotalWeight}
               onChangeText={setSimpleTotalWeight}
               keyboardType="numeric"
@@ -1124,7 +1776,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
             {selectedAircraft.stations.map((station) => (
               <View key={station.id} className="mb-2">
                 <Input
-                  label={`${t(station.labelKey)} (${t('aircraft.maxLabel')} ${station.maxKg} kg)`}
+                  label={`${t(station.labelKey)} (${t('aircraft.maxLabel')} ${formatWeight(station.maxKg, wu)})`}
                   value={stationWeights[station.id] ?? ''}
                   onChangeText={(v) => setStationWeights((prev) => ({ ...prev, [station.id]: v }))}
                   keyboardType="numeric"
@@ -1137,21 +1789,41 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
 
         {selectedAircraft && (payloadKg > 0 || fuelOnBoardKg > 0) ? (
           <View className={`rounded-sm border px-3 py-2 ${mtowExcessKg > 0 ? 'border-destructive bg-destructive/10' : 'border-border bg-surface-muted'}`}>
-            <Row label={t('aircraft.emptyWeight')} value={`${selectedAircraft.emptyWeightKg} kg`} />
-            <Row label={t('aircraft.payload')} value={`${payloadKg.toFixed(1)} kg`} />
-            <Row label={t('aircraft.fuelWeight')} value={`${fuelOnBoardKg.toFixed(1)} kg`} />
+            <Row label={t('aircraft.payload')} value={formatWeight(payloadKg, wu)} />
+            <Row label={t('aircraft.fuelWeight')} value={formatWeight(fuelOnBoardKg, wu)} />
             <View className="my-1 border-t border-border/50" />
-            <Row label={t('aircraft.takeoffWeight')} value={`${takeoffWeightKg.toFixed(0)} kg`} bold />
-            <Row label={t('aircraft.mtow')} value={`${selectedAircraft.mtowKg} kg`} />
+            <Row label={t('aircraft.takeoffWeight')} value={`${formatWeight(takeoffWeightKg, wu)}  /  ${formatWeight(selectedAircraft.mtowKg, wu)}`} bold />
             {mtowExcessKg > 0 ? (
               <Text className="mt-1 text-xs font-semibold text-destructive">
-                {t('aircraft.overMtow', { excess: mtowExcessKg.toFixed(0) })}
+                {t('aircraft.overMtow', { excess: formatWeight(mtowExcessKg, wu) })}
               </Text>
             ) : takeoffWeightKg > 0 ? (
               <Text className="mt-1 text-xs font-medium text-green-600">
                 {t('aircraft.withinLimits')}
               </Text>
             ) : null}
+          </View>
+        ) : null}
+      </Section>
+
+      {/* ====== REMARKS (Item 18) ====== */}
+      <Section title={t('vfr.remarksTitle')}>
+        {autoRemarks ? (
+          <View className="mb-2 rounded-sm border border-border bg-surface-muted px-3 py-2">
+            <Text className="text-[10px] font-medium text-muted-foreground">{t('vfr.remarksAuto')}</Text>
+            <Text className="mt-0.5 font-mono text-xs text-foreground" selectable>{autoRemarks}</Text>
+          </View>
+        ) : null}
+        <Input
+          label={t('vfr.remarksUser')}
+          value={userRemarks}
+          onChangeText={setUserRemarks}
+          placeholder={t('vfr.remarksPlaceholder')}
+        />
+        {fullRemarks ? (
+          <View className="mt-2 rounded-sm border border-primary/20 bg-primary/5 px-3 py-2">
+            <Text className="text-[10px] font-medium text-primary">{t('vfr.remarksPreview')}</Text>
+            <Text className="mt-0.5 font-mono text-xs text-foreground" selectable>{fullRemarks}</Text>
           </View>
         ) : null}
       </Section>
@@ -1192,10 +1864,10 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
               placeholder="0"
             />
             {consumptionKgH > 0 ? (
-              <ConversionHint text={fuelFlowConversions(consumptionKgH)} />
+              <Text className="mt-0.5 text-[9px] text-muted-foreground">{formatFuelFlow(consumptionKgH, vu)}</Text>
             ) : null}
           </View>
-          <View style={{ width: 72 }}>
+          <View style={{ minWidth: 64, maxWidth: 80 }}>
             <Input
               label={t('vfr.contingencyLabel')}
               value={contingencyPct}
@@ -1211,21 +1883,21 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
           <View className="mb-3 rounded-sm border border-border bg-surface-muted px-3 py-2">
             {tripFuelKg > 0 ? (
               <>
-                <ConvertibleRow label={t('vfr.tripFuel')} value={`${tripFuelKg.toFixed(1)} kg`} convert={fuelKgConversions(tripFuelKg)} />
+                <Row label={t('vfr.tripFuel')} value={formatFuelWeight(tripFuelKg, vu)} />
                 <Row label={t('vfr.tripTime')} value={`${Math.floor(tripMinutes / 60)}h${String(tripMinutes % 60).padStart(2, '0')}min`} />
               </>
             ) : null}
             {altFuelKg > 0 ? (
-              <ConvertibleRow label={t('vfr.altFuel')} value={`${altFuelKg.toFixed(1)} kg (${altDistNm.toFixed(0)} NM)`} convert={fuelKgConversions(altFuelKg)} />
+              <Row label={t('vfr.altFuel')} value={`${formatFuelWeight(altFuelKg, vu)} (${altDistNm.toFixed(0)} NM)`} />
             ) : null}
             {contingencyFuelKg > 0 ? (
-              <ConvertibleRow label={`${t('vfr.contingency')} (${contingencyPct}%)`} value={`${contingencyFuelKg.toFixed(1)} kg`} convert={fuelKgConversions(contingencyFuelKg)} />
+              <Row label={`${t('vfr.contingency')} (${contingencyPct}%)`} value={formatFuelWeight(contingencyFuelKg, vu)} />
             ) : null}
-            <ConvertibleRow label={`${t('vfr.reserveFuel')} (${reserveMinutes} min)`} value={`${reserveFuelKg.toFixed(1)} kg`} convert={fuelKgConversions(reserveFuelKg)} />
+            <Row label={`${t('vfr.reserveFuel')} (${reserveMinutes} min)`} value={formatFuelWeight(reserveFuelKg, vu)} />
             {minFuelKg > 0 ? (
               <>
                 <View className="my-1 border-t border-border/50" />
-                <ConvertibleRow label={t('vfr.minFuel')} value={`${minFuelKg.toFixed(1)} kg`} convert={fuelKgConversions(minFuelKg)} bold />
+                <Row label={t('vfr.minFuel')} value={formatFuelWeight(minFuelKg, vu)} bold />
               </>
             ) : null}
           </View>
@@ -1235,7 +1907,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
         <View className="mb-3">
           <Input
             label={selectedAircraft
-              ? `${t('vfr.fuelOnBoard')} (${t('aircraft.maxLabel')} ${Math.round(maxFuelKg)} kg)`
+              ? `${t('vfr.fuelOnBoard')} (${t('aircraft.maxLabel')} ${formatVolume(selectedAircraft.fuelCapacityL, vu)})`
               : t('vfr.fuelOnBoard')}
             value={fuelCurrentTotal}
             onChangeText={(v) => { setFuelManuallyEdited(true); setFuelCurrentTotal(v); }}
@@ -1243,16 +1915,16 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
             placeholder="0"
           />
           {fuelOnBoardKg > 0 ? (
-            <ConversionHint text={fuelKgConversions(fuelOnBoardKg)} />
+            <Text className="mt-0.5 text-[9px] text-muted-foreground">{formatFuelWeight(fuelOnBoardKg, vu)}</Text>
           ) : null}
           {maxFuelKg > 0 && fuelOnBoardKg > maxFuelKg ? (
             <Text className="mt-0.5 text-[10px] font-semibold text-destructive">
-              {t('vfr.overCapacity', { excess: (fuelOnBoardKg - maxFuelKg).toFixed(0) })}
+              {t('vfr.overCapacity', { excess: formatFuelWeight(fuelOnBoardKg - maxFuelKg, vu) })}
             </Text>
           ) : null}
           {minFuelKg > 0 && fuelOnBoardKg > 0 && fuelOnBoardKg < minFuelKg ? (
             <Text className="mt-0.5 text-[10px] font-semibold text-destructive">
-              {t('vfr.fuelInsufficient', { deficit: (minFuelKg - fuelOnBoardKg).toFixed(1) })}
+              {t('vfr.fuelInsufficient', { deficit: formatFuelWeight(minFuelKg - fuelOnBoardKg, vu) })}
             </Text>
           ) : null}
           {minFuelKg > 0 && fuelOnBoardKg >= minFuelKg && !(maxFuelKg > 0 && fuelOnBoardKg > maxFuelKg) ? (
@@ -1265,7 +1937,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
         {/* Endurance summary */}
         {fuelOnBoardKg > 0 && consumptionKgH > 0 ? (
           <View className="rounded-sm border border-border bg-surface-muted px-3 py-2">
-            <ConvertibleRow label={t('vfr.perWing')} value={`${perWingKg.toFixed(1)} kg`} convert={fuelKgConversions(perWingKg)} />
+            <Row label={t('vfr.perWing')} value={formatFuelWeight(perWingKg, vu)} />
             <Row
               label={t('vfr.endurance')}
               value={`${enduranceHours}h${String(enduranceRemainder).padStart(2, '0')}min (${enduranceMin} min)`}
@@ -1281,10 +1953,10 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
         </Section>
       ) : null}
 
-      {/* ====== SAVE ====== */}
-      <View className="px-4 pb-6 md:px-6">
+      {/* ====== ACTIONS ====== */}
+      <View className="flex-row gap-3 px-4 pb-6 md:px-6">
         <Pressable
-          className="rounded-button bg-primary px-6 py-3 active:opacity-80 disabled:opacity-50"
+          className="flex-1 rounded-button bg-primary px-6 py-3 active:opacity-80 disabled:opacity-50"
           onPress={handleSave}
           disabled={saving || !origin || !destination}
         >
@@ -1292,15 +1964,96 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
             {saving ? t('common.saving') : t('common.save')}
           </Text>
         </Pressable>
+        {Platform.OS === 'web' && (
+          <Pressable
+            className="rounded-button border border-primary bg-transparent px-6 py-3 active:opacity-80 disabled:opacity-50"
+            onPress={handleExportPdf}
+            disabled={!origin || !destination}
+          >
+            <Text className="text-center font-medium text-primary">
+              {t('vfr.exportPdf')}
+            </Text>
+          </Pressable>
+        )}
       </View>
     </>
   );
 
   return (
-    <VfrPlanLayout
-      mapElement={mapElement}
-      sidebarContent={sidebarContent}
-    />
+    <>
+      <VfrPlanLayout
+        mapElement={mapElement}
+        sidebarContent={sidebarContent}
+      />
+      {showExportModal ? (
+        <Modal transparent animationType="fade" onRequestClose={() => setShowExportModal(false)}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}
+            onPress={() => { if (!exporting) setShowExportModal(false); }}
+          >
+            <Pressable
+              style={{ width: '90%', maxWidth: 380 }}
+              className="rounded-lg border border-border bg-card p-5 shadow-xl"
+              onPress={() => {}}
+            >
+              <Text className="mb-4 text-base font-bold text-foreground">{t('vfr.exportTitle')}</Text>
+
+              <Pressable
+                className="flex-row items-center gap-3 py-2"
+                onPress={() => setExportIncludeCharts((v) => !v)}
+                disabled={exporting}
+              >
+                <View className={`h-5 w-5 items-center justify-center rounded border ${exportIncludeCharts ? 'border-primary bg-primary' : 'border-border'}`}>
+                  {exportIncludeCharts ? <Text className="text-xs font-bold text-primary-foreground">✓</Text> : null}
+                </View>
+                <Text className="text-sm text-foreground">{t('vfr.exportIncludeCharts')}</Text>
+              </Pressable>
+
+              {hasChecklists ? (
+                <Pressable
+                  className="flex-row items-center gap-3 py-2"
+                  onPress={() => setExportIncludeChecklist((v) => !v)}
+                  disabled={exporting}
+                >
+                  <View className={`h-5 w-5 items-center justify-center rounded border ${exportIncludeChecklist ? 'border-primary bg-primary' : 'border-border'}`}>
+                    {exportIncludeChecklist ? <Text className="text-xs font-bold text-primary-foreground">✓</Text> : null}
+                  </View>
+                  <Text className="text-sm text-foreground">{t('vfr.exportIncludeChecklist')}</Text>
+                </Pressable>
+              ) : null}
+
+              {(exportIncludeCharts || exportIncludeChecklist) ? (
+                <Text className="mt-2 text-[11px] text-muted-foreground">{t('vfr.exportAttachmentNote')}</Text>
+              ) : null}
+
+              {exporting ? (
+                <View className="mt-5 items-center gap-2 py-2">
+                  <ActivityIndicator size="small" color="#2254cc" />
+                  <Text className="text-sm text-muted-foreground">{t('vfr.exportExporting')}</Text>
+                </View>
+              ) : (
+                <View className="mt-5 flex-row gap-3">
+                  <Pressable
+                    className="flex-1 rounded-button border border-border px-4 py-2.5"
+                    onPress={() => setShowExportModal(false)}
+                  >
+                    <Text className="text-center text-sm font-medium text-foreground">{t('vfr.exportCancel')}</Text>
+                  </Pressable>
+                  <Pressable
+                    className="flex-1 rounded-button bg-primary px-4 py-2.5"
+                    onPress={() => { void handleExportConfirm(); }}
+                  >
+                    <Text className="text-center text-sm font-medium text-primary-foreground">
+                      {t('vfr.exportConfirm')}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
+    </>
   );
 }
 
@@ -1340,39 +2093,6 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
   );
 }
 
-function SpecChip({ label, value, accent, convert }: { label: string; value: string; accent?: boolean; convert?: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Pressable onPress={convert ? () => setOpen((v) => !v) : undefined}>
-      <View className={`rounded-md border px-2.5 py-1.5 ${accent ? 'border-primary/30 bg-primary/5' : 'border-border bg-surface-muted'}`}>
-        <Text className="text-[9px] text-muted-foreground">{label}</Text>
-        <Text className={`text-xs font-semibold ${accent ? 'text-primary' : 'text-foreground'}`}>{value}</Text>
-        {open && convert ? (
-          <Text className="mt-0.5 text-[8px] text-muted-foreground">{convert}</Text>
-        ) : null}
-      </View>
-    </Pressable>
-  );
-}
-
-function ConvertibleRow({ label, value, convert, bold }: { label: string; value: string; convert: string; bold?: boolean }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Pressable onPress={() => setOpen((v) => !v)}>
-      <View className="flex-row items-center justify-between py-0.5">
-        <Text className={`text-xs ${bold ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>{label}</Text>
-        <Text className={`text-xs ${bold ? 'font-bold text-foreground' : 'font-medium text-foreground'}`}>{value}</Text>
-      </View>
-      {open ? (
-        <Text className="pb-0.5 text-right text-[9px] text-muted-foreground">{convert}</Text>
-      ) : null}
-    </Pressable>
-  );
-}
-
-function ConversionHint({ text }: { text: string }) {
-  return <Text className="mt-0.5 text-[9px] text-muted-foreground">{text}</Text>;
-}
 
 function AerodromeInfo({
   aerodrome,

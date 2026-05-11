@@ -163,13 +163,17 @@ export interface ReaSegment {
   trecho: number;
   classe: string;
   fca: string;
+  ats: string;
   semiLargura: number;
-  rumoAtoB: number;
-  rumoBtoA: number;
+  rumoAtoB: number | null;
+  rumoBtoA: number | null;
   altMaxAtoB: number;
   altMinAtoB: number;
   altMaxBtoA: number;
   altMinBtoA: number;
+  altComp: number | null;
+  altCompAtoB: number | null;
+  altCompBtoA: number | null;
   fixoA: { lat: number; lon: number; nome: string };
   fixoB: { lat: number; lon: number; nome: string };
   cartaNome: string;
@@ -425,25 +429,115 @@ export class ReaService {
     const result: ReaDetectionResult = { regions: [] };
 
     for (const regionData of regionDataList) {
+      const origin = waypoints[0]!;
+      const dest = waypoints[waypoints.length - 1]!;
+
+      // Polygon intersection: route line crosses corridor polygon
       const intersecting = regionData.segments.filter((seg) =>
         this.routeIntersectsPolygon(waypoints, seg.geometry),
       );
 
-      if (intersecting.length === 0) continue;
-
-      // Group intersecting segments by corridor name
-      const byName = new Map<string, ReaSegment[]>();
+      const matchedNames = new Set<string>();
       for (const seg of intersecting) {
+        matchedNames.add(seg.nome);
+      }
+
+      // Proximity-based detection: include corridors with a waypoint near origin or destination.
+      // An aerodrome near a REA corridor should use that corridor even if the direct route
+      // line doesn't geometrically cross its polygon.
+      const PROXIMITY_NM = 5;
+      for (const seg of regionData.segments) {
+        if (matchedNames.has(seg.nome)) continue;
+        const dOrigA = this.haversineNm(origin.lat, origin.lon, seg.fixoA.lat, seg.fixoA.lon);
+        const dOrigB = this.haversineNm(origin.lat, origin.lon, seg.fixoB.lat, seg.fixoB.lon);
+        const dDestA = this.haversineNm(dest.lat, dest.lon, seg.fixoA.lat, seg.fixoA.lon);
+        const dDestB = this.haversineNm(dest.lat, dest.lon, seg.fixoB.lat, seg.fixoB.lon);
+        if (Math.min(dOrigA, dOrigB, dDestA, dDestB) <= PROXIMITY_NM) {
+          matchedNames.add(seg.nome);
+        }
+      }
+
+      if (matchedNames.size === 0) continue;
+
+      // Collect endpoint coordinates of matched corridors to find entry gates
+      const matchedEndpoints = new Set<string>();
+      for (const seg of regionData.segments) {
+        if (!matchedNames.has(seg.nome)) continue;
+        matchedEndpoints.add(`${seg.fixoA.lat.toFixed(4)},${seg.fixoA.lon.toFixed(4)}`);
+        matchedEndpoints.add(`${seg.fixoB.lat.toFixed(4)},${seg.fixoB.lon.toFixed(4)}`);
+      }
+
+      // Count segments per corridor name to identify short connectors (entry gates)
+      const segCountByName = new Map<string, number>();
+      for (const seg of regionData.segments) {
+        segCountByName.set(seg.nome, (segCountByName.get(seg.nome) ?? 0) + 1);
+      }
+
+      // Include short connected corridors (≤2 segments) — these are entry gates (Portões).
+      for (const seg of regionData.segments) {
+        if (matchedNames.has(seg.nome)) continue;
+        const count = segCountByName.get(seg.nome) ?? 0;
+        if (count > 2) continue;
+        const kA = `${seg.fixoA.lat.toFixed(4)},${seg.fixoA.lon.toFixed(4)}`;
+        const kB = `${seg.fixoB.lat.toFixed(4)},${seg.fixoB.lon.toFixed(4)}`;
+        if (matchedEndpoints.has(kA) || matchedEndpoints.has(kB)) {
+          matchedNames.add(seg.nome);
+        }
+      }
+
+      // Include ALL segments of matched + connected corridors
+      const byName = new Map<string, ReaSegment[]>();
+      for (const seg of regionData.segments) {
+        if (!matchedNames.has(seg.nome)) continue;
         const existing = byName.get(seg.nome) ?? [];
         existing.push(seg);
         byName.set(seg.nome, existing);
       }
 
-      const corridors = Array.from(byName.entries()).map(([name, segs]) => ({
+      const allCorridors = Array.from(byName.entries()).map(([name, segs]) => ({
         name,
         tipo: segs[0]!.tipo,
         segments: segs.sort((a, b) => a.trecho - b.trecho),
       }));
+
+      // Filter corridors by direction efficiency: a corridor is only relevant if
+      // following its sub-path makes meaningful progress toward the destination
+      const corridors = allCorridors.filter((c) => {
+        if (c.segments.length <= 2) return true; // short corridors/gates always pass
+        const sorted = c.segments;
+        const wps: { lat: number; lon: number }[] = [];
+        const seen = new Set<string>();
+        for (const seg of sorted) {
+          const kA = `${seg.fixoA.lat.toFixed(4)},${seg.fixoA.lon.toFixed(4)}`;
+          if (!seen.has(kA)) { seen.add(kA); wps.push(seg.fixoA); }
+          const kB = `${seg.fixoB.lat.toFixed(4)},${seg.fixoB.lon.toFixed(4)}`;
+          if (!seen.has(kB)) { seen.add(kB); wps.push(seg.fixoB); }
+        }
+        if (wps.length < 2) return true;
+        // Find entry (closest to origin) and exit (closest to destination)
+        let entryIdx = 0, exitIdx = 0;
+        let entryDist = Infinity, exitDist = Infinity;
+        for (let i = 0; i < wps.length; i++) {
+          const dO = this.haversineNm(origin.lat, origin.lon, wps[i]!.lat, wps[i]!.lon);
+          const dD = this.haversineNm(dest.lat, dest.lon, wps[i]!.lat, wps[i]!.lon);
+          if (dO < entryDist) { entryDist = dO; entryIdx = i; }
+          if (dD < exitDist) { exitDist = dD; exitIdx = i; }
+        }
+        const subStart = Math.min(entryIdx, exitIdx);
+        const subEnd = Math.max(entryIdx, exitIdx);
+        const sub = wps.slice(subStart, subEnd + 1);
+        if (sub.length < 2) return false;
+        const entryToDest = this.haversineNm(sub[0]!.lat, sub[0]!.lon, dest.lat, dest.lon);
+        const exitToDest = this.haversineNm(sub[sub.length - 1]!.lat, sub[sub.length - 1]!.lon, dest.lat, dest.lon);
+        const progress = Math.abs(entryToDest - exitToDest);
+        let pathDist = 0;
+        for (let i = 1; i < sub.length; i++) {
+          pathDist += this.haversineNm(sub[i - 1]!.lat, sub[i - 1]!.lon, sub[i]!.lat, sub[i]!.lon);
+        }
+        return pathDist <= 0 || progress / pathDist >= 0.5;
+      });
+
+      if (corridors.length === 0) continue;
 
       result.regions.push({
         regionId: regionData.regionId,
@@ -478,13 +572,17 @@ export class ReaService {
       trecho: p.trecho ?? 0,
       classe: p.classe ?? '',
       fca: p.fca ?? '',
+      ats: p.ats ?? '',
       semiLargura: p.semi_largura ?? 0,
-      rumoAtoB: p.rumoa_to_b ?? 0,
-      rumoBtoA: p.rumob_to_a ?? 0,
+      rumoAtoB: p.rumoa_to_b != null ? Number(p.rumoa_to_b) : null,
+      rumoBtoA: p.rumob_to_a != null ? Number(p.rumob_to_a) : null,
       altMaxAtoB: p.altmaxa_to_b ?? 0,
       altMinAtoB: p.altmina_to_b ?? 0,
       altMaxBtoA: p.altmaxb_to_a ?? 0,
       altMinBtoA: p.altminb_to_a ?? 0,
+      altComp: p.altcomp != null ? Number(p.altcomp) : null,
+      altCompAtoB: p.altcompa_to_b != null ? Number(p.altcompa_to_b) : null,
+      altCompBtoA: p.altcompb_to_a != null ? Number(p.altcompb_to_a) : null,
       fixoA: { lat: p.fixo_a_lat ?? 0, lon: p.fixo_a_lon ?? 0, nome: p.fixo_a_nome ?? '' },
       fixoB: { lat: p.fixo_b_lat ?? 0, lon: p.fixo_b_lon ?? 0, nome: p.fixo_b_nome ?? '' },
       cartaNome: p.carta_nome ?? '',
@@ -567,5 +665,15 @@ export class ReaService {
 
   private cross(ax: number, ay: number, bx: number, by: number, cx: number, cy: number): number {
     return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+  }
+
+  private haversineNm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 3440.065;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.asin(Math.sqrt(a));
   }
 }

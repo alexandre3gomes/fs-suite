@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, Text, useWindowDimensions, View } from 'react-native';
 
 import { type ChecklistEntry, getChecklistsForAircraft } from '../../data/checklistCatalog';
 
@@ -9,9 +9,13 @@ interface Props {
   icaoType: string | null;
 }
 
-const VIEWER_HEIGHT = 500;
+function useViewerHeight(base: number): number {
+  const { height } = useWindowDimensions();
+  return height < 700 ? Math.round(height * 0.45) : base;
+}
 
 export function ChecklistPanel({ icaoType }: Props) {
+  const viewerHeight = useViewerHeight(500);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [maximized, setMaximized] = useState(false);
   const iframeRef = useRef<View>(null);
@@ -156,7 +160,7 @@ export function ChecklistPanel({ icaoType }: Props) {
               </Pressable>
             </View>
           </View>
-          <View ref={iframeRef} style={{ height: VIEWER_HEIGHT }} />
+          <View ref={iframeRef} style={{ height: viewerHeight }} />
         </View>
       ) : null}
     </View>

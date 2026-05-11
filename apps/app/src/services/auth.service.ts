@@ -8,6 +8,7 @@ import { useAuthStore } from '../stores/auth.store';
 
 import { apiClient, API_URL } from './api.client';
 
+const GOOGLE_AUTH_URL = API_URL.replace(/192\.168\.\d+\.\d+/, 'localhost');
 const SECURE_STORE_REFRESH_KEY = 'fs_suite_refresh_token';
 
 interface UserProfile {
@@ -24,16 +25,14 @@ interface TokenResponse {
 
 export async function signInWithGoogle(): Promise<void> {
   if (Platform.OS === 'web') {
-    // Web: full-page redirect — no return value, browser navigates away
     (globalThis as unknown as { location: { href: string } }).location.href =
-      `${API_URL}/v1/auth/google?platform=web`;
+      `${GOOGLE_AUTH_URL}/v1/auth/google?platform=web`;
     return;
   }
 
-  // Native: open in-app browser session, watch for deep link redirect
   const redirectUrl = Linking.createURL('auth/callback');
   const result = await WebBrowser.openAuthSessionAsync(
-    `${API_URL}/v1/auth/google?platform=native`,
+    `${GOOGLE_AUTH_URL}/v1/auth/google?platform=native`,
     redirectUrl,
   );
 
@@ -62,6 +61,34 @@ export async function signInWithVatsim(): Promise<void> {
   const redirectUrl = Linking.createURL('auth/callback');
   const result = await WebBrowser.openAuthSessionAsync(
     `${API_URL}/v1/auth/vatsim?platform=native`,
+    redirectUrl,
+  );
+
+  if (result.type !== 'success') {
+    return;
+  }
+
+  const url = new URL(result.url);
+  const accessToken = url.searchParams.get('access_token');
+  const refreshToken = url.searchParams.get('refresh_token');
+
+  if (!accessToken) {
+    return;
+  }
+
+  await handleNativeTokens(accessToken, refreshToken ?? null);
+}
+
+export async function signInWithDev(): Promise<void> {
+  if (Platform.OS === 'web') {
+    (globalThis as unknown as { location: { href: string } }).location.href =
+      `${API_URL}/v1/auth/dev-login?platform=web`;
+    return;
+  }
+
+  const redirectUrl = Linking.createURL('auth/callback');
+  const result = await WebBrowser.openAuthSessionAsync(
+    `${API_URL}/v1/auth/dev-login?platform=native`,
     redirectUrl,
   );
 

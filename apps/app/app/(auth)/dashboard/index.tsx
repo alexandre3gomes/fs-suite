@@ -48,7 +48,7 @@ export default function DashboardScreen() {
       {/* Header */}
       <View className="flex-row items-center justify-between border-b border-border px-4 py-3 md:px-8">
         <View className="flex-row items-center gap-3">
-          <Logo height={32} />
+          <Logo height={48} />
           {/* Language flags */}
           <View className="flex-row items-center gap-1">
             {LANGUAGES.map((lang) => {
@@ -66,9 +66,9 @@ export default function DashboardScreen() {
             })}
           </View>
         </View>
-        <View className="flex-row items-center gap-3">
+        <View className="flex-row items-center gap-3 shrink">
           {user?.name ? (
-            <Text className="text-sm text-muted-foreground">{user.name}</Text>
+            <Text className="hidden text-sm text-muted-foreground md:flex" numberOfLines={1}>{user.name}</Text>
           ) : null}
           <Pressable onPress={openMenu}>
             <View ref={avatarRef} collapsable={false}>
