@@ -2,7 +2,7 @@ import { Button, Logo, Text } from '@fs-suite/ui';
 import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Platform, ScrollView, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { apiClient } from '../../../src/services/api.client';
 import { signInWithDev, signInWithGoogle, signInWithVatsim } from '../../../src/services/auth.service';
@@ -379,11 +379,7 @@ export default function LoginScreen(): JSX.Element {
               variant="outline"
               size="lg"
               className="gap-3 border-border bg-white shadow-sm"
-              onPress={() => {
-                if (Platform.OS === 'web') {
-                  window.open('https://ko-fi.com/R5R51MLQM3', '_blank');
-                }
-              }}
+              onPress={() => { void Linking.openURL('https://ko-fi.com/R5R51MLQM3'); }}
             >
               <Text style={{ fontSize: 20 }}>☕</Text>
               <Text className="text-sm font-medium text-foreground">{t('home.kofi')}</Text>
