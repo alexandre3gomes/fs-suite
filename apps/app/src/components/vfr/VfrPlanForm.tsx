@@ -67,6 +67,10 @@ export interface VfrPlanData {
   alternateRunwayInUse?: string;
   alternateMetarRaw?: string;
   alternateTafRaw?: string;
+  originRunways?: { ident: string; headingDeg: number | null; lengthFt: number | null }[];
+  destinationRunways?: { ident: string; headingDeg: number | null; lengthFt: number | null }[];
+  alternateRunways?: { ident: string; headingDeg: number | null; lengthFt: number | null }[];
+  reaCorridors?: { regionName: string; corridorName: string; tipo: string; segments: { from: string; to: string; altMin: number; altMax: number; altComp: number | null }[] }[];
   routeText?: string;
   cruiseLevel?: string;
   todMinutes?: number;
@@ -750,6 +754,31 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
       alternateRunwayInUse: altRunway || undefined,
       alternateMetarRaw: alternate ? metars[alternate.icao]?.raw : undefined,
       alternateTafRaw: alternate ? tafs[alternate.icao]?.raw : undefined,
+      originRunways: originDetail?.runways.map((r) => ({
+        ident: r.ident,
+        headingDeg: r.leHeadingDeg,
+        lengthFt: r.lengthFt,
+      })),
+      destinationRunways: destDetail?.runways.map((r) => ({
+        ident: r.ident,
+        headingDeg: r.leHeadingDeg,
+        lengthFt: r.lengthFt,
+      })),
+      alternateRunways: undefined,
+      reaCorridors: reaRegions.length > 0 ? reaRegions.flatMap((r) =>
+        r.corridors.map((c) => ({
+          regionName: r.chartName,
+          corridorName: c.name,
+          tipo: c.tipo,
+          segments: c.segments.map((s) => ({
+            from: s.fixoA.nome,
+            to: s.fixoB.nome,
+            altMin: s.altMinAtoB,
+            altMax: s.altMaxAtoB,
+            altComp: s.altComp,
+          })),
+        })),
+      ) : undefined,
       routeText: routeText || undefined,
       cruiseLevel: cruiseLevel || undefined,
       todMinutes: todMinutes ? parseInt(todMinutes, 10) : undefined,

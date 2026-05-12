@@ -4,6 +4,7 @@ import { Text, View } from 'react-native';
 export interface TafForecastPeriod {
   timeFrom: number;
   timeTo: number;
+  timeBec: number | null;
   fcstChange: string | null;
   probability: number | null;
   windDirection: number | null;
@@ -40,9 +41,12 @@ function categoryColor(cat: string | null): string {
   }
 }
 
-function formatUtcTime(epoch: number): string {
+function fmtDayTime(epoch: number): string {
   const d = new Date(epoch * 1000);
-  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`;
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return mm === '00' ? `${day}/${hh}Z` : `${day}/${hh}${mm}Z`;
 }
 
 function formatWind(dir: number | null, spd: number | null, gst: number | null): string {
@@ -53,14 +57,16 @@ function formatWind(dir: number | null, spd: number | null, gst: number | null):
 
 function formatVis(vis: number | string | null): string {
   if (vis === null) return '—';
-  if (typeof vis === 'string') return vis === '6+' ? '> 6 SM' : `${vis} SM`;
-  return `${vis.toFixed(1)} SM`;
+  if (typeof vis === 'string') return vis === '6+' ? '> 10 km' : `${vis} SM`;
+  if (vis >= 6) return '> 10 km';
+  const meters = Math.round(vis * 1609.34);
+  return `${meters} m`;
 }
 
 function formatClouds(clouds: { cover: string; base: number | null }[]): string {
   if (clouds.length === 0) return '—';
   return clouds.map((c) => {
-    if (c.cover === 'NSC' || c.cover === 'SKC' || c.cover === 'CLR') return c.cover;
+    if (c.cover === 'NSC' || c.cover === 'SKC' || c.cover === 'CLR' || c.cover === 'NCD') return c.cover;
     return `${c.cover}${c.base != null ? ` ${c.base}ft` : ''}`;
   }).join(', ');
 }
@@ -73,16 +79,17 @@ function isCavok(period: TafForecastPeriod): boolean {
   return visOk && cloudsOk && !period.wxString;
 }
 
+function periodTimeLabel(period: TafForecastPeriod): string {
+  if (period.fcstChange === 'BECMG' && period.timeBec) {
+    return `${fmtDayTime(period.timeFrom)}–${fmtDayTime(period.timeBec)}`;
+  }
+  return `${fmtDayTime(period.timeFrom)}–${fmtDayTime(period.timeTo)}`;
+}
+
 function changeLabel(change: string | null, prob: number | null): string | null {
   if (!change) return null;
-  const parts: string[] = [];
-  if (change === 'BECMG') parts.push('BECMG');
-  else if (change === 'TEMPO') parts.push('TEMPO');
-  else if (change === 'PROB') parts.push('PROB');
-  else if (change === 'FM') parts.push('FM');
-  else parts.push(change);
-  if (prob) parts.push(`${prob}%`);
-  return parts.join(' ');
+  if (change === 'PROB' && prob) return `PROB${prob}`;
+  return change;
 }
 
 function getEtaEpoch(etaMinutes?: number): number | null {
@@ -93,6 +100,15 @@ function getEtaEpoch(etaMinutes?: number): number | null {
 function isPeriodAtEta(p: TafForecastPeriod, etaEpoch: number | null): boolean {
   if (!etaEpoch) return false;
   return etaEpoch >= p.timeFrom && etaEpoch < p.timeTo;
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="flex-row items-center gap-1">
+      <Text className="text-[10px] text-muted-foreground">{label}:</Text>
+      <Text className="text-[10px] font-medium text-foreground">{value}</Text>
+    </View>
+  );
 }
 
 export function TafDisplay({ taf, loading, etaMinutes }: Props) {
@@ -119,7 +135,7 @@ export function TafDisplay({ taf, loading, etaMinutes }: Props) {
   return (
     <View className="mt-1 rounded-sm border border-border bg-surface-muted px-3 py-2">
       <Text className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-        TAF
+        TAF — {fmtDayTime(taf.validFrom)}–{fmtDayTime(taf.validTo)}
       </Text>
 
       <Text className="mb-2 font-mono text-xs text-foreground" selectable>
@@ -130,6 +146,7 @@ export function TafDisplay({ taf, loading, etaMinutes }: Props) {
         const isEta = isPeriodAtEta(period, etaEpoch);
         const change = changeLabel(period.fcstChange, period.probability);
         const cavok = isCavok(period);
+        const timeLabel = periodTimeLabel(period);
         const ceiling = !cavok
           ? period.clouds
               .filter((c) => (c.cover === 'BKN' || c.cover === 'OVC') && c.base != null)
@@ -147,7 +164,7 @@ export function TafDisplay({ taf, loading, etaMinutes }: Props) {
           >
             <View className="mb-1 flex-row items-center gap-2">
               <Text className="text-[10px] font-bold text-muted-foreground">
-                {formatUtcTime(period.timeFrom)}–{formatUtcTime(period.timeTo)}
+                {timeLabel}
               </Text>
               {change ? (
                 <View className="rounded bg-amber-100 px-1.5 py-0.5">
@@ -165,12 +182,7 @@ export function TafDisplay({ taf, loading, etaMinutes }: Props) {
             </View>
 
             <View className="flex-row flex-wrap gap-x-4 gap-y-0.5">
-              <View className="flex-row items-center gap-1">
-                <Text className="text-[10px] text-muted-foreground">{t('vfr.wind')}:</Text>
-                <Text className="text-[10px] font-medium text-foreground">
-                  {formatWind(period.windDirection, period.windSpeed, period.windGust)}
-                </Text>
-              </View>
+              <Field label={t('vfr.wind')} value={formatWind(period.windDirection, period.windSpeed, period.windGust)} />
 
               {cavok ? (
                 <View className="flex-row items-center gap-1">
@@ -178,32 +190,16 @@ export function TafDisplay({ taf, loading, etaMinutes }: Props) {
                 </View>
               ) : (
                 <>
-                  <View className="flex-row items-center gap-1">
-                    <Text className="text-[10px] text-muted-foreground">{t('vfr.visibility')}:</Text>
-                    <Text className="text-[10px] font-medium text-foreground">
-                      {formatVis(period.visibility)}
-                    </Text>
-                  </View>
+                  <Field label={t('vfr.visibility')} value={formatVis(period.visibility)} />
 
                   {ceiling !== null ? (
-                    <View className="flex-row items-center gap-1">
-                      <Text className="text-[10px] text-muted-foreground">{t('vfr.ceiling')}:</Text>
-                      <Text className="text-[10px] font-medium text-foreground">{ceiling} ft</Text>
-                    </View>
+                    <Field label={t('vfr.ceiling')} value={`${ceiling} ft`} />
                   ) : null}
 
-                  <View className="flex-row items-center gap-1">
-                    <Text className="text-[10px] text-muted-foreground">{t('vfr.clouds')}:</Text>
-                    <Text className="text-[10px] font-medium text-foreground">
-                      {formatClouds(period.clouds)}
-                    </Text>
-                  </View>
+                  <Field label={t('vfr.clouds')} value={formatClouds(period.clouds)} />
 
                   {period.wxString ? (
-                    <View className="flex-row items-center gap-1">
-                      <Text className="text-[10px] text-muted-foreground">Wx:</Text>
-                      <Text className="text-[10px] font-medium text-foreground">{period.wxString}</Text>
-                    </View>
+                    <Field label="Wx" value={period.wxString} />
                   ) : null}
                 </>
               )}

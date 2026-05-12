@@ -44,6 +44,7 @@ interface AvwxMetarResponse {
 export interface TafForecastPeriod {
   timeFrom: number;
   timeTo: number;
+  timeBec: number | null;
   fcstChange: string | null;
   probability: number | null;
   windDirection: number | null;
@@ -73,6 +74,7 @@ interface AvwxTafResponse {
   fcsts: {
     timeFrom: number;
     timeTo: number;
+    timeBec: number | null;
     fcstChange: string | null;
     probability: number | null;
     wdir: number;
@@ -221,6 +223,7 @@ export class WeatherService {
       return {
         timeFrom: f.timeFrom,
         timeTo: f.timeTo,
+        timeBec: f.timeBec ?? null,
         fcstChange: f.fcstChange,
         probability: f.probability,
         windDirection: f.wdir ?? null,

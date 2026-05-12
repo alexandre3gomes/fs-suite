@@ -26,6 +26,27 @@ class VisualReferenceDto {
   @IsOptional() @IsInt() timeMin?: number;
 }
 
+class RunwayDto {
+  @IsString() ident!: string;
+  @IsOptional() @IsNumber() headingDeg?: number | null;
+  @IsOptional() @IsNumber() lengthFt?: number | null;
+}
+
+class ReaSegmentDto {
+  @IsString() from!: string;
+  @IsString() to!: string;
+  @IsNumber() altMin!: number;
+  @IsNumber() altMax!: number;
+  @IsOptional() @IsNumber() altComp?: number | null;
+}
+
+class ReaCorridorDto {
+  @IsString() regionName!: string;
+  @IsString() corridorName!: string;
+  @IsString() tipo!: string;
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => ReaSegmentDto) segments?: ReaSegmentDto[];
+}
+
 export class ValidateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() flightRules?: string;
 
@@ -49,6 +70,22 @@ export class ValidateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() alternateRunwayInUse?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() alternateMetarRaw?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() alternateTafRaw?: string;
+
+  @ApiPropertyOptional({ type: [RunwayDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => RunwayDto)
+  originRunways?: RunwayDto[];
+
+  @ApiPropertyOptional({ type: [RunwayDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => RunwayDto)
+  destinationRunways?: RunwayDto[];
+
+  @ApiPropertyOptional({ type: [RunwayDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => RunwayDto)
+  alternateRunways?: RunwayDto[];
+
+  @ApiPropertyOptional({ type: [ReaCorridorDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => ReaCorridorDto)
+  reaCorridors?: ReaCorridorDto[];
 
   @ApiPropertyOptional() @IsOptional() @IsString() routeText?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() cruiseLevel?: string;

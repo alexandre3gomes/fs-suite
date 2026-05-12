@@ -70,11 +70,25 @@ export class AiValidationService {
     return result;
   }
 
+  private formatRunways(
+    runways: { ident: string; headingDeg?: number | null; lengthFt?: number | null }[] | undefined,
+  ): string | null {
+    if (!runways?.length) return null;
+    return runways
+      .map((r) => {
+        const parts = [r.ident];
+        if (r.headingDeg != null) parts.push(`hdg ${Math.round(r.headingDeg)}°`);
+        if (r.lengthFt != null) parts.push(`${r.lengthFt} ft`);
+        return parts.join(' ');
+      })
+      .join(' | ');
+  }
+
   private buildUserPrompt(dto: ValidateFlightPlanDto): string {
     const lines: string[] = ['## Flight Plan to Validate', ''];
 
     if (dto.flightRules) lines.push(`**Flight Rules**: ${dto.flightRules}`);
-    if (dto.flightCondition) lines.push(`**Flight Condition**: ${dto.flightCondition}`);
+    if (dto.flightCondition) lines.push(`**Flight Condition**: ${dto.flightCondition === 'night' ? 'NOTURNO' : 'DIURNO'}`);
 
     // Origin
     lines.push('', '### Origin');
@@ -84,6 +98,8 @@ export class AiValidationService {
       );
     }
     if (dto.originRunwayInUse) lines.push(`**Runway in use**: ${dto.originRunwayInUse}`);
+    const originRwys = this.formatRunways(dto.originRunways);
+    if (originRwys) lines.push(`**Available runways**: ${originRwys}`);
     if (dto.originMetarRaw) lines.push(`**METAR**: ${dto.originMetarRaw}`);
     if (dto.originTafRaw) lines.push(`**TAF**: ${dto.originTafRaw}`);
 
@@ -95,12 +111,14 @@ export class AiValidationService {
       );
     }
     if (dto.destinationRunwayInUse) lines.push(`**Runway in use**: ${dto.destinationRunwayInUse}`);
+    const destRwys = this.formatRunways(dto.destinationRunways);
+    if (destRwys) lines.push(`**Available runways**: ${destRwys}`);
     if (dto.destinationMetarRaw) lines.push(`**METAR**: ${dto.destinationMetarRaw}`);
     if (dto.destinationTafRaw) lines.push(`**TAF**: ${dto.destinationTafRaw}`);
     if (dto.tripMinutes != null) {
       const now = new Date();
       const eta = new Date(now.getTime() + dto.tripMinutes * 60_000);
-      lines.push(`**Estimated arrival (ETA)**: ${eta.toISOString().slice(0, 16)}Z (in ~${dto.tripMinutes} min from now)`);
+      lines.push(`**ETA**: ${eta.toISOString().slice(0, 16)}Z (~${dto.tripMinutes} min)`);
     }
 
     // Alternate
@@ -110,6 +128,8 @@ export class AiValidationService {
         `**Aerodrome**: ${dto.alternateIcao}${dto.alternateName ? ` (${dto.alternateName})` : ''}${dto.alternateElevationFt != null ? ` — Elevation: ${dto.alternateElevationFt} ft` : ''}`,
       );
       if (dto.alternateRunwayInUse) lines.push(`**Runway in use**: ${dto.alternateRunwayInUse}`);
+      const altRwys = this.formatRunways(dto.alternateRunways);
+      if (altRwys) lines.push(`**Available runways**: ${altRwys}`);
       if (dto.alternateMetarRaw) lines.push(`**METAR**: ${dto.alternateMetarRaw}`);
       if (dto.alternateTafRaw) lines.push(`**TAF**: ${dto.alternateTafRaw}`);
       if (dto.altDistanceNm != null) lines.push(`**Distance from destination**: ${dto.altDistanceNm} NM`);
@@ -132,10 +152,9 @@ export class AiValidationService {
 
     if (dto.routeLegs?.length) {
       lines.push('', '**Route Legs** (in order):');
-      const legs = dto.routeLegs.slice(0, 50);
-      for (const leg of legs) {
+      for (const leg of dto.routeLegs.slice(0, 50)) {
         const altStr = leg.suggestedAltitudes?.length
-          ? ` | Suggested FL: ${leg.suggestedAltitudes.join(', ')} ft`
+          ? ` | Alt sugeridas: ${leg.suggestedAltitudes.join(', ')} ft`
           : '';
         lines.push(
           `- ${leg.from} → ${leg.to}: ${leg.distanceNm.toFixed(1)} NM, TC ${Math.round(leg.trueCourse)}°, MC ${Math.round(leg.magneticCourse)}° (MagVar ${leg.magneticDeclination > 0 ? '+' : ''}${leg.magneticDeclination.toFixed(1)}°)${altStr}`,
@@ -146,12 +165,25 @@ export class AiValidationService {
     // Visual references
     if (dto.visualReferences?.length) {
       lines.push('', '**Visual References** (route reconnaissance):');
-      const refs = dto.visualReferences.slice(0, 30);
-      for (const ref of refs) {
+      for (const ref of dto.visualReferences.slice(0, 30)) {
         const parts = [`#${ref.sequence} ${ref.name}`];
         if (ref.distanceNm != null) parts.push(`${ref.distanceNm} NM from origin`);
         if (ref.timeMin != null) parts.push(`~${ref.timeMin} min`);
         lines.push(`- ${parts.join(' — ')}`);
+      }
+    }
+
+    // REA Corridors
+    if (dto.reaCorridors?.length) {
+      lines.push('', '### REA Corridors (route crosses these regions)');
+      for (const corridor of dto.reaCorridors) {
+        lines.push(`**${corridor.regionName} — ${corridor.corridorName}** (${corridor.tipo === 'Obrig' ? 'OBRIGATÓRIO' : 'RECOMENDADO'})`);
+        if (corridor.segments?.length) {
+          for (const seg of corridor.segments) {
+            const altComp = seg.altComp != null ? ` (alt compulsória: ${seg.altComp} ft)` : '';
+            lines.push(`  - ${seg.from} → ${seg.to}: ${seg.altMin}–${seg.altMax} ft${altComp}`);
+          }
+        }
       }
     }
 
