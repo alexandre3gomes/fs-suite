@@ -2028,7 +2028,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
       ) : null}
 
       {/* ====== ACTIONS ====== */}
-      <View className="flex-row flex-wrap gap-3 px-4 pb-6 md:px-6">
+      <View className="-mt-px flex-row flex-wrap gap-3 px-4 pt-5 pb-6 md:px-6">
         <Pressable
           className="min-w-[100px] flex-1 rounded-button bg-primary px-4 py-3 active:opacity-80 disabled:opacity-50"
           onPress={handleSave}
