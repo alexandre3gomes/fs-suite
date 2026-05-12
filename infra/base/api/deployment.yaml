@@ -16,6 +16,8 @@ spec:
       labels:
         app.kubernetes.io/name: api
         app.kubernetes.io/part-of: fs-suite
+      annotations:
+        deploy.fs-suite.com/release: "__DEPLOY_RELEASE__"
     spec:
       imagePullSecrets:
         - name: ghcr-pull-secret
