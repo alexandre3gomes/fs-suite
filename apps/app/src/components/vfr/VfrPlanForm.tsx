@@ -1,4 +1,5 @@
 import { Input } from '@fs-suite/ui';
+import { toPng } from 'html-to-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
@@ -6,11 +7,8 @@ import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text,
 import { type AircraftSpec, findAircraftByIcao } from '../../data/aircraftCatalog';
 import { getChecklistsForAircraft } from '../../data/checklistCatalog';
 import { apiClient, API_URL } from '../../services/api.client';
-import { toPng } from 'html-to-image';
-
 import { buildFlightPlanDoc, exportFlightPlanWithAttachments } from '../../services/pdf-export';
 import { useUnitsStore, formatWeight, formatVolume, formatFuelWeight, formatSpeed, formatFuelFlow } from '../../stores/units.store';
-
 
 import { AerodromeMap } from './AerodromeMap';
 import { AerodromeSearch, type Aerodrome } from './AerodromeSearch';
@@ -23,7 +21,7 @@ import { ReaChartsPanel } from './ReaChartsPanel';
 import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
 import { VfrPlanLayout } from './VfrPlanLayout';
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
-import { type RouteWaypoint, buildVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeDisplay, formatAltitudeIcao, parseCruiseLevelFt, getPerformanceCategory } from './vfrNavigation';
+import { type RouteWaypoint, buildVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getPerformanceCategory } from './vfrNavigation';
 
 // ---------- Types ----------
 
@@ -458,7 +456,6 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
   }, [minFuelKg, fuelManuallyEdited]);
 
   const originCategory = origin ? metars[origin.icao]?.flightCategory : undefined;
-  const destCategory = destination ? metars[destination.icao]?.flightCategory : undefined;
   const isImc = originCategory === 'IFR' || originCategory === 'LIFR';
 
   const vfrWeatherWarnings = useMemo(() => {

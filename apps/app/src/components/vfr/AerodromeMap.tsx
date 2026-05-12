@@ -142,7 +142,6 @@ const DECEA_CHART_OVERLAYS: Record<ChartOverlayKey, { layers: string; i18nKey: s
 
 const ROUTE_COLOR = '#a855f7';
 const ROUTE_OUTLINE = '#4c1d95';
-const WP_LABEL_BG = '#16a34a';
 const ALT_ROUTE_COLOR = '#f59e0b';
 const ALT_ROUTE_OUTLINE = '#78350f';
 
