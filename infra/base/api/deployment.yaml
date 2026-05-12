@@ -106,6 +106,16 @@ spec:
                 configMapKeyRef:
                   name: api-config
                   key: SENTRY_RELEASE
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: GEMINI_API_KEY
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: GROQ_API_KEY
           livenessProbe:
             httpGet:
               path: /v1/health
