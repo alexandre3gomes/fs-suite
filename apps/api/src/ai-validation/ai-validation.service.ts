@@ -74,79 +74,111 @@ export class AiValidationService {
     const lines: string[] = ['## Flight Plan to Validate', ''];
 
     if (dto.flightRules) lines.push(`**Flight Rules**: ${dto.flightRules}`);
+    if (dto.flightCondition) lines.push(`**Flight Condition**: ${dto.flightCondition}`);
 
+    // Origin
+    lines.push('', '### Origin');
     if (dto.originIcao) {
       lines.push(
-        `**Origin**: ${dto.originIcao}${dto.originName ? ` (${dto.originName})` : ''}${dto.originElevationFt != null ? ` — Elevation: ${dto.originElevationFt} ft` : ''}`,
+        `**Aerodrome**: ${dto.originIcao}${dto.originName ? ` (${dto.originName})` : ''}${dto.originElevationFt != null ? ` — Elevation: ${dto.originElevationFt} ft` : ''}`,
       );
     }
-    if (dto.originMetarRaw) lines.push(`**Origin METAR**: ${dto.originMetarRaw}`);
+    if (dto.originRunwayInUse) lines.push(`**Runway in use**: ${dto.originRunwayInUse}`);
+    if (dto.originMetarRaw) lines.push(`**METAR**: ${dto.originMetarRaw}`);
+    if (dto.originTafRaw) lines.push(`**TAF**: ${dto.originTafRaw}`);
 
+    // Destination
+    lines.push('', '### Destination');
     if (dto.destinationIcao) {
       lines.push(
-        `**Destination**: ${dto.destinationIcao}${dto.destinationName ? ` (${dto.destinationName})` : ''}${dto.destinationElevationFt != null ? ` — Elevation: ${dto.destinationElevationFt} ft` : ''}`,
+        `**Aerodrome**: ${dto.destinationIcao}${dto.destinationName ? ` (${dto.destinationName})` : ''}${dto.destinationElevationFt != null ? ` — Elevation: ${dto.destinationElevationFt} ft` : ''}`,
       );
     }
-    if (dto.destinationMetarRaw)
-      lines.push(`**Destination METAR**: ${dto.destinationMetarRaw}`);
+    if (dto.destinationRunwayInUse) lines.push(`**Runway in use**: ${dto.destinationRunwayInUse}`);
+    if (dto.destinationMetarRaw) lines.push(`**METAR**: ${dto.destinationMetarRaw}`);
+    if (dto.destinationTafRaw) lines.push(`**TAF**: ${dto.destinationTafRaw}`);
+    if (dto.tripMinutes != null) {
+      const now = new Date();
+      const eta = new Date(now.getTime() + dto.tripMinutes * 60_000);
+      lines.push(`**Estimated arrival (ETA)**: ${eta.toISOString().slice(0, 16)}Z (in ~${dto.tripMinutes} min from now)`);
+    }
 
+    // Alternate
     if (dto.alternateIcao) {
+      lines.push('', '### Alternate');
       lines.push(
-        `**Alternate**: ${dto.alternateIcao}${dto.alternateName ? ` (${dto.alternateName})` : ''}`,
+        `**Aerodrome**: ${dto.alternateIcao}${dto.alternateName ? ` (${dto.alternateName})` : ''}${dto.alternateElevationFt != null ? ` — Elevation: ${dto.alternateElevationFt} ft` : ''}`,
       );
+      if (dto.alternateRunwayInUse) lines.push(`**Runway in use**: ${dto.alternateRunwayInUse}`);
+      if (dto.alternateMetarRaw) lines.push(`**METAR**: ${dto.alternateMetarRaw}`);
+      if (dto.alternateTafRaw) lines.push(`**TAF**: ${dto.alternateTafRaw}`);
+      if (dto.altDistanceNm != null) lines.push(`**Distance from destination**: ${dto.altDistanceNm} NM`);
     }
-    if (dto.alternateMetarRaw)
-      lines.push(`**Alternate METAR**: ${dto.alternateMetarRaw}`);
 
+    // Aircraft
+    lines.push('', '### Aircraft');
     if (dto.aircraftType)
-      lines.push(
-        `**Aircraft**: ${dto.aircraftType}${dto.aircraftName ? ` (${dto.aircraftName})` : ''}`,
-      );
-    if (dto.routeText) lines.push(`**Route**: ${dto.routeText}`);
+      lines.push(`**Type**: ${dto.aircraftType}${dto.aircraftName ? ` (${dto.aircraftName})` : ''}`);
+    if (dto.cruiseSpeedKts != null) lines.push(`**Cruise speed**: ${dto.cruiseSpeedKts} kt`);
+
+    // Route
+    lines.push('', '### Route');
+    if (dto.routeText) lines.push(`**Route string**: ${dto.routeText}`);
     if (dto.cruiseLevel) lines.push(`**Cruise Level**: ${dto.cruiseLevel}`);
-
-    if (dto.takeoffWeightKg != null || dto.mtowKg != null) {
-      const parts: string[] = [];
-      if (dto.takeoffWeightKg != null)
-        parts.push(`Takeoff weight: ${dto.takeoffWeightKg} kg`);
-      if (dto.mtowKg != null) parts.push(`MTOW: ${dto.mtowKg} kg`);
-      lines.push(`**Weight**: ${parts.join(' | ')}`);
-    }
-
-    if (dto.fuelCurrentTotal != null || dto.fuelRequiredTotal != null) {
-      const parts: string[] = [];
-      if (dto.fuelCurrentTotal != null)
-        parts.push(`On board: ${dto.fuelCurrentTotal} kg`);
-      if (dto.fuelRequiredTotal != null)
-        parts.push(`Required: ${dto.fuelRequiredTotal} kg`);
-      if (dto.fuelConsumptionPerHour != null)
-        parts.push(`Consumption: ${dto.fuelConsumptionPerHour} kg/h`);
-      lines.push(`**Fuel**: ${parts.join(' | ')}`);
-    }
-
-    if (dto.tripFuelKg != null) lines.push(`**Trip fuel**: ${dto.tripFuelKg} kg`);
-    if (dto.altFuelKg != null) lines.push(`**Alternate fuel**: ${dto.altFuelKg} kg`);
-    if (dto.reserveFuelKg != null)
-      lines.push(`**Reserve fuel**: ${dto.reserveFuelKg} kg`);
-    if (dto.enduranceMinutes != null)
-      lines.push(`**Endurance**: ${dto.enduranceMinutes} min`);
-    if (dto.totalDistanceNm != null)
-      lines.push(`**Total distance**: ${dto.totalDistanceNm} NM`);
+    if (dto.totalDistanceNm != null) lines.push(`**Total distance**: ${dto.totalDistanceNm} NM`);
     if (dto.tripMinutes != null) lines.push(`**Trip time**: ${dto.tripMinutes} min`);
-    if (dto.flightCondition) lines.push(`**Flight condition**: ${dto.flightCondition}`);
-    if (dto.fuelReserveMinutes != null)
-      lines.push(`**Reserve minutes**: ${dto.fuelReserveMinutes} min`);
+    if (dto.todMinutes != null) lines.push(`**Top of descent**: ${dto.todMinutes} min before destination`);
+    if (dto.todDistanceNm != null) lines.push(`**TOD distance**: ${dto.todDistanceNm} NM before destination`);
 
     if (dto.routeLegs?.length) {
-      lines.push('', '**Route Legs**:');
+      lines.push('', '**Route Legs** (in order):');
       const legs = dto.routeLegs.slice(0, 50);
       for (const leg of legs) {
+        const altStr = leg.suggestedAltitudes?.length
+          ? ` | Suggested FL: ${leg.suggestedAltitudes.join(', ')} ft`
+          : '';
         lines.push(
-          `- ${leg.from} → ${leg.to}: ${leg.distanceNm.toFixed(1)} NM, MC ${Math.round(leg.magneticCourse)}°`,
+          `- ${leg.from} → ${leg.to}: ${leg.distanceNm.toFixed(1)} NM, TC ${Math.round(leg.trueCourse)}°, MC ${Math.round(leg.magneticCourse)}° (MagVar ${leg.magneticDeclination > 0 ? '+' : ''}${leg.magneticDeclination.toFixed(1)}°)${altStr}`,
         );
       }
     }
 
+    // Visual references
+    if (dto.visualReferences?.length) {
+      lines.push('', '**Visual References** (route reconnaissance):');
+      const refs = dto.visualReferences.slice(0, 30);
+      for (const ref of refs) {
+        const parts = [`#${ref.sequence} ${ref.name}`];
+        if (ref.distanceNm != null) parts.push(`${ref.distanceNm} NM from origin`);
+        if (ref.timeMin != null) parts.push(`~${ref.timeMin} min`);
+        lines.push(`- ${parts.join(' — ')}`);
+      }
+    }
+
+    // Weight
+    lines.push('', '### Weight & Balance');
+    if (dto.emptyWeightKg != null) lines.push(`**Empty weight**: ${dto.emptyWeightKg} kg`);
+    if (dto.payloadKg != null) lines.push(`**Payload**: ${dto.payloadKg} kg`);
+    if (dto.takeoffWeightKg != null) lines.push(`**Takeoff weight**: ${dto.takeoffWeightKg} kg`);
+    if (dto.mtowKg != null) lines.push(`**MTOW**: ${dto.mtowKg} kg`);
+
+    // Fuel
+    lines.push('', '### Fuel');
+    if (dto.fuelCurrentTotal != null) lines.push(`**Fuel on board**: ${dto.fuelCurrentTotal} kg`);
+    if (dto.fuelConsumptionPerHour != null) lines.push(`**Consumption**: ${dto.fuelConsumptionPerHour} kg/h`);
+    if (dto.fuelCapacityL != null) lines.push(`**Tank capacity**: ${dto.fuelCapacityL} L`);
+    if (dto.fuelPerWing != null) lines.push(`**Per wing**: ${dto.fuelPerWing} kg`);
+    if (dto.tripFuelKg != null) lines.push(`**Trip fuel**: ${dto.tripFuelKg} kg`);
+    if (dto.altFuelKg != null) lines.push(`**Alternate fuel**: ${dto.altFuelKg} kg`);
+    if (dto.contingencyPct != null) lines.push(`**Contingency**: ${dto.contingencyPct}%`);
+    if (dto.contingencyFuelKg != null) lines.push(`**Contingency fuel**: ${dto.contingencyFuelKg} kg`);
+    if (dto.reserveFuelKg != null) lines.push(`**Reserve fuel**: ${dto.reserveFuelKg} kg`);
+    if (dto.fuelReserveMinutes != null) lines.push(`**Reserve time**: ${dto.fuelReserveMinutes} min`);
+    if (dto.minFuelKg != null) lines.push(`**Minimum required fuel**: ${dto.minFuelKg} kg`);
+    if (dto.fuelRequiredTotal != null) lines.push(`**Total required**: ${dto.fuelRequiredTotal} kg`);
+    if (dto.enduranceMinutes != null) lines.push(`**Endurance**: ${dto.enduranceMinutes} min`);
+
+    if (dto.callsign) lines.push('', `**Callsign**: ${dto.callsign}`);
     if (dto.remarks) lines.push('', `**Remarks**: ${dto.remarks.slice(0, 500)}`);
 
     return lines.join('\n');

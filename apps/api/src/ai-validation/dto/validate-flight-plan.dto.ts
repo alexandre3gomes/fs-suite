@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -12,7 +13,17 @@ class RouteLegDto {
   @IsString() from!: string;
   @IsString() to!: string;
   @IsNumber() distanceNm!: number;
+  @IsNumber() trueCourse!: number;
+  @IsNumber() magneticDeclination!: number;
   @IsNumber() magneticCourse!: number;
+  @IsOptional() @IsArray() suggestedAltitudes?: number[];
+}
+
+class VisualReferenceDto {
+  @IsInt() sequence!: number;
+  @IsString() name!: string;
+  @IsOptional() @IsNumber() distanceNm?: number;
+  @IsOptional() @IsInt() timeMin?: number;
 }
 
 export class ValidateFlightPlanDto {
@@ -21,40 +32,59 @@ export class ValidateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() originIcao?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() originName?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() originElevationFt?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() originRunwayInUse?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() originMetarRaw?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() originTafRaw?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() destinationIcao?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() destinationName?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() destinationElevationFt?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() destinationRunwayInUse?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() destinationMetarRaw?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() destinationTafRaw?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() alternateIcao?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() alternateName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() alternateElevationFt?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() alternateRunwayInUse?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() alternateMetarRaw?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() alternateTafRaw?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() routeText?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() cruiseLevel?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() todMinutes?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() todDistanceNm?: number;
 
   @ApiPropertyOptional() @IsOptional() @IsString() aircraftType?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() aircraftName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() cruiseSpeedKts?: number;
 
   @ApiPropertyOptional() @IsOptional() @IsNumber() takeoffWeightKg?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() mtowKg?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() emptyWeightKg?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() payloadKg?: number;
 
   @ApiPropertyOptional() @IsOptional() @IsNumber() fuelCurrentTotal?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() fuelRequiredTotal?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() fuelConsumptionPerHour?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() fuelReserveMinutes?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() fuelPerWing?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() fuelCapacityL?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() enduranceMinutes?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() tripFuelKg?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() altFuelKg?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() contingencyPercent?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() altDistanceNm?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() contingencyPct?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() contingencyFuelKg?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() reserveFuelKg?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() minFuelKg?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() totalDistanceNm?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() tripMinutes?: number;
 
   @ApiPropertyOptional() @IsOptional() @IsString() flightCondition?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() callsign?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() simbriefOfpId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() status?: string;
 
   @ApiPropertyOptional({ type: [RouteLegDto] })
   @IsOptional()
@@ -62,6 +92,13 @@ export class ValidateFlightPlanDto {
   @ValidateNested({ each: true })
   @Type(() => RouteLegDto)
   routeLegs?: RouteLegDto[];
+
+  @ApiPropertyOptional({ type: [VisualReferenceDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => VisualReferenceDto)
+  visualReferences?: VisualReferenceDto[];
 
   @ApiPropertyOptional() @IsOptional() @IsString() remarks?: string;
 }

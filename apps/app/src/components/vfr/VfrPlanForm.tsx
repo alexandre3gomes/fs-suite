@@ -19,6 +19,7 @@ import { MetarDisplay, type ParsedMetar } from './MetarDisplay';
 import { NearbyPoisPanel } from './NearbyPoisPanel';
 import { ReaChartsPanel } from './ReaChartsPanel';
 import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
+import { TafDisplay, type ParsedTaf } from './TafDisplay';
 import { VfrPlanLayout } from './VfrPlanLayout';
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
 import { type RouteWaypoint, buildVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getPerformanceCategory } from './vfrNavigation';
@@ -53,16 +54,19 @@ export interface VfrPlanData {
   originElevationFt?: number;
   originRunwayInUse?: string;
   originMetarRaw?: string;
+  originTafRaw?: string;
   destinationIcao: string;
   destinationName: string;
   destinationElevationFt?: number;
   destinationRunwayInUse?: string;
   destinationMetarRaw?: string;
+  destinationTafRaw?: string;
   alternateIcao?: string;
   alternateName?: string;
   alternateElevationFt?: number;
   alternateRunwayInUse?: string;
   alternateMetarRaw?: string;
+  alternateTafRaw?: string;
   routeText?: string;
   cruiseLevel?: string;
   todMinutes?: number;
@@ -175,6 +179,10 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
   const [metars, setMetars] = useState<Record<string, ParsedMetar>>({});
   const [metarLoading, setMetarLoading] = useState(false);
 
+  // TAF state
+  const [tafs, setTafs] = useState<Record<string, ParsedTaf>>({});
+  const [tafLoading, setTafLoading] = useState(false);
+
   // Alternate suggestions
   const [altSuggestions, setAltSuggestions] = useState<(Aerodrome & { distNm: number; flightCategory?: string | null })[]>([]);
   const [altSugLoading, setAltSugLoading] = useState(false);
@@ -250,6 +258,18 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
     setMetarLoading(false);
   }, []);
 
+  const fetchTafs = useCallback(async (icaos: string[]) => {
+    if (icaos.length === 0) return;
+    setTafLoading(true);
+    try {
+      const data = await apiClient.get<ParsedTaf[]>(`/weather/taf?icaos=${icaos.join(',')}`);
+      const map: Record<string, ParsedTaf> = {};
+      for (const t of data) map[t.icaoId] = t;
+      setTafs((prev) => ({ ...prev, ...map }));
+    } catch { /* ignore */ }
+    setTafLoading(false);
+  }, []);
+
   // Auto-fetch on aerodrome selection + fly map to it
   const handleSelectOrigin = useCallback((a: Aerodrome) => {
     setOrigin(a);
@@ -275,11 +295,14 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
     return () => clearTimeout(timer);
   }, [destination?.icao, alternate?.icao]);
 
-  // Fetch METAR for all selected aerodromes
+  // Fetch METAR + TAF for all selected aerodromes
   useEffect(() => {
     const icaos = [origin?.icao, destination?.icao, alternate?.icao].filter(Boolean) as string[];
-    if (icaos.length > 0) void fetchMetars(icaos);
-  }, [origin?.icao, destination?.icao, alternate?.icao, fetchMetars]);
+    if (icaos.length > 0) {
+      void fetchMetars(icaos);
+      void fetchTafs(icaos);
+    }
+  }, [origin?.icao, destination?.icao, alternate?.icao, fetchMetars, fetchTafs]);
 
   // Auto-suggest runway from METAR wind
   useEffect(() => {
@@ -714,16 +737,19 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
       originElevationFt: origin.elevation ?? undefined,
       originRunwayInUse: originRunway || undefined,
       originMetarRaw: metars[origin.icao]?.raw,
+      originTafRaw: tafs[origin.icao]?.raw,
       destinationIcao: destination.icao,
       destinationName: destination.name,
       destinationElevationFt: destination.elevation ?? undefined,
       destinationRunwayInUse: destRunway || undefined,
       destinationMetarRaw: metars[destination.icao]?.raw,
+      destinationTafRaw: tafs[destination.icao]?.raw,
       alternateIcao: alternate?.icao,
       alternateName: alternate?.name,
       alternateElevationFt: alternate?.elevation ?? undefined,
       alternateRunwayInUse: altRunway || undefined,
       alternateMetarRaw: alternate ? metars[alternate.icao]?.raw : undefined,
+      alternateTafRaw: alternate ? tafs[alternate.icao]?.raw : undefined,
       routeText: routeText || undefined,
       cruiseLevel: cruiseLevel || undefined,
       todMinutes: todMinutes ? parseInt(todMinutes, 10) : undefined,
@@ -983,6 +1009,9 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
             aerodrome={origin}
             metar={metars[origin.icao] ?? null}
             metarLoading={metarLoading}
+            taf={tafs[origin.icao] ?? null}
+            tafLoading={tafLoading}
+            showTaf={false}
             runway={originRunway}
             onRunwayChange={setOriginRunway}
             flightRules={flightRules}
@@ -1002,6 +1031,10 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
             aerodrome={destination}
             metar={metars[destination.icao] ?? null}
             metarLoading={metarLoading}
+            taf={tafs[destination.icao] ?? null}
+            tafLoading={tafLoading}
+            tripMinutes={tripMinutes || undefined}
+            showTaf
             runway={destRunway}
             onRunwayChange={setDestRunway}
             flightRules={flightRules}
@@ -1057,6 +1090,9 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
             aerodrome={alternate}
             metar={metars[alternate.icao] ?? null}
             metarLoading={metarLoading}
+            taf={tafs[alternate.icao] ?? null}
+            tafLoading={tafLoading}
+            showTaf
             runway={altRunway}
             onRunwayChange={setAltRunway}
             flightRules={flightRules}
@@ -1992,9 +2028,9 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
       ) : null}
 
       {/* ====== ACTIONS ====== */}
-      <View className="flex-row gap-3 px-4 pb-6 md:px-6">
+      <View className="flex-row flex-wrap gap-3 px-4 pb-6 md:px-6">
         <Pressable
-          className="flex-1 rounded-button bg-primary px-6 py-3 active:opacity-80 disabled:opacity-50"
+          className="min-w-[100px] flex-1 rounded-button bg-primary px-4 py-3 active:opacity-80 disabled:opacity-50"
           onPress={handleSave}
           disabled={saving || !origin || !destination}
         >
@@ -2003,7 +2039,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
           </Text>
         </Pressable>
         <Pressable
-          className="rounded-button border border-amber-500 bg-amber-500/10 px-4 py-3 active:opacity-80 disabled:opacity-50"
+          className="min-w-[100px] flex-1 rounded-button border border-amber-500 bg-amber-500/10 px-4 py-3 active:opacity-80 disabled:opacity-50"
           onPress={() => { void handleAiValidate(); }}
           disabled={validating || !origin || !destination}
         >
@@ -2013,7 +2049,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
         </Pressable>
         {Platform.OS === 'web' && (
           <Pressable
-            className="rounded-button border border-primary bg-transparent px-6 py-3 active:opacity-80 disabled:opacity-50"
+            className="min-w-[100px] flex-1 rounded-button border border-primary bg-transparent px-4 py-3 active:opacity-80 disabled:opacity-50"
             onPress={handleExportPdf}
             disabled={!origin || !destination}
           >
@@ -2232,6 +2268,10 @@ function AerodromeInfo({
   aerodrome,
   metar,
   metarLoading,
+  taf,
+  tafLoading,
+  tripMinutes,
+  showTaf,
   runway,
   onRunwayChange,
   flightRules,
@@ -2241,6 +2281,10 @@ function AerodromeInfo({
   aerodrome: Aerodrome;
   metar: ParsedMetar | null;
   metarLoading: boolean;
+  taf: ParsedTaf | null;
+  tafLoading: boolean;
+  tripMinutes?: number;
+  showTaf: boolean;
   runway: string;
   onRunwayChange: (v: string) => void;
   flightRules?: 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
@@ -2278,6 +2322,9 @@ function AerodromeInfo({
         ) : null}
       </View>
       <MetarDisplay metar={metar} loading={metarLoading && !metar} />
+      {showTaf ? (
+        <TafDisplay taf={taf} loading={tafLoading && !taf} etaMinutes={tripMinutes} />
+      ) : null}
 
       <Pressable
         onPress={toggleCharts}

@@ -32,4 +32,26 @@ export class WeatherController {
 
     return this.weatherService.getMetars(codes);
   }
+
+  @Get('taf')
+  @ApiOperation({ summary: 'Get TAF for one or more ICAO codes' })
+  @ApiQuery({
+    name: 'icaos',
+    required: true,
+    description: 'Comma-separated ICAO codes (max 50)',
+    example: 'SBSP,SBGR,SBKP',
+  })
+  async getTafs(@Query('icaos') icaos: string): Promise<unknown> {
+    if (!icaos || icaos.trim().length === 0) {
+      return [];
+    }
+
+    const codes = icaos
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean)
+      .slice(0, 50);
+
+    return this.weatherService.getTafs(codes);
+  }
 }
