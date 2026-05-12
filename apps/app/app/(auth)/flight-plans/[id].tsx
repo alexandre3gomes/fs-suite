@@ -19,7 +19,7 @@ export default function EditVfrPlanScreen() {
     if (!id) return;
     void (async () => {
       try {
-        const data = await apiClient.get<VfrPlanData>(`/vfr-flight-plans/${id}`);
+        const data = await apiClient.get<VfrPlanData>(`/flight-plans/${id}`);
         setPlan(data);
       } catch {
         router.back();
@@ -31,7 +31,7 @@ export default function EditVfrPlanScreen() {
   const handleSave = useCallback(async (data: VfrPlanData) => {
     setSaving(true);
     try {
-      await apiClient.patch(`/vfr-flight-plans/${id}`, data);
+      await apiClient.patch(`/flight-plans/${id}`, data);
       router.replace('/(auth)/flight-plans');
     } catch (err: unknown) {
       const e = err as Record<string, Record<string, Record<string, unknown>>>;
@@ -49,7 +49,7 @@ export default function EditVfrPlanScreen() {
         style: 'destructive',
         onPress: async () => {
           try {
-            await apiClient.delete(`/vfr-flight-plans/${id}`);
+            await apiClient.delete(`/flight-plans/${id}`);
             router.replace('/(auth)/flight-plans');
           } catch { /* ignore */ }
         },

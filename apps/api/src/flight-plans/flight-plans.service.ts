@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { FlightPlan, PlanStatus } from '@prisma/client';
+import type { FlightPlan, Prisma } from '@prisma/client';
 
 import { ActivityService } from '../activity/activity.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,13 +7,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateFlightPlanDto } from './dto/create-flight-plan.dto';
 import type { UpdateFlightPlanDto } from './dto/update-flight-plan.dto';
 
-interface PaginatedResult {
-  items: FlightPlan[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
+const INCLUDE_RELATIONS = {
+  routes: { orderBy: { sequence: 'asc' as const } },
+  visualReferences: { orderBy: { sequence: 'asc' as const } },
+  briefingItems: true,
+};
 
 @Injectable()
 export class FlightPlansService {
@@ -22,45 +20,45 @@ export class FlightPlansService {
     private readonly activity: ActivityService,
   ) {}
 
-  async findAll(userId: string, page: number, limit: number): Promise<PaginatedResult> {
-    const where = { userId, deletedAt: null };
+  async create(userId: string, dto: CreateFlightPlanDto): Promise<FlightPlan> {
+    const { routes, visualReferences, briefingItems, ...planData } = dto;
 
-    const [items, total] = await Promise.all([
-      this.prisma.flightPlan.findMany({
-        where,
-        orderBy: { updatedAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-        include: {
-          origin: { select: { icao: true, name: true, city: true } },
-          destination: { select: { icao: true, name: true, city: true } },
-        },
-      }),
-      this.prisma.flightPlan.count({ where }),
-    ]);
+    const plan = await this.prisma.flightPlan.create({
+      data: {
+        ...planData,
+        userId,
+        routes: routes?.length ? { createMany: { data: routes } } : undefined,
+        visualReferences: visualReferences?.length
+          ? { createMany: { data: visualReferences } }
+          : undefined,
+        briefingItems: briefingItems?.length
+          ? { createMany: { data: briefingItems } }
+          : undefined,
+      },
+      include: INCLUDE_RELATIONS,
+    });
 
-    return {
-      items,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+    void this.activity.log('flight_plan.created', userId, { flightPlanId: plan.id });
+
+    return plan;
+  }
+
+  async findAll(userId: string): Promise<FlightPlan[]> {
+    return this.prisma.flightPlan.findMany({
+      where: { userId, deletedAt: null },
+      include: INCLUDE_RELATIONS,
+      orderBy: { updatedAt: 'desc' },
+    });
   }
 
   async findOne(id: string, userId: string): Promise<FlightPlan> {
     const plan = await this.prisma.flightPlan.findUnique({
       where: { id },
-      include: {
-        origin: true,
-        destination: true,
-        aircraftProfile: true,
-        routes: { orderBy: { sequence: 'asc' } },
-      },
+      include: INCLUDE_RELATIONS,
     });
 
-    if (!plan || plan.deletedAt) {
-      throw new NotFoundException(`Flight plan ${id} not found`);
+    if (!plan || plan.deletedAt !== null) {
+      throw new NotFoundException('Flight plan not found');
     }
     if (plan.userId !== userId) {
       throw new ForbiddenException();
@@ -69,58 +67,32 @@ export class FlightPlansService {
     return plan;
   }
 
-  async create(userId: string, dto: CreateFlightPlanDto): Promise<FlightPlan> {
-    const { routes, ...planData } = dto;
-
-    const plan = await this.prisma.flightPlan.create({
-      data: {
-        ...planData,
-        flightType: planData.flightType as 'VFR' | 'IFR',
-        userId,
-        routes: routes?.length
-          ? { create: routes }
-          : undefined,
-      },
-      include: {
-        origin: true,
-        destination: true,
-        aircraftProfile: true,
-        routes: { orderBy: { sequence: 'asc' } },
-      },
-    });
-
-    void this.activity.log('flight_plan.created', userId, { flightPlanId: plan.id });
-
-    return plan;
-  }
-
   async update(id: string, userId: string, dto: UpdateFlightPlanDto): Promise<FlightPlan> {
     await this.findOne(id, userId);
 
-    const { routes, ...planData } = dto;
+    const { routes, visualReferences, briefingItems, ...planData } = dto;
 
-    // If routes are provided, replace all existing routes
-    const routeOps = routes !== undefined
-      ? {
-          deleteMany: { flightPlanId: id },
-          create: routes,
-        }
-      : undefined;
+    const data: Prisma.FlightPlanUpdateInput = { ...planData };
+
+    if (routes !== undefined) {
+      await this.prisma.flightPlanRoute.deleteMany({ where: { flightPlanId: id } });
+      data.routes = { createMany: { data: routes } };
+    }
+
+    if (visualReferences !== undefined) {
+      await this.prisma.flightPlanVisualReference.deleteMany({ where: { flightPlanId: id } });
+      data.visualReferences = { createMany: { data: visualReferences } };
+    }
+
+    if (briefingItems !== undefined) {
+      await this.prisma.flightPlanBriefingItem.deleteMany({ where: { flightPlanId: id } });
+      data.briefingItems = { createMany: { data: briefingItems } };
+    }
 
     const updated = await this.prisma.flightPlan.update({
       where: { id },
-      data: {
-        ...planData,
-        status: planData.status as PlanStatus | undefined,
-        flightType: planData.flightType as 'VFR' | 'IFR' | undefined,
-        routes: routeOps,
-      },
-      include: {
-        origin: true,
-        destination: true,
-        aircraftProfile: true,
-        routes: { orderBy: { sequence: 'asc' } },
-      },
+      data,
+      include: INCLUDE_RELATIONS,
     });
 
     void this.activity.log('flight_plan.updated', userId, { flightPlanId: id });
@@ -131,7 +103,6 @@ export class FlightPlansService {
   async remove(id: string, userId: string): Promise<void> {
     await this.findOne(id, userId);
 
-    // Soft delete
     await this.prisma.flightPlan.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -143,41 +114,126 @@ export class FlightPlansService {
   async duplicate(id: string, userId: string): Promise<FlightPlan> {
     const original = await this.findOne(id, userId) as FlightPlan & {
       routes: { sequence: number; waypointIdent: string; latitude: number | null; longitude: number | null; airway: string | null }[];
+      visualReferences: { sequence: number; name: string; distanceNm: number | null; timeMin: number | null }[];
+      briefingItems: { code: string; label: string; checked: boolean; notes: string | null }[];
     };
 
     const plan = await this.prisma.flightPlan.create({
       data: {
-        flightType: original.flightType,
-        originIcao: original.originIcao,
-        destinationIcao: original.destinationIcao,
-        plannedAltitude: original.plannedAltitude,
-        remarks: original.remarks,
-        aircraftProfileId: original.aircraftProfileId,
         userId,
         status: 'DRAFT',
-        routes: {
-          create: original.routes.map((r) => ({
-            sequence: r.sequence,
-            waypointIdent: r.waypointIdent,
-            latitude: r.latitude,
-            longitude: r.longitude,
-            airway: r.airway,
-          })),
-        },
+        flightRules: original.flightRules,
+        originIcao: original.originIcao,
+        originName: original.originName,
+        originElevationFt: original.originElevationFt,
+        originRunwayInUse: original.originRunwayInUse,
+        originMetarRaw: original.originMetarRaw,
+        destinationIcao: original.destinationIcao,
+        destinationName: original.destinationName,
+        destinationElevationFt: original.destinationElevationFt,
+        destinationRunwayInUse: original.destinationRunwayInUse,
+        destinationMetarRaw: original.destinationMetarRaw,
+        alternateIcao: original.alternateIcao,
+        alternateName: original.alternateName,
+        alternateElevationFt: original.alternateElevationFt,
+        alternateRunwayInUse: original.alternateRunwayInUse,
+        alternateMetarRaw: original.alternateMetarRaw,
+        aircraftType: original.aircraftType,
+        aircraftName: original.aircraftName,
+        takeoffWeightKg: original.takeoffWeightKg,
+        mtowKg: original.mtowKg,
+        callsign: original.callsign,
+        simbriefOfpId: original.simbriefOfpId,
+        routeText: original.routeText,
+        cruiseLevel: original.cruiseLevel,
+        plannedAltitude: original.plannedAltitude,
+        remarks: original.remarks,
+        todMinutes: original.todMinutes,
+        todDistanceNm: original.todDistanceNm,
+        fuelConsumptionPerHour: original.fuelConsumptionPerHour,
+        fuelCurrentTotal: original.fuelCurrentTotal,
+        fuelReserveMinutes: original.fuelReserveMinutes,
+        fuelRequiredTotal: original.fuelRequiredTotal,
+        fuelPerWing: original.fuelPerWing,
+        enduranceMinutes: original.enduranceMinutes,
+        routes: original.routes.length
+          ? {
+              createMany: {
+                data: original.routes.map((r) => ({
+                  sequence: r.sequence,
+                  waypointIdent: r.waypointIdent,
+                  latitude: r.latitude,
+                  longitude: r.longitude,
+                  airway: r.airway,
+                })),
+              },
+            }
+          : undefined,
+        visualReferences: original.visualReferences.length
+          ? {
+              createMany: {
+                data: original.visualReferences.map((r) => ({
+                  sequence: r.sequence,
+                  name: r.name,
+                  distanceNm: r.distanceNm,
+                  timeMin: r.timeMin,
+                })),
+              },
+            }
+          : undefined,
+        briefingItems: original.briefingItems.length
+          ? {
+              createMany: {
+                data: original.briefingItems.map((b) => ({
+                  code: b.code,
+                  label: b.label,
+                  checked: b.checked,
+                  notes: b.notes,
+                })),
+              },
+            }
+          : undefined,
       },
-      include: {
-        origin: true,
-        destination: true,
-        aircraftProfile: true,
-        routes: { orderBy: { sequence: 'asc' } },
-      },
+      include: INCLUDE_RELATIONS,
     });
 
-    void this.activity.log('flight_plan.duplicated', userId, {
-      originalId: id,
-      newId: plan.id,
-    });
+    void this.activity.log('flight_plan.duplicated', userId, { originalId: id, newId: plan.id });
 
     return plan;
+  }
+
+  suggestRunway(
+    windDirection: number | string | null,
+    runways: { leIdent: string | null; leHeadingDeg: number | null; heIdent: string | null; heHeadingDeg: number | null; closed: boolean }[],
+  ): string | null {
+    if (windDirection === null || windDirection === 'VRB' || typeof windDirection !== 'number') {
+      return null;
+    }
+
+    const openRunways = runways.filter((r) => !r.closed);
+    if (openRunways.length === 0) return null;
+
+    let bestIdent: string | null = null;
+    let bestHeadwind = -Infinity;
+
+    for (const rwy of openRunways) {
+      const thresholds = [
+        { ident: rwy.leIdent, heading: rwy.leHeadingDeg },
+        { ident: rwy.heIdent, heading: rwy.heHeadingDeg },
+      ];
+
+      for (const t of thresholds) {
+        if (!t.ident || t.heading === null) continue;
+        const diff = ((windDirection - t.heading + 540) % 360) - 180;
+        const headwindFactor = Math.cos((diff * Math.PI) / 180);
+
+        if (headwindFactor > bestHeadwind) {
+          bestHeadwind = headwindFactor;
+          bestIdent = t.ident;
+        }
+      }
+    }
+
+    return bestIdent;
   }
 }

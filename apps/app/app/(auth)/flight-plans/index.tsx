@@ -28,7 +28,7 @@ export default function VfrPlansListScreen() {
   const fetchPlans = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiClient.get<FlightPlanSummary[]>('/vfr-flight-plans');
+      const data = await apiClient.get<FlightPlanSummary[]>('/flight-plans');
       setPlans(data);
     } catch {
       setPlans([]);

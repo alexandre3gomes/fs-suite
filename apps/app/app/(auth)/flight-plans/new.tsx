@@ -14,7 +14,7 @@ export default function NewVfrPlanScreen() {
   const handleSave = useCallback(async (data: VfrPlanData) => {
     setSaving(true);
     try {
-      await apiClient.post('/vfr-flight-plans', data);
+      await apiClient.post('/flight-plans', data);
       router.replace('/(auth)/flight-plans');
     } catch (err: unknown) {
       const e = err as Record<string, Record<string, Record<string, unknown>>>;

@@ -15,10 +15,10 @@ model User {
   id        String    @id @default(cuid())
   email     String    @unique
   name      String
-  avatarUrl String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime? // soft delete for LGPD
+  avatarUrl String?   @map("avatar_url")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at") // soft delete for LGPD
 
   oauthAccounts          OAuthAccount[]
   sessions               Session[]
@@ -26,49 +26,54 @@ model User {
   aircraftProfiles       AircraftProfile[]
   activityLogs           ActivityLog[]
   integrationConnections IntegrationConnection[]
-  vfrFlightPlans         VfrFlightPlan[]
+
+  @@map("users")
 }
 
 model OAuthAccount {
   id                String    @id @default(cuid())
   provider          String // "google"
-  providerAccountId String
-  accessToken       String? // encrypted at rest (AES-256-GCM)
-  refreshToken      String? // encrypted at rest (AES-256-GCM)
-  expiresAt         DateTime?
-  createdAt         DateTime  @default(now())
+  providerAccountId String    @map("provider_account_id")
+  accessToken       String?   @map("access_token") // encrypted at rest (AES-256-GCM)
+  refreshToken      String?   @map("refresh_token") // encrypted at rest (AES-256-GCM)
+  expiresAt         DateTime? @map("expires_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
 
-  userId String
+  userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@map("oauth_accounts")
 }
 
 model Session {
   id               String   @id @default(cuid())
-  refreshTokenHash String   @unique // bcrypt hash of the raw refresh token JWT
-  expiresAt        DateTime
-  createdAt        DateTime @default(now())
-  lastUsedAt       DateTime @default(now())
-  userAgent        String?
-  ipAddress        String? // disclosed in privacy policy; LGPD compliant
+  refreshTokenHash String   @unique @map("refresh_token_hash") // bcrypt hash of the raw refresh token JWT
+  expiresAt        DateTime @map("expires_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  lastUsedAt       DateTime @default(now()) @map("last_used_at")
+  userAgent        String?  @map("user_agent")
+  ipAddress        String?  @map("ip_address") // disclosed in privacy policy; LGPD compliant
 
-  userId String
+  userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
 }
 
 model AircraftProfile {
   id          String   @id @default(cuid())
   name        String
-  icaoType    String? // e.g. "B738"
-  cruiseSpeed Int? // knots
-  fuelUnit    String? // "kg" | "lbs" | "liters"
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  icaoType    String?  @map("icao_type") // e.g. "B738"
+  cruiseSpeed Int?     @map("cruise_speed") // knots
+  fuelUnit    String?  @map("fuel_unit") // "kg" | "lbs" | "liters"
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  userId      String
-  user        User         @relation(fields: [userId], references: [id])
-  flightPlans FlightPlan[]
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@map("aircraft_profiles")
 }
 
 model Airport {
@@ -83,199 +88,173 @@ model Airport {
   type      String? // large_airport, medium_airport, small_airport, heliport, seaplane_base, closed
   raw       Json? // full source record (OurAirports) for future enrichment
 
-  runways          Runway[]
-  originPlans      FlightPlan[] @relation("origin")
-  destinationPlans FlightPlan[] @relation("destination")
+  runways Runway[]
+
+  @@map("airports")
 }
 
 model Runway {
   id            String  @id @default(cuid())
-  airportIcao   String
+  airportIcao   String  @map("airport_icao")
   ident         String // e.g. "09L/27R"
-  lengthFt      Int?
-  widthFt       Int?
-  surfaceType   String? // e.g. "ASP", "GRS", "CON"
-  leIdent       String? // low-end identifier e.g. "09L"
-  leHeadingDeg  Float?
-  leElevationFt Int?
-  heIdent       String? // high-end identifier e.g. "27R"
-  heHeadingDeg  Float?
-  heElevationFt Int?
+  lengthFt      Int?    @map("length_ft")
+  widthFt       Int?    @map("width_ft")
+  surfaceType   String? @map("surface_type") // e.g. "ASP", "GRS", "CON"
+  leIdent       String? @map("le_ident") // low-end identifier e.g. "09L"
+  leHeadingDeg  Float?  @map("le_heading_deg")
+  leElevationFt Int?    @map("le_elevation_ft")
+  heIdent       String? @map("he_ident") // high-end identifier e.g. "27R"
+  heHeadingDeg  Float?  @map("he_heading_deg")
+  heElevationFt Int?    @map("he_elevation_ft")
   closed        Boolean @default(false)
 
   airport Airport @relation(fields: [airportIcao], references: [icao], onDelete: Cascade)
 
   @@index([airportIcao])
+  @@map("runways")
 }
 
+// --- Unified Flight Plan ---
+
 model FlightPlan {
-  id              String     @id @default(cuid())
-  status          PlanStatus @default(DRAFT)
-  flightType      FlightType // VFR | IFR
-  plannedAltitude Int? // feet
-  remarks         String?
-  simBriefOfpId   String? // SimBrief OFP ID reference after successful import
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  deletedAt       DateTime? // soft delete
+  id          String      @id @default(cuid())
+  userId      String      @map("user_id")
+  status      PlanStatus  @default(DRAFT)
+  flightRules FlightRules @default(VFR) @map("flight_rules")
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
+  // Origin aerodrome (snapshot)
+  originIcao        String  @map("origin_icao")
+  originName        String  @map("origin_name")
+  originElevationFt Int?    @map("origin_elevation_ft")
+  originRunwayInUse String? @map("origin_runway_in_use")
+  originMetarRaw    String? @map("origin_metar_raw")
 
-  originIcao String
-  origin     Airport @relation("origin", fields: [originIcao], references: [icao])
+  // Destination aerodrome (snapshot)
+  destinationIcao        String  @map("destination_icao")
+  destinationName        String  @map("destination_name")
+  destinationElevationFt Int?    @map("destination_elevation_ft")
+  destinationRunwayInUse String? @map("destination_runway_in_use")
+  destinationMetarRaw    String? @map("destination_metar_raw")
 
-  destinationIcao String
-  destination     Airport @relation("destination", fields: [destinationIcao], references: [icao])
+  // Alternate aerodrome (optional, snapshot)
+  alternateIcao        String? @map("alternate_icao")
+  alternateName        String? @map("alternate_name")
+  alternateElevationFt Int?    @map("alternate_elevation_ft")
+  alternateRunwayInUse String? @map("alternate_runway_in_use")
+  alternateMetarRaw    String? @map("alternate_metar_raw")
 
-  aircraftProfileId String?
-  aircraftProfile   AircraftProfile? @relation(fields: [aircraftProfileId], references: [id])
+  // Aircraft
+  aircraftType    String? @map("aircraft_type")
+  aircraftName    String? @map("aircraft_name")
+  takeoffWeightKg Float?  @map("takeoff_weight_kg")
+  mtowKg          Float?  @map("mtow_kg")
+  callsign        String?
+  simbriefOfpId   String? @map("simbrief_ofp_id")
 
-  routes FlightPlanRoute[]
+  // Route
+  routeText     String? @map("route_text")
+  cruiseLevel   String? @map("cruise_level")
+  plannedAltitude Int?   @map("planned_altitude") // feet (IFR)
+  remarks       String?
+  todMinutes    Int?    @map("tod_minutes")
+  todDistanceNm Float?  @map("tod_distance_nm")
+
+  // Fuel / endurance
+  fuelConsumptionPerHour Float? @map("fuel_consumption_per_hour")
+  fuelCurrentTotal       Float? @map("fuel_current_total")
+  fuelReserveMinutes     Int?   @map("fuel_reserve_minutes") // 30 or 45
+  fuelRequiredTotal      Float? @map("fuel_required_total")
+  fuelPerWing            Float? @map("fuel_per_wing")
+  enduranceMinutes       Int?   @map("endurance_minutes")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at") // soft delete
+
+  user             User                    @relation(fields: [userId], references: [id])
+  routes           FlightPlanRoute[]
+  visualReferences FlightPlanVisualReference[]
+  briefingItems    FlightPlanBriefingItem[]
+
+  @@index([userId, deletedAt])
+  @@map("flight_plans")
 }
 
 model FlightPlanRoute {
   id            String  @id @default(cuid())
+  flightPlanId  String  @map("flight_plan_id")
   sequence      Int
-  waypointIdent String
+  waypointIdent String  @map("waypoint_ident")
   latitude      Float?
   longitude     Float?
   airway        String?
 
-  flightPlanId String
-  flightPlan   FlightPlan @relation(fields: [flightPlanId], references: [id], onDelete: Cascade)
+  flightPlan FlightPlan @relation(fields: [flightPlanId], references: [id], onDelete: Cascade)
 
   @@index([flightPlanId, sequence])
+  @@map("flight_plan_routes")
+}
+
+model FlightPlanVisualReference {
+  id           String @id @default(cuid())
+  flightPlanId String @map("flight_plan_id")
+  sequence     Int
+  name         String
+  distanceNm   Float? @map("distance_nm")
+  timeMin      Int?   @map("time_min")
+
+  flightPlan FlightPlan @relation(fields: [flightPlanId], references: [id], onDelete: Cascade)
+
+  @@index([flightPlanId, sequence])
+  @@map("flight_plan_visual_references")
+}
+
+model FlightPlanBriefingItem {
+  id           String  @id @default(cuid())
+  flightPlanId String  @map("flight_plan_id")
+  code         String // machine key e.g. "start_simacars", "pdc_briefing"
+  label        String // display label
+  checked      Boolean @default(false)
+  notes        String?
+
+  flightPlan FlightPlan @relation(fields: [flightPlanId], references: [id], onDelete: Cascade)
+
+  @@index([flightPlanId])
+  @@map("flight_plan_briefing_items")
 }
 
 model IntegrationConnection {
   id         String   @id @default(cuid())
   service    String // "simbrief"
-  externalId String? // SimBrief pilot ID (username)
+  externalId String?  @map("external_id") // SimBrief pilot ID (username)
   metadata   Json?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
-  userId String
+  userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id])
 
   @@unique([userId, service])
+  @@map("integration_connections")
 }
 
 model ActivityLog {
   id        String   @id @default(cuid())
   action    String // e.g. "flight_plan.created", "auth.login", "simbrief.import"
   metadata  Json? // no PII beyond userId
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at")
 
-  userId String?
+  userId String? @map("user_id")
   user   User?   @relation(fields: [userId], references: [id])
 
   @@index([createdAt])
+  @@map("activity_logs")
 }
 
 enum PlanStatus {
   DRAFT
-  SAVED
-  ARCHIVED
-}
-
-enum FlightType {
-  VFR
-  IFR
-}
-
-// --- VFR Flight Planning v1 ---
-
-model VfrFlightPlan {
-  id          String        @id @default(cuid())
-  userId      String
-  status      VfrPlanStatus @default(DRAFT)
-  flightRules FlightRules   @default(VFR)
-
-  // Origin aerodrome (snapshot)
-  originIcao        String
-  originName        String
-  originElevationFt Int?
-  originRunwayInUse String?
-  originMetarRaw    String?
-
-  // Destination aerodrome (snapshot)
-  destinationIcao        String
-  destinationName        String
-  destinationElevationFt Int?
-  destinationRunwayInUse String?
-  destinationMetarRaw    String?
-
-  // Alternate aerodrome (optional, snapshot)
-  alternateIcao        String?
-  alternateName        String?
-  alternateElevationFt Int?
-  alternateRunwayInUse String?
-  alternateMetarRaw    String?
-
-  // Aircraft
-  aircraftType    String?
-  aircraftName    String?
-  takeoffWeightKg Float?
-  mtowKg          Float?
-  callsign        String?
-  simbriefOfpId   String?
-
-  // Route
-  routeText   String?
-  cruiseLevel    String?
-  todMinutes     Int?
-  todDistanceNm  Float?
-
-  // Fuel / endurance (liters)
-  fuelConsumptionPerHour Float?
-  fuelCurrentTotal       Float?
-  fuelReserveMinutes     Int? // 30 or 45
-  fuelRequiredTotal      Float?
-  fuelPerWing            Float?
-  enduranceMinutes       Int?
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime? // soft delete
-
-  user             User                          @relation(fields: [userId], references: [id])
-  visualReferences VfrFlightPlanVisualReference[]
-  briefingItems    VfrFlightPlanBriefingItem[]
-
-  @@index([userId, deletedAt])
-}
-
-model VfrFlightPlanVisualReference {
-  id           String @id @default(cuid())
-  flightPlanId String
-  sequence     Int
-  name         String
-  distanceNm   Float?
-  timeMin      Int?
-
-  flightPlan VfrFlightPlan @relation(fields: [flightPlanId], references: [id], onDelete: Cascade)
-
-  @@index([flightPlanId, sequence])
-}
-
-model VfrFlightPlanBriefingItem {
-  id           String  @id @default(cuid())
-  flightPlanId String
-  code         String // machine key e.g. "start_simacars", "pdc_briefing"
-  label        String // display label
-  checked      Boolean @default(false)
-  notes        String?
-
-  flightPlan VfrFlightPlan @relation(fields: [flightPlanId], references: [id], onDelete: Cascade)
-
-  @@index([flightPlanId])
-}
-
-enum VfrPlanStatus {
-  DRAFT
   COMPLETED
+  ARCHIVED
 }
 
 enum FlightRules {

@@ -18,7 +18,6 @@ import { ReaModule } from './rea/rea.module';
 import { RedisModule } from './redis/redis.module';
 import { RetentionModule } from './retention/retention.module';
 import { UsersModule } from './users/users.module';
-import { VfrFlightPlansModule } from './vfr-flight-plans/vfr-flight-plans.module';
 import { WeatherModule } from './weather/weather.module';
 
 @Module({
@@ -65,7 +64,6 @@ import { WeatherModule } from './weather/weather.module';
     IntegrationsModule,
     RetentionModule,
     UsersModule,
-    VfrFlightPlansModule,
     WeatherModule,
   ],
   providers: [

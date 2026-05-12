@@ -152,6 +152,7 @@
     "reaMandatory": "Obrigatória",
     "reaRecommended": "Recomendada",
     "reaWarning": "Sua rota cruza corredores REA obrigatórios. Você deve seguir estas rotas ou contornar o espaço aéreo.",
+    "reaGateWarning": "Esta área possui portões obrigatórios para entrada e saída de CTR/ATZ.",
     "reaNoConflict": "Sua rota não cruza nenhum corredor REA.",
     "reaFollow": "Seguir",
     "reaBestMatch": "Melhor opção",

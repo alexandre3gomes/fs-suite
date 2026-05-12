@@ -1321,20 +1321,11 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
             reaRegions.map((region) => (
               <View key={region.regionId} className="mb-3">
                 <View className="flex-row items-center gap-2 mb-1.5">
-                  {region.hasMandatory ? (
-                    <View className="rounded px-1.5 py-0.5 bg-red-100">
-                      <Text className="text-[10px] font-bold text-red-700">{t('vfr.reaMandatory')}</Text>
-                    </View>
-                  ) : (
-                    <View className="rounded px-1.5 py-0.5 bg-blue-100">
-                      <Text className="text-[10px] font-bold text-blue-700">{t('vfr.reaRecommended')}</Text>
-                    </View>
-                  )}
                   <Text className="text-sm font-semibold text-foreground">{region.chartName}</Text>
                 </View>
 
-                {region.hasMandatory ? (
-                  <Text className="text-xs text-red-600 mb-2">{t('vfr.reaWarning')}</Text>
+                {region.corridors.some((c) => c.tipo === 'Obrig' && c.segments.length <= 2) ? (
+                  <Text className="text-xs text-amber-600 mb-2">{t('vfr.reaGateWarning')}</Text>
                 ) : null}
 
                 <View className="rounded border border-border overflow-hidden mb-2">
@@ -1358,20 +1349,31 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
                         }
                       }
 
-                      // Find entry (closest to origin) and exit (closest to destination)
-                      // then extract only the relevant sub-path
+                      // Find entry and exit considering both distance and direction of travel.
+                      // A waypoint in the direction of the destination is preferred over
+                      // one that is simply closest but requires backtracking.
                       let wps: RouteWaypoint[] = [];
                       let reversed = false;
                       if (wpsAtoB.length >= 2 && origin && destination) {
+                        const odBrg = initialBearing(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
+                        const angDiffDeg = (a: number, b: number) => { const d = ((a - b) % 360 + 360) % 360; return d > 180 ? 360 - d : d; };
+
                         let entryIdx = 0;
-                        let entryDist = Infinity;
+                        let entryScore = Infinity;
                         let exitIdx = 0;
-                        let exitDist = Infinity;
+                        let exitScore = Infinity;
                         for (let i = 0; i < wpsAtoB.length; i++) {
                           const dO = haversineDistanceNm(origin.latitude, origin.longitude, wpsAtoB[i]!.lat, wpsAtoB[i]!.lng);
                           const dD = haversineDistanceNm(destination.latitude, destination.longitude, wpsAtoB[i]!.lat, wpsAtoB[i]!.lng);
-                          if (dO < entryDist) { entryDist = dO; entryIdx = i; }
-                          if (dD < exitDist) { exitDist = dD; exitIdx = i; }
+
+                          // Penalise entry points that require backtracking (bearing from origin
+                          // to waypoint diverges from origin→destination bearing)
+                          const brgToWp = initialBearing(origin.latitude, origin.longitude, wpsAtoB[i]!.lat, wpsAtoB[i]!.lng);
+                          const entryPenalty = dO < 3 ? 1 : 1 + angDiffDeg(brgToWp, odBrg) / 90;
+                          const eScore = dO * entryPenalty;
+                          if (eScore < entryScore) { entryScore = eScore; entryIdx = i; }
+
+                          if (dD < exitScore) { exitScore = dD; exitIdx = i; }
                         }
                         if (entryIdx <= exitIdx) {
                           wps = wpsAtoB.slice(entryIdx, exitIdx + 1);

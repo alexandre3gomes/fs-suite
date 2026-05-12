@@ -1,19 +1,16 @@
 import {
   Body,
   Controller,
-  DefaultValuePipe,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
-  ParseIntPipe,
   Patch,
   Post,
-  Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { User } from '@prisma/client';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -29,22 +26,8 @@ import { FlightPlansService } from './flight-plans.service';
 export class FlightPlansController {
   constructor(private readonly service: FlightPlansService) {}
 
-  @Get()
-  @ApiOperation({ summary: "List user's saved flight plans (paginated)" })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  async findAll(
-    @CurrentUser() user: User,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-  ): Promise<unknown> {
-    const safeLimit = Math.min(Math.max(limit, 1), 100);
-    const safePage = Math.max(page, 1);
-    return this.service.findAll(user.id, safePage, safeLimit);
-  }
-
   @Post()
-  @ApiOperation({ summary: 'Create new flight plan' })
+  @ApiOperation({ summary: 'Create a new flight plan' })
   async create(
     @CurrentUser() user: User,
     @Body() dto: CreateFlightPlanDto,
@@ -52,17 +35,20 @@ export class FlightPlansController {
     return this.service.create(user.id, dto);
   }
 
+  @Get()
+  @ApiOperation({ summary: "List user's flight plans" })
+  async findAll(@CurrentUser() user: User): Promise<unknown> {
+    return this.service.findAll(user.id);
+  }
+
   @Get(':id')
-  @ApiOperation({ summary: 'Get full plan with route' })
-  async findOne(
-    @CurrentUser() user: User,
-    @Param('id') id: string,
-  ): Promise<unknown> {
+  @ApiOperation({ summary: 'Get a flight plan by ID' })
+  async findOne(@CurrentUser() user: User, @Param('id') id: string): Promise<unknown> {
     return this.service.findOne(id, user.id);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update plan' })
+  @ApiOperation({ summary: 'Update a flight plan' })
   async update(
     @CurrentUser() user: User,
     @Param('id') id: string,
@@ -73,20 +59,14 @@ export class FlightPlansController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Soft delete plan' })
-  async remove(
-    @CurrentUser() user: User,
-    @Param('id') id: string,
-  ): Promise<void> {
+  @ApiOperation({ summary: 'Soft-delete a flight plan' })
+  async remove(@CurrentUser() user: User, @Param('id') id: string): Promise<void> {
     await this.service.remove(id, user.id);
   }
 
   @Post(':id/duplicate')
   @ApiOperation({ summary: 'Duplicate plan as new draft' })
-  async duplicate(
-    @CurrentUser() user: User,
-    @Param('id') id: string,
-  ): Promise<unknown> {
+  async duplicate(@CurrentUser() user: User, @Param('id') id: string): Promise<unknown> {
     return this.service.duplicate(id, user.id);
   }
 }

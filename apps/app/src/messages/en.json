@@ -152,6 +152,7 @@
     "reaMandatory": "Mandatory",
     "reaRecommended": "Recommended",
     "reaWarning": "Your route crosses mandatory REA corridors. You must follow these routes or reroute around the airspace.",
+    "reaGateWarning": "This area has mandatory gates (Portões) for CTR/ATZ entry and exit.",
     "reaNoConflict": "Your route does not cross any REA corridor.",
     "reaFollow": "Follow",
     "reaBestMatch": "Best match",
