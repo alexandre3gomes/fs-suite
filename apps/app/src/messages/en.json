@@ -201,7 +201,17 @@
     "reaAltRange": "REA altitude: {{min}} – {{max}} ft",
     "reaAltViolation": "Selected altitude is outside the REA corridor range",
     "semicircularViolation": "Selected level does not match the semicircular rule for this region",
-    "tooLow": "Altitude too low — insufficient clearance above aerodrome elevation"
+    "tooLow": "Altitude too low — insufficient clearance above aerodrome elevation",
+    "aiValidate": "AI Review",
+    "aiValidating": "Reviewing...",
+    "aiValidationTitle": "AI Flight Plan Review",
+    "aiValidationPass": "All checks passed",
+    "aiValidationWarnings": "Review warnings",
+    "aiValidationIssues": "Issues found",
+    "aiValidationError": "Could not complete validation. Please try again.",
+    "aiValidationRateLimit": "Daily free limit reached (5/day). Add your own API key in Profile for unlimited use.",
+    "aiValidationClose": "Close",
+    "aiValidationRetry": "Retry"
   },
   "info": {
     "weight": "Takeoff weight = empty weight + payload + fuel. Must not exceed MTOW (maximum takeoff weight). In advanced mode, enter weight per station for CG calculation.",
@@ -243,7 +253,14 @@
     "unitsDescription": "Choose the units displayed in flight plans.",
     "unitWeight": "Weight",
     "unitVolume": "Fuel volume",
-    "unitSpeed": "Speed"
+    "unitSpeed": "Speed",
+    "aiValidation": "AI Validation",
+    "aiValidationDescription": "Add your own API key for unlimited AI flight plan reviews. Without a key, you get 5 free reviews per day.",
+    "aiProvider": "AI Provider",
+    "aiApiKey": "API Key",
+    "aiApiKeyPlaceholder": "sk-... or your API key",
+    "aiConnected": "Connected",
+    "aiDeleteKey": "Remove key"
   },
   "home": {
     "heroTagline": "Professional flight planning for simulators",

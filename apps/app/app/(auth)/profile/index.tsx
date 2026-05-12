@@ -13,6 +13,14 @@ import {
   type SpeedUnit,
 } from '../../../src/stores/units.store';
 
+type AiProviderValue = 'openai' | 'anthropic' | 'google';
+
+const AI_PROVIDERS: { label: string; value: AiProviderValue }[] = [
+  { label: 'OpenAI', value: 'openai' },
+  { label: 'Anthropic', value: 'anthropic' },
+  { label: 'Google (Gemini)', value: 'google' },
+];
+
 function UnitPicker<T extends string>({ label, options, value, onChange }: { label: string; options: T[]; value: T; onChange: (v: T) => void }) {
   return (
     <View className="flex-row items-center justify-between py-2">
@@ -84,6 +92,58 @@ export default function ProfileScreen() {
     setSimbriefSaving(false);
   }, [simbriefPilotId, t]);
 
+  // AI Validation BYOK
+  const [aiProvider, setAiProvider] = useState<AiProviderValue>('openai');
+  const [aiApiKey, setAiApiKey] = useState('');
+  const [aiLoading, setAiLoading] = useState(true);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiSaved, setAiSaved] = useState(false);
+  const [aiHasKey, setAiHasKey] = useState(false);
+  const [aiConnectedProvider, setAiConnectedProvider] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAiLoading(true);
+    apiClient
+      .get<{ provider: string | null; hasKey: boolean }>('/integrations/ai-validation/connection')
+      .then((data) => {
+        setAiHasKey(data.hasKey);
+        if (data.provider) {
+          setAiProvider(data.provider as AiProviderValue);
+          setAiConnectedProvider(data.provider);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setAiLoading(false));
+  }, []);
+
+  const handleSaveAiKey = useCallback(async () => {
+    const key = aiApiKey.trim();
+    if (!key) return;
+    setAiSaving(true);
+    try {
+      await apiClient.patch('/integrations/ai-validation/connection', { provider: aiProvider, apiKey: key });
+      setAiSaved(true);
+      setAiHasKey(true);
+      setAiConnectedProvider(aiProvider);
+      setAiApiKey('');
+      setTimeout(() => setAiSaved(false), 2000);
+    } catch {
+      Alert.alert(t('common.error'), 'Could not save API key.');
+    }
+    setAiSaving(false);
+  }, [aiApiKey, aiProvider, t]);
+
+  const handleDeleteAiKey = useCallback(async () => {
+    try {
+      await apiClient.delete('/integrations/ai-validation/connection');
+      setAiHasKey(false);
+      setAiConnectedProvider(null);
+      setAiApiKey('');
+    } catch {
+      Alert.alert(t('common.error'), 'Could not delete API key.');
+    }
+  }, [t]);
+
   return (
     <>
       <Stack.Screen options={{ title: t('dashboard.profile'), headerShown: true, headerBackTitle: t('common.back') }} />
@@ -144,6 +204,73 @@ export default function ProfileScreen() {
                       {simbriefSaving ? t('common.saving') : simbriefSaved ? '✓' : t('common.save')}
                     </Text>
                   </Pressable>
+                </View>
+              )}
+            </View>
+
+            {/* AI Validation BYOK */}
+            <View className="mt-3 rounded-md border border-border bg-surface-muted px-4 py-4">
+              <View className="mb-2 flex-row items-center gap-2">
+                <Text className="text-sm font-semibold text-foreground">
+                  {t('profile.aiValidation')}
+                </Text>
+                {!aiLoading && aiHasKey ? (
+                  <View className="flex-row items-center gap-1">
+                    <View className="h-2 w-2 rounded-full bg-green-500" />
+                    <Text className="text-[10px] text-green-600">
+                      {t('profile.aiConnected')} ({aiConnectedProvider})
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text className="mb-3 text-xs text-muted-foreground">
+                {t('profile.aiValidationDescription')}
+              </Text>
+              {aiLoading ? (
+                <Text className="text-xs text-muted-foreground">{t('common.loading')}</Text>
+              ) : (
+                <View className="gap-3">
+                  <View>
+                    <Text className="mb-1.5 text-xs text-muted-foreground">{t('profile.aiProvider')}</Text>
+                    <View className="flex-row gap-1.5">
+                      {AI_PROVIDERS.map((p) => (
+                        <Pressable
+                          key={p.value}
+                          onPress={() => setAiProvider(p.value)}
+                          className={`rounded-md border px-3 py-1.5 ${aiProvider === p.value ? 'border-primary bg-primary/10' : 'border-border'}`}
+                        >
+                          <Text className={`text-xs font-medium ${aiProvider === p.value ? 'text-primary' : 'text-foreground'}`}>
+                            {p.label}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                  <View className="flex-row items-end gap-2">
+                    <View className="flex-1">
+                      <Input
+                        label={t('profile.aiApiKey')}
+                        value={aiApiKey}
+                        onChangeText={(v) => { setAiApiKey(v); setAiSaved(false); }}
+                        placeholder={t('profile.aiApiKeyPlaceholder')}
+                        secureTextEntry
+                      />
+                    </View>
+                    <Pressable
+                      onPress={handleSaveAiKey}
+                      disabled={aiSaving || !aiApiKey.trim()}
+                      className="rounded-button bg-primary px-4 py-2.5 active:opacity-80 disabled:opacity-50"
+                    >
+                      <Text className="text-xs font-medium text-primary-foreground">
+                        {aiSaving ? t('common.saving') : aiSaved ? '✓' : t('common.save')}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {aiHasKey ? (
+                    <Pressable onPress={handleDeleteAiKey}>
+                      <Text className="text-xs text-destructive">{t('profile.aiDeleteKey')}</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               )}
             </View>

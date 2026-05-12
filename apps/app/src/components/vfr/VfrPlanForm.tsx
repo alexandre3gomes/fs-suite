@@ -868,6 +868,45 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
     }
   };
 
+  // AI Validation
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState<{
+    overallStatus: 'pass' | 'warnings' | 'issues';
+    items: { category: string; status: 'pass' | 'warn' | 'fail'; title: string; description: string }[];
+    summary: string;
+  } | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const handleAiValidate = async () => {
+    const data = buildPlanData();
+    if (!data) {
+      Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
+      return;
+    }
+    setValidating(true);
+    setValidationError(null);
+    setValidationResult(null);
+    setShowValidationModal(true);
+    try {
+      const result = await apiClient.post<{
+        overallStatus: 'pass' | 'warnings' | 'issues';
+        items: { category: string; status: 'pass' | 'warn' | 'fail'; title: string; description: string }[];
+        summary: string;
+      }>('/flight-plans/validate', data);
+      setValidationResult(result);
+    } catch (err: unknown) {
+      const status = (err as { status?: number }).status;
+      if (status === 429) {
+        setValidationError(t('vfr.aiValidationRateLimit'));
+      } else {
+        setValidationError(err instanceof Error ? err.message : t('vfr.aiValidationError'));
+      }
+    } finally {
+      setValidating(false);
+    }
+  };
+
   const mapElement = (
     <AerodromeMap
       onSelectOrigin={handleSelectOrigin}
@@ -1963,6 +2002,15 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
             {saving ? t('common.saving') : t('common.save')}
           </Text>
         </Pressable>
+        <Pressable
+          className="rounded-button border border-amber-500 bg-amber-500/10 px-4 py-3 active:opacity-80 disabled:opacity-50"
+          onPress={() => { void handleAiValidate(); }}
+          disabled={validating || !origin || !destination}
+        >
+          <Text className="text-center font-medium text-amber-600">
+            {validating ? t('vfr.aiValidating') : `✦ ${t('vfr.aiValidate')}`}
+          </Text>
+        </Pressable>
         {Platform.OS === 'web' && (
           <Pressable
             className="rounded-button border border-primary bg-transparent px-6 py-3 active:opacity-80 disabled:opacity-50"
@@ -2048,6 +2096,93 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
                   </Pressable>
                 </View>
               )}
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
+      {showValidationModal ? (
+        <Modal transparent animationType="fade" onRequestClose={() => { if (!validating) setShowValidationModal(false); }}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}
+            onPress={() => { if (!validating) setShowValidationModal(false); }}
+          >
+            <Pressable
+              style={{ width: '90%', maxWidth: 480, maxHeight: '80%' }}
+              className="rounded-lg border border-border bg-card p-5 shadow-xl"
+              onPress={() => {}}
+            >
+              <Text className="mb-4 text-base font-bold text-foreground">{t('vfr.aiValidationTitle')}</Text>
+
+              {validating ? (
+                <View className="items-center gap-3 py-8">
+                  <ActivityIndicator size="large" color="#d97706" />
+                  <Text className="text-sm text-muted-foreground">{t('vfr.aiValidating')}</Text>
+                </View>
+              ) : validationError ? (
+                <View className="gap-3">
+                  <Text className="text-sm text-destructive">{validationError}</Text>
+                  <View className="flex-row gap-3">
+                    <Pressable
+                      className="flex-1 rounded-button border border-border px-4 py-2.5"
+                      onPress={() => setShowValidationModal(false)}
+                    >
+                      <Text className="text-center text-sm font-medium text-foreground">{t('vfr.aiValidationClose')}</Text>
+                    </Pressable>
+                    <Pressable
+                      className="flex-1 rounded-button bg-amber-500 px-4 py-2.5"
+                      onPress={() => { void handleAiValidate(); }}
+                    >
+                      <Text className="text-center text-sm font-medium text-white">{t('vfr.aiValidationRetry')}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : validationResult ? (
+                <ScrollView style={{ maxHeight: 400 }}>
+                  <View className={`mb-4 rounded-md px-4 py-3 ${
+                    validationResult.overallStatus === 'pass' ? 'bg-green-500/10' :
+                    validationResult.overallStatus === 'warnings' ? 'bg-amber-500/10' :
+                    'bg-red-500/10'
+                  }`}>
+                    <Text className={`text-sm font-semibold ${
+                      validationResult.overallStatus === 'pass' ? 'text-green-600' :
+                      validationResult.overallStatus === 'warnings' ? 'text-amber-600' :
+                      'text-red-600'
+                    }`}>
+                      {validationResult.overallStatus === 'pass' ? '✓ ' + t('vfr.aiValidationPass') :
+                       validationResult.overallStatus === 'warnings' ? '⚠ ' + t('vfr.aiValidationWarnings') :
+                       '✕ ' + t('vfr.aiValidationIssues')}
+                    </Text>
+                  </View>
+
+                  {validationResult.items.map((item, idx) => (
+                    <View key={idx} className="mb-3 rounded-md border border-border px-3 py-2.5">
+                      <View className="flex-row items-center gap-2 mb-1">
+                        <View className={`h-2.5 w-2.5 rounded-full ${
+                          item.status === 'pass' ? 'bg-green-500' :
+                          item.status === 'warn' ? 'bg-amber-500' :
+                          'bg-red-500'
+                        }`} />
+                        <Text className="text-[10px] font-medium uppercase text-muted-foreground">{item.category}</Text>
+                        <Text className="flex-1 text-sm font-semibold text-foreground">{item.title}</Text>
+                      </View>
+                      <Text className="text-xs text-muted-foreground leading-5">{item.description}</Text>
+                    </View>
+                  ))}
+
+                  <View className="mt-2 rounded-md bg-surface-muted px-3 py-2.5">
+                    <Text className="text-xs italic text-muted-foreground leading-5">{validationResult.summary}</Text>
+                  </View>
+                </ScrollView>
+              ) : null}
+
+              {validationResult && !validating ? (
+                <Pressable
+                  className="mt-4 rounded-button bg-primary px-4 py-2.5"
+                  onPress={() => setShowValidationModal(false)}
+                >
+                  <Text className="text-center text-sm font-medium text-primary-foreground">{t('vfr.aiValidationClose')}</Text>
+                </Pressable>
+              ) : null}
             </Pressable>
           </Pressable>
         </Modal>

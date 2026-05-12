@@ -201,7 +201,17 @@
     "reaAltRange": "Altitude REA: {{min}} – {{max}} ft",
     "reaAltViolation": "Altitude selecionada está fora da faixa do corredor REA",
     "semicircularViolation": "Nível selecionado não corresponde à regra semicircular da região",
-    "tooLow": "Altitude muito baixa — separação insuficiente acima da elevação do aeródromo"
+    "tooLow": "Altitude muito baixa — separação insuficiente acima da elevação do aeródromo",
+    "aiValidate": "Revisar com IA",
+    "aiValidating": "Revisando...",
+    "aiValidationTitle": "Revisão do Plano por IA",
+    "aiValidationPass": "Todos os itens aprovados",
+    "aiValidationWarnings": "Atenção a alguns pontos",
+    "aiValidationIssues": "Problemas encontrados",
+    "aiValidationError": "Não foi possível completar a validação. Tente novamente.",
+    "aiValidationRateLimit": "Limite diário gratuito atingido (5/dia). Adicione sua própria chave de API no Perfil para uso ilimitado.",
+    "aiValidationClose": "Fechar",
+    "aiValidationRetry": "Tentar novamente"
   },
   "info": {
     "weight": "Peso de decolagem = peso vazio + payload + combustível. Não pode exceder o PMD (peso máximo de decolagem). No modo avançado, insira o peso por estação para cálculo de CG.",
@@ -243,7 +253,14 @@
     "unitsDescription": "Escolha as unidades exibidas nos planos de voo.",
     "unitWeight": "Peso",
     "unitVolume": "Volume de combustível",
-    "unitSpeed": "Velocidade"
+    "unitSpeed": "Velocidade",
+    "aiValidation": "Validação por IA",
+    "aiValidationDescription": "Adicione sua própria chave de API para revisões ilimitadas. Sem uma chave, você tem 5 revisões gratuitas por dia.",
+    "aiProvider": "Provedor de IA",
+    "aiApiKey": "Chave de API",
+    "aiApiKeyPlaceholder": "sk-... ou sua chave de API",
+    "aiConnected": "Conectado",
+    "aiDeleteKey": "Remover chave"
   },
   "home": {
     "heroTagline": "Planejamento de voo profissional para simuladores",
