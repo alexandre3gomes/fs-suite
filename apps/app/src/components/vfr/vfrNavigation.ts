@@ -37,50 +37,40 @@ export function toVfrCoord(lat: number, lng: number): string {
 /**
  * Build VFR route text per ICAO Doc 4444 Item 15 / MCA 100-11.
  *
- * Standard VFR (no DCT between consecutive coordinates):
- *   SBSP DCT 2338S04640W 2345S04655W DCT SBGR
+ * Field 15 contains only the route description — departure (Field 13) and
+ * destination (Field 16) are NOT included. DCT separates each pair of
+ * consecutive points not connected by an airway.
  *
- * Following a REA corridor (only entry and exit coordinates):
- *   SBJD DCT 2337S04640W REA 2345S04655W DCT SBMT
- *   Corridor name goes in Item 18 remarks via buildReaRemarks().
+ * Standard VFR:
+ *   DCT                                          (direct, no intermediate points)
+ *   DCT 2338S04640W DCT 2345S04655W DCT          (with waypoints)
+ *
+ * REA corridor (entry and exit coordinates with REA designator):
+ *   DCT 2337S04640W REA 2345S04655W DCT
  */
 export function buildVfrRouteText(
-  originIcao: string | null,
+  _originIcao: string | null,
   waypoints: RouteWaypoint[],
-  destinationIcao: string | null,
+  _destinationIcao: string | null,
   corridorName?: string | null,
 ): string {
+  if (waypoints.length === 0) return 'DCT';
+
   if (corridorName && waypoints.length >= 2) {
-    const parts: string[] = [];
-    if (originIcao) parts.push(originIcao, 'DCT');
-    parts.push(toVfrCoord(waypoints[0]!.lat, waypoints[0]!.lng));
-    parts.push('REA');
-    parts.push(toVfrCoord(waypoints[waypoints.length - 1]!.lat, waypoints[waypoints.length - 1]!.lng));
-    if (destinationIcao) parts.push('DCT', destinationIcao);
-    return parts.join(' ');
+    const entry = toVfrCoord(waypoints[0]!.lat, waypoints[0]!.lng);
+    const exit = toVfrCoord(waypoints[waypoints.length - 1]!.lat, waypoints[waypoints.length - 1]!.lng);
+    return `DCT ${entry} REA ${exit} DCT`;
   }
 
-  const parts: string[] = [];
-  if (originIcao) parts.push(originIcao);
-
-  for (let i = 0; i < waypoints.length; i++) {
-    const coord = toVfrCoord(waypoints[i]!.lat, waypoints[i]!.lng);
-    if (i === 0 && originIcao) parts.push('DCT');
-    parts.push(coord);
-  }
-
-  if (destinationIcao) {
-    if (parts.length > 0) parts.push('DCT');
-    parts.push(destinationIcao);
-  }
-
-  return parts.join(' ');
+  const coords = waypoints.map((w) => toVfrCoord(w.lat, w.lng));
+  return `DCT ${coords.join(' DCT ')} DCT`;
 }
 
 /**
  * Build Item 18 REA remarks text.
  * Format: RMK/REA FOXTROT
  * Source: MCA 100-11 / AIC-N-20/21
+ * @deprecated Use buildItem18() which consolidates all Item 18 indicators.
  */
 export function buildReaRemarks(corridorName: string | null): string {
   if (!corridorName) return '';
@@ -142,15 +132,28 @@ export function getPerformanceCategory(cruiseSpeedKts: number): string {
   return 'E';
 }
 
+export interface AltitudeTransition {
+  fix: string;
+  fromAlt: number;
+  toAlt: number;
+}
+
 /**
  * Build full Item 18 (Other Information) text.
- * Auto-generates DOF, REA, PER, and appends user remarks.
- * Source: ICAO Doc 4444 Appendix 2 — Item 18
+ * Auto-generates DOF, PER, and RMK (REA + altitude transitions + user remarks).
+ *
+ * ICAO Doc 4444 Appendix 2 — Item 18 indicator order:
+ *   DOF/ PER/ RMK/  (RMK is always last)
+ *
+ * REA corridor info is not a standard ICAO indicator — it goes under RMK/.
+ * Altitude transitions between semicircular-rule segments and corridor segments
+ * are described as: CLB/[alt] ABV [fix] or DES/[alt] ABV [fix]
  */
 export function buildItem18(opts: {
   corridorName?: string | null;
   corridorAltRange?: { min: number; max: number } | null;
   corridorCompAlt?: number | null;
+  altitudeTransitions?: AltitudeTransition[];
   userRemarks?: string;
   dateOfFlight?: Date;
   performanceCategory?: string | null;
@@ -164,23 +167,29 @@ export function buildItem18(opts: {
     parts.push(`DOF/${yy}${mm}${dd}`);
   }
 
-  if (opts.corridorName) {
-    const clean = opts.corridorName.toUpperCase().replace(/^REA[\s-]*/i, '').trim();
-    let reaText = `REA ${clean}`;
-    if (opts.corridorCompAlt != null) {
-      reaText += ` ${opts.corridorCompAlt}FT`;
-    } else if (opts.corridorAltRange) {
-      reaText += ` ${opts.corridorAltRange.min}/${opts.corridorAltRange.max}FT`;
-    }
-    parts.push(reaText);
-  }
-
   if (opts.performanceCategory) {
     parts.push(`PER/${opts.performanceCategory}`);
   }
 
+  const rmkParts: string[] = [];
+  if (opts.corridorName) {
+    const clean = opts.corridorName.toUpperCase().replace(/^REA[\s-]*/i, '').trim();
+    const corridorAlt = opts.corridorCompAlt ?? (opts.corridorAltRange
+      ? `${opts.corridorAltRange.min}/${opts.corridorAltRange.max}`
+      : null);
+    rmkParts.push(`REA ${clean}${corridorAlt != null ? ` ALT ${corridorAlt}` : ''}`);
+  }
+  if (opts.altitudeTransitions && opts.altitudeTransitions.length > 0) {
+    for (const t of opts.altitudeTransitions) {
+      const dir = t.toAlt > t.fromAlt ? 'CLB' : 'DES';
+      rmkParts.push(`${dir} ${t.fromAlt}FT/${t.toAlt}FT ABV ${t.fix}`);
+    }
+  }
   if (opts.userRemarks?.trim()) {
-    parts.push(`RMK/${opts.userRemarks.trim()}`);
+    rmkParts.push(opts.userRemarks.trim());
+  }
+  if (rmkParts.length > 0) {
+    parts.push(`RMK/${rmkParts.join(' ')}`);
   }
 
   return parts.join(' ');

@@ -138,4 +138,6 @@ export class ValidateFlightPlanDto {
   visualReferences?: VisualReferenceDto[];
 
   @ApiPropertyOptional() @IsOptional() @IsString() remarks?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() performanceCategory?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() item18Text?: string;
 }

@@ -210,8 +210,12 @@ export class AiValidationService {
     if (dto.fuelRequiredTotal != null) lines.push(`**Total required**: ${dto.fuelRequiredTotal} kg`);
     if (dto.enduranceMinutes != null) lines.push(`**Endurance**: ${dto.enduranceMinutes} min`);
 
-    if (dto.callsign) lines.push('', `**Callsign**: ${dto.callsign}`);
-    if (dto.remarks) lines.push('', `**Remarks**: ${dto.remarks.slice(0, 500)}`);
+    // Operational
+    lines.push('', '### Operational');
+    if (dto.callsign) lines.push(`**Callsign**: ${dto.callsign}`);
+    if (dto.performanceCategory) lines.push(`**Performance category**: ${dto.performanceCategory}`);
+    if (dto.item18Text) lines.push(`**Item 18 (Other Information)**: ${dto.item18Text}`);
+    if (dto.remarks) lines.push(`**Remarks (Item 18 full)**: ${dto.remarks.slice(0, 500)}`);
 
     return lines.join('\n');
   }

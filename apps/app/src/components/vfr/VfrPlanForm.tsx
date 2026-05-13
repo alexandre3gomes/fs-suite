@@ -22,7 +22,7 @@ import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
 import { TafDisplay, type ParsedTaf } from './TafDisplay';
 import { VfrPlanLayout } from './VfrPlanLayout';
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
-import { type RouteWaypoint, buildVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getPerformanceCategory } from './vfrNavigation';
+import { type RouteWaypoint, type AltitudeTransition, buildVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, suggestedVfrAltitudes, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getPerformanceCategory } from './vfrNavigation';
 
 // ---------- Types ----------
 
@@ -106,6 +106,8 @@ export interface VfrPlanData {
   payloadKg?: number;
   fuelCapacityL?: number;
   remarks?: string;
+  performanceCategory?: string;
+  item18Text?: string;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -199,7 +201,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
   // Route
   const [routeText, setRouteText] = useState(initialData?.routeText ?? '');
   const [cruiseLevel, setCruiseLevel] = useState(initialData?.cruiseLevel ?? '');
-  const toFL = (ft: number) => `FL${String(Math.round(ft / 100)).padStart(3, '0')}`;
+  const toFL = (ft: number) => formatAltitudeIcao(ft, origin?.icao);
   const [todMinutes, setTodMinutes] = useState(initialData?.todMinutes?.toString() ?? '');
   const [todDistanceNm, setTodDistanceNm] = useState(initialData?.todDistanceNm?.toString() ?? '');
 
@@ -659,25 +661,63 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
     () => selectedAircraft ? getPerformanceCategory(selectedAircraft.cruiseSpeedKts) : null,
     [selectedAircraft],
   );
+
+  const altitudeTransitions = useMemo((): AltitudeTransition[] => {
+    if (!followedCorridorName || routeWaypoints.length < 2 || routeLegs.length < 2) return [];
+
+    const corridorAlt = corridorCompAlt ?? (corridorAltRange
+      ? Math.round((corridorAltRange.min + corridorAltRange.max) / 2 / 100) * 100
+      : null);
+    if (!corridorAlt) return [];
+
+    const transitions: AltitudeTransition[] = [];
+
+    const firstLeg = routeLegs[0]!;
+    const entryAlts = suggestedVfrAltitudes(firstLeg.magneticCourse, origin?.icao);
+    const entryAlt = entryAlts.length > 0 ? entryAlts[0]! : null;
+    if (entryAlt && entryAlt !== corridorAlt) {
+      transitions.push({
+        fix: routeWaypoints[0]!.name,
+        fromAlt: entryAlt,
+        toAlt: corridorAlt,
+      });
+    }
+
+    const lastLeg = routeLegs[routeLegs.length - 1]!;
+    const exitAlts = suggestedVfrAltitudes(lastLeg.magneticCourse, origin?.icao);
+    const exitAlt = exitAlts.length > 0 ? exitAlts[0]! : null;
+    if (exitAlt && exitAlt !== corridorAlt) {
+      transitions.push({
+        fix: routeWaypoints[routeWaypoints.length - 1]!.name,
+        fromAlt: corridorAlt,
+        toAlt: exitAlt,
+      });
+    }
+
+    return transitions;
+  }, [followedCorridorName, routeWaypoints, routeLegs, corridorCompAlt, corridorAltRange, origin?.icao]);
+
   const autoRemarks = useMemo(() => {
     return buildItem18({
       corridorName: followedCorridorName,
       corridorAltRange,
       corridorCompAlt,
+      altitudeTransitions,
       dateOfFlight: new Date(),
       performanceCategory,
     });
-  }, [followedCorridorName, corridorAltRange, corridorCompAlt, performanceCategory]);
+  }, [followedCorridorName, corridorAltRange, corridorCompAlt, altitudeTransitions, performanceCategory]);
   const fullRemarks = useMemo(() => {
     return buildItem18({
       corridorName: followedCorridorName,
       corridorAltRange,
       corridorCompAlt,
+      altitudeTransitions,
       userRemarks,
       dateOfFlight: new Date(),
       performanceCategory,
     });
-  }, [followedCorridorName, corridorAltRange, corridorCompAlt, userRemarks, performanceCategory]);
+  }, [followedCorridorName, corridorAltRange, corridorCompAlt, altitudeTransitions, userRemarks, performanceCategory]);
 
   // SimBrief state
   const [callsign, setCallsign] = useState(initialData?.callsign ?? '');
@@ -754,16 +794,18 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
       alternateRunwayInUse: altRunway || undefined,
       alternateMetarRaw: alternate ? metars[alternate.icao]?.raw : undefined,
       alternateTafRaw: alternate ? tafs[alternate.icao]?.raw : undefined,
-      originRunways: originDetail?.runways.map((r) => ({
-        ident: r.ident,
-        headingDeg: r.leHeadingDeg,
-        lengthFt: r.lengthFt,
-      })),
-      destinationRunways: destDetail?.runways.map((r) => ({
-        ident: r.ident,
-        headingDeg: r.leHeadingDeg,
-        lengthFt: r.lengthFt,
-      })),
+      originRunways: originDetail?.runways.flatMap((r) => {
+        const entries: { ident: string; headingDeg: number | null; lengthFt: number | null }[] = [];
+        if (r.leIdent) entries.push({ ident: r.leIdent, headingDeg: r.leHeadingDeg, lengthFt: r.lengthFt });
+        if (r.heIdent) entries.push({ ident: r.heIdent, headingDeg: r.heHeadingDeg, lengthFt: r.lengthFt });
+        return entries;
+      }),
+      destinationRunways: destDetail?.runways.flatMap((r) => {
+        const entries: { ident: string; headingDeg: number | null; lengthFt: number | null }[] = [];
+        if (r.leIdent) entries.push({ ident: r.leIdent, headingDeg: r.leHeadingDeg, lengthFt: r.lengthFt });
+        if (r.heIdent) entries.push({ ident: r.heIdent, headingDeg: r.heHeadingDeg, lengthFt: r.lengthFt });
+        return entries;
+      }),
       alternateRunways: undefined,
       reaCorridors: reaRegions.length > 0 ? reaRegions.flatMap((r) =>
         r.corridors.map((c) => ({
@@ -820,6 +862,8 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
       payloadKg: payloadKg || undefined,
       fuelCapacityL: selectedAircraft?.fuelCapacityL,
       remarks: fullRemarks || undefined,
+      performanceCategory: performanceCategory || undefined,
+      item18Text: fullRemarks || undefined,
     };
   };
 
@@ -829,7 +873,44 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
       Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
       return;
     }
-    void onSave(data);
+    const savePayload: Partial<VfrPlanData> = {
+      flightRules: data.flightRules,
+      originIcao: data.originIcao,
+      originName: data.originName,
+      originElevationFt: data.originElevationFt,
+      originRunwayInUse: data.originRunwayInUse,
+      originMetarRaw: data.originMetarRaw,
+      destinationIcao: data.destinationIcao,
+      destinationName: data.destinationName,
+      destinationElevationFt: data.destinationElevationFt,
+      destinationRunwayInUse: data.destinationRunwayInUse,
+      destinationMetarRaw: data.destinationMetarRaw,
+      alternateIcao: data.alternateIcao,
+      alternateName: data.alternateName,
+      alternateElevationFt: data.alternateElevationFt,
+      alternateRunwayInUse: data.alternateRunwayInUse,
+      alternateMetarRaw: data.alternateMetarRaw,
+      aircraftType: data.aircraftType,
+      aircraftName: data.aircraftName,
+      takeoffWeightKg: data.takeoffWeightKg,
+      mtowKg: data.mtowKg,
+      callsign: data.callsign,
+      simbriefOfpId: data.simbriefOfpId,
+      routeText: data.routeText,
+      cruiseLevel: data.cruiseLevel,
+      todMinutes: data.todMinutes,
+      todDistanceNm: data.todDistanceNm,
+      fuelConsumptionPerHour: data.fuelConsumptionPerHour,
+      fuelCurrentTotal: data.fuelCurrentTotal,
+      fuelReserveMinutes: data.fuelReserveMinutes,
+      fuelRequiredTotal: data.fuelRequiredTotal,
+      fuelPerWing: data.fuelPerWing,
+      enduranceMinutes: data.enduranceMinutes,
+      visualReferences: data.visualReferences,
+      status: data.status,
+      remarks: data.remarks,
+    };
+    void onSave(savePayload as VfrPlanData);
   };
 
   const [showExportModal, setShowExportModal] = useState(false);
@@ -860,17 +941,24 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
         let prevView: { center: [number, number]; zoom: number } | null = null;
         try {
           prevView = mapHandleRef.current.fitRouteBounds();
-          await new Promise((r) => setTimeout(r, 800));
+          await new Promise((r) => setTimeout(r, 1200));
           const container = mapHandleRef.current.getContainer();
           if (container) {
-            // Hide zoom/layer controls for a clean screenshot
             const controlEl = (container as unknown as { querySelector: (s: string) => { style: { display: string } } | null }).querySelector('.leaflet-control-container');
             const prevDisplay = controlEl?.style.display ?? '';
             if (controlEl) controlEl.style.display = 'none';
-            mapImageDataUrl = await (toPng as unknown as (el: unknown, opts?: Record<string, unknown>) => Promise<string>)(container, { cacheBust: true });
+            mapImageDataUrl = await (toPng as unknown as (el: unknown, opts?: Record<string, unknown>) => Promise<string>)(container, {
+              cacheBust: false,
+              skipFonts: true,
+              filter: (node: unknown) => {
+                const el = node as { classList?: { contains: (c: string) => boolean } };
+                if (el.classList?.contains('leaflet-control-container')) return false;
+                return true;
+              },
+            });
             if (controlEl) controlEl.style.display = prevDisplay;
           }
-        } catch { /* skip map capture on failure */ }
+        } catch (e) { console.warn('Map capture failed:', e); }
         if (prevView) {
           mapHandleRef.current.setView(prevView.center, prevView.zoom);
         }
@@ -1044,6 +1132,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
             runway={originRunway}
             onRunwayChange={setOriginRunway}
             flightRules={flightRules}
+            runways={originDetail?.runways}
             onRequestExpand={onRequestExpand}
             t={t}
           />
@@ -1067,6 +1156,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
             runway={destRunway}
             onRunwayChange={setDestRunway}
             flightRules={flightRules}
+            runways={destDetail?.runways}
             onRequestExpand={onRequestExpand}
             t={t}
           />
@@ -1174,7 +1264,7 @@ export function VfrPlanForm({ initialData, onSave, saving }: Props) {
           label={t('vfr.routeText')}
           value={routeText}
           onChangeText={setRouteText}
-          placeholder={hasIfr ? 'SID AIRWAY WAYPOINT STAR' : 'SBSP DCT 2338S04640W 2345S04655W DCT SBGR'}
+          placeholder={hasIfr ? 'SID AIRWAY WAYPOINT STAR' : 'DCT 2338S04640W DCT 2345S04655W DCT'}
         />
         {(flightRules === 'VFR_IFR' || flightRules === 'IFR_VFR') ? (
           <Text className="mt-1 text-[10px] text-muted-foreground">
@@ -2304,6 +2394,7 @@ function AerodromeInfo({
   runway,
   onRunwayChange,
   flightRules,
+  runways,
   onRequestExpand,
   t,
 }: {
@@ -2317,10 +2408,29 @@ function AerodromeInfo({
   runway: string;
   onRunwayChange: (v: string) => void;
   flightRules?: 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
+  runways?: AerodromeWithRunways['runways'];
   onRequestExpand: () => void;
   t: (key: string) => string;
 }) {
   const [chartsOpen, setChartsOpen] = useState(false);
+
+  const windInfo = useMemo((): RunwayWindInfo | null => {
+    if (!runway || !metar || !runways) return null;
+    const windDir = metar.windDirection;
+    const windSpd = metar.windSpeed;
+    if (typeof windDir !== 'number' || typeof windSpd !== 'number' || windSpd === 0) return null;
+    const rwyHeading = runways.flatMap((r) => [
+      { ident: r.leIdent, heading: r.leHeadingDeg },
+      { ident: r.heIdent, heading: r.heHeadingDeg },
+    ]).find((th) => th.ident === runway);
+    if (!rwyHeading?.heading) return null;
+    const diffRad = ((windDir - rwyHeading.heading) * Math.PI) / 180;
+    return {
+      ident: runway,
+      headwindKts: Math.round(windSpd * Math.cos(diffRad)),
+      crosswindKts: Math.round(Math.abs(windSpd * Math.sin(diffRad))),
+    };
+  }, [runway, metar, runways]);
 
   const toggleCharts = useCallback(() => {
     setChartsOpen((prev) => {
@@ -2350,6 +2460,16 @@ function AerodromeInfo({
           <Text className="text-xs text-muted-foreground">({t('vfr.suggested')})</Text>
         ) : null}
       </View>
+      {windInfo ? (
+        <View className="mt-0.5 ml-0.5 flex-row items-center gap-2">
+          <Text className="text-xs text-muted-foreground">
+            {windInfo.headwindKts >= 0 ? t('vfr.headwind') : t('vfr.tailwind')}: {Math.abs(windInfo.headwindKts)} kt
+          </Text>
+          <Text className={`text-xs ${windInfo.crosswindKts > 15 ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+            {t('vfr.crosswind')}: {windInfo.crosswindKts} kt
+          </Text>
+        </View>
+      ) : null}
       <MetarDisplay metar={metar} loading={metarLoading && !metar} />
       {showTaf ? (
         <TafDisplay taf={taf} loading={tafLoading && !taf} etaMinutes={tripMinutes} />
@@ -2502,15 +2622,21 @@ function OfpViewer({ pdfUrl }: { pdfUrl: string }) {
 
 // ---------- Helpers ----------
 
-function suggestRunway(
+interface RunwayWindInfo {
+  ident: string;
+  headwindKts: number;
+  crosswindKts: number;
+}
+
+function analyzeRunwayWind(
   windDir: number,
+  windSpeed: number,
   runways: { leIdent: string | null; leHeadingDeg: number | null; heIdent: string | null; heHeadingDeg: number | null; closed: boolean }[],
-): string | null {
+): RunwayWindInfo | null {
   const open = runways.filter((r) => !r.closed);
   if (open.length === 0) return null;
 
-  let bestIdent: string | null = null;
-  let bestHeadwind = -Infinity;
+  let best: RunwayWindInfo | null = null;
 
   for (const rwy of open) {
     for (const th of [
@@ -2518,14 +2644,22 @@ function suggestRunway(
       { ident: rwy.heIdent, heading: rwy.heHeadingDeg },
     ]) {
       if (!th.ident || th.heading === null) continue;
-      const diff = ((windDir - th.heading + 540) % 360) - 180;
-      const headwind = Math.cos((diff * Math.PI) / 180);
-      if (headwind > bestHeadwind) {
-        bestHeadwind = headwind;
-        bestIdent = th.ident;
+      const diffRad = ((windDir - th.heading) * Math.PI) / 180;
+      const headwind = windSpeed * Math.cos(diffRad);
+      const crosswind = Math.abs(windSpeed * Math.sin(diffRad));
+      if (!best || headwind > best.headwindKts) {
+        best = { ident: th.ident, headwindKts: Math.round(headwind), crosswindKts: Math.round(crosswind) };
       }
     }
   }
 
-  return bestIdent;
+  return best;
+}
+
+function suggestRunway(
+  windDir: number,
+  runways: { leIdent: string | null; leHeadingDeg: number | null; heIdent: string | null; heHeadingDeg: number | null; closed: boolean }[],
+): string | null {
+  const info = analyzeRunwayWind(windDir, 1, runways);
+  return info?.ident ?? null;
 }

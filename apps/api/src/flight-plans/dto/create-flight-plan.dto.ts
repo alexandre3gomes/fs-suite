@@ -78,8 +78,8 @@ export class CreateFlightPlanDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @Matches(/^(FL\d{2,3}|\d{3,5})$/, {
-    message: 'cruiseLevel must be a flight level (e.g. FL045) or altitude in feet (e.g. 4500)',
+  @Matches(/^(FL\d{2,3}|[AF]\d{3}|\d{3,5})$/, {
+    message: 'cruiseLevel must be FL045, A045, F045, or altitude in feet (e.g. 4500)',
   })
   cruiseLevel?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) plannedAltitude?: number;

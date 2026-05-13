@@ -254,7 +254,7 @@ export function AerodromeMap({
     (routePane as unknown as DomElement).style['zIndex'] = '450';
 
     const defaultTile = TILE_LAYERS.map;
-    tileLayerRef.current = Leaf.tileLayer(defaultTile.url, { attribution: defaultTile.attr, maxZoom: 18 }).addTo(map);
+    tileLayerRef.current = Leaf.tileLayer(defaultTile.url, { attribution: defaultTile.attr, maxZoom: 18, crossOrigin: 'anonymous' }).addTo(map);
     mapRef.current = map;
 
     // Fetch airports on move
@@ -336,7 +336,7 @@ export function AerodromeMap({
     const map = mapRef.current;
     const layer = TILE_LAYERS[activeLayer];
     if (tileLayerRef.current) map.removeLayer(tileLayerRef.current);
-    tileLayerRef.current = Leaf.tileLayer(layer.url, { attribution: layer.attr, maxZoom: 18 }).addTo(map);
+    tileLayerRef.current = Leaf.tileLayer(layer.url, { attribution: layer.attr, maxZoom: 18, crossOrigin: 'anonymous' }).addTo(map);
   }, [activeLayer]);
 
   // Toggle OpenAIP airspace overlay
@@ -350,6 +350,7 @@ export function AerodromeMap({
         maxZoom: 14,
         minZoom: 4,
         opacity: 0.65,
+        crossOrigin: 'anonymous',
         attribution: '&copy; <a href="https://www.openaip.net">OpenAIP</a>',
       }).addTo(map);
     } else if (!showAirspace && openAipLayerRef.current) {
