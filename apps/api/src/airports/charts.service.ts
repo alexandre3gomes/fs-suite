@@ -134,7 +134,7 @@ function sortCharts(charts: AerodromeChart[]): AerodromeChart[] {
   });
 }
 
-function getAiracCycle(date: Date = new Date()): { cycle: string; effectiveDate: Date } {
+export function getAiracCycle(date: Date = new Date()): { cycle: string; effectiveDate: Date } {
   const EPOCH = new Date('2015-01-08T00:00:00Z').getTime();
   const MS_PER_DAY = 86400000;
   const daysSinceEpoch = Math.floor((date.getTime() - EPOCH) / MS_PER_DAY);
@@ -741,7 +741,9 @@ export class ChartsService {
 
     const externalLinks = [...(region ? region.links(normalized) : []), ...globalLinks(normalized)];
     const result: ChartSearchResult = { icao: normalized, charts, externalLinks };
-    await client.setEx(cacheKey, CACHE_TTL, JSON.stringify(result)).catch(() => {});
+    if (charts.length > 0) {
+      await client.setEx(cacheKey, CACHE_TTL, JSON.stringify(result)).catch(() => {});
+    }
     return result;
   }
 }

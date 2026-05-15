@@ -1,22 +1,27 @@
+import { createHash } from 'crypto';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 
-import { BadRequestException, Controller, Get, NotFoundException, Param, Query, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Logger, NotFoundException, Param, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 
 import { JwtAuthGuard, Public } from '../common/guards/jwt-auth.guard';
+import { R2StorageService } from '../r2/r2-storage.service';
 
 import { AirportsService } from './airports.service';
-import { ChartsService } from './charts.service';
+import { ChartsService, getAiracCycle } from './charts.service';
 
 @ApiTags('aerodromes')
 @Controller('aerodromes')
 @UseGuards(JwtAuthGuard)
 export class AirportsController {
+  private readonly logger = new Logger(AirportsController.name);
+
   constructor(
     private readonly airportsService: AirportsService,
     private readonly chartsService: ChartsService,
+    private readonly r2: R2StorageService,
   ) {}
 
   @Get('search')
@@ -63,21 +68,20 @@ export class AirportsController {
   @ApiOperation({ summary: 'Proxy a chart PDF to allow inline display (strips Content-Disposition: attachment)' })
   @ApiQuery({ name: 'url', required: true })
   async chartProxy(@Query('url') url: string, @Res() res: Response): Promise<void> {
-    // Whitelist of allowed chart PDF domains
     const ALLOWED_HOSTS = [
-      'aisweb.decea.gov.br',      // Brazil — DECEA AISWEB
-      'aisweb.decea.mil.br',      // Brazil — DECEA AISWEB (mil.br domain)
-      'aeronav.faa.gov',           // USA — FAA DTPP
-      'aip.enaire.es',             // Spain — ENAIRE
-      'www.sia.aviation-civile.gouv.fr', // France — SIA
-      'eaip.lvnl.nl',             // Netherlands — LVNL
-      'aim-india.aai.aero',       // India — AAI
-      'ais.nav.pt',               // Portugal — NAV Portugal
-      'eaip.austrocontrol.at',    // Austria — Austrocontrol
-      'ais.fi',                    // Finland — ANS Finland
-      'www.ais.pansa.pl',         // Poland — PANSA
-      'aro.lfv.se',               // Sweden — LFV
-      'aim-prod.avinor.no',       // Norway — Avinor
+      'aisweb.decea.gov.br',
+      'aisweb.decea.mil.br',
+      'aeronav.faa.gov',
+      'aip.enaire.es',
+      'www.sia.aviation-civile.gouv.fr',
+      'eaip.lvnl.nl',
+      'aim-india.aai.aero',
+      'ais.nav.pt',
+      'eaip.austrocontrol.at',
+      'ais.fi',
+      'www.ais.pansa.pl',
+      'aro.lfv.se',
+      'aim-prod.avinor.no',
     ];
 
     let parsedUrl: URL;
@@ -91,6 +95,26 @@ export class AirportsController {
       throw new BadRequestException('Chart URL domain not allowed');
     }
 
+    const { cycle } = getAiracCycle();
+    const urlHash = createHash('sha256').update(url).digest('hex');
+    const r2Key = `charts/${cycle}/${urlHash}.pdf`;
+
+    // Try R2 cache first
+    const cached = await this.r2.getObject(r2Key);
+    if (cached) {
+      this.setPdfHeaders(res);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      if (cached.contentLength) res.setHeader('Content-Length', cached.contentLength);
+      try {
+        await pipeline(cached.body, res);
+      } catch {
+        if (!res.headersSent) res.status(502).end();
+        else res.end();
+      }
+      return;
+    }
+
+    // Cache miss — fetch upstream
     const upstream = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FSSuite/1.0)' },
       redirect: 'follow',
@@ -102,6 +126,53 @@ export class AirportsController {
       return;
     }
 
+    const contentType = upstream.headers.get('content-type') ?? '';
+    const isPdf = contentType.includes('pdf') || contentType.includes('octet-stream');
+    const upstreamLength = parseInt(upstream.headers.get('content-length') ?? '0', 10);
+    const MAX_CACHE_SIZE = 10 * 1024 * 1024; // 10 MB
+    const shouldCache = this.r2.isEnabled() && isPdf && upstreamLength < MAX_CACHE_SIZE;
+
+    if (shouldCache) {
+      // Buffer and cache
+      const chunks: Buffer[] = [];
+      const nodeStream = Readable.fromWeb(upstream.body as never);
+      for await (const chunk of nodeStream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
+      }
+      const buffer = Buffer.concat(chunks);
+
+      if (buffer.length > 0) {
+        this.setPdfHeaders(res);
+        res.setHeader('Cache-Control', 'public, no-cache');
+        res.setHeader('Content-Length', buffer.length);
+        res.send(buffer);
+
+        this.r2.putObject(r2Key, buffer, 'application/pdf').catch((err) => {
+          this.logger.warn(`R2 background PUT failed: ${err}`);
+        });
+        return;
+      }
+    }
+
+    // Stream directly (R2 disabled, non-PDF, or too large)
+    this.setPdfHeaders(res);
+    const etag = upstream.headers.get('etag');
+    const lastMod = upstream.headers.get('last-modified');
+    if (etag) res.setHeader('ETag', etag);
+    if (lastMod) res.setHeader('Last-Modified', lastMod);
+    res.setHeader('Cache-Control', 'public, no-cache');
+    if (upstreamLength) res.setHeader('Content-Length', upstreamLength);
+
+    const nodeStream = Readable.fromWeb(upstream.body as never);
+    try {
+      await pipeline(nodeStream, res);
+    } catch {
+      if (!res.headersSent) res.status(502).end();
+      else res.end();
+    }
+  }
+
+  private setPdfHeaders(res: Response): void {
     res.removeHeader('X-Frame-Options');
     res.removeHeader('Content-Security-Policy');
     res.removeHeader('Cross-Origin-Resource-Policy');
@@ -109,28 +180,6 @@ export class AirportsController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-
-    const etag = upstream.headers.get('etag');
-    const lastMod = upstream.headers.get('last-modified');
-    if (etag) res.setHeader('ETag', etag);
-    if (lastMod) res.setHeader('Last-Modified', lastMod);
-    res.setHeader('Cache-Control', 'public, no-cache');
-
-    const contentLength = upstream.headers.get('content-length');
-    if (contentLength) {
-      res.setHeader('Content-Length', contentLength);
-    }
-
-    const nodeStream = Readable.fromWeb(upstream.body as never);
-    try {
-      await pipeline(nodeStream, res);
-    } catch {
-      if (!res.headersSent) {
-        res.status(502).end();
-      } else {
-        res.end();
-      }
-    }
   }
 
   @Public()

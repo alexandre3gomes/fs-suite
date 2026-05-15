@@ -106,6 +106,13 @@ read_secret "SENTRY_DSN" SENTRY_DSN ""
 read_secret "SENTRY_AUTH_TOKEN" SENTRY_AUTH_TOKEN ""
 echo ""
 
+echo "── Cloudflare R2 — chart PDF cache (leave empty to skip) ──"
+echo ""
+read_secret "R2_ACCOUNT_ID" R2_ACCOUNT_ID ""
+read_secret "R2_ACCESS_KEY_ID" R2_ACCESS_KEY_ID ""
+read_secret "R2_SECRET_ACCESS_KEY" R2_SECRET_ACCESS_KEY ""
+echo ""
+
 echo "── GHCR (image pull) ──"
 echo ""
 read_secret "GitHub PAT with read:packages scope" GHCR_PAT
@@ -130,6 +137,9 @@ $K create secret generic api-secrets \
   --from-literal="ENCRYPTION_KEY=${ENCRYPTION_KEY}" \
   --from-literal="SENTRY_DSN=${SENTRY_DSN}" \
   --from-literal="SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}" \
+  --from-literal="R2_ACCOUNT_ID=${R2_ACCOUNT_ID}" \
+  --from-literal="R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}" \
+  --from-literal="R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}" \
   --dry-run=client -o yaml | $K apply -f -
 
 # ── Create GHCR pull secret ────────────────────────────────

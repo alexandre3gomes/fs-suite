@@ -1,0 +1,78 @@
+import { Readable } from 'stream';
+
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
+const MAX_STORAGE_BYTES = 8 * 1024 * 1024 * 1024; // 8 GB safety limit
+
+@Injectable()
+export class R2StorageService implements OnModuleInit {
+  private client: S3Client | null = null;
+  private bucket = '';
+  private enabled = false;
+  private readonly logger = new Logger(R2StorageService.name);
+
+  constructor(private readonly config: ConfigService) {}
+
+  onModuleInit(): void {
+    const accountId = this.config.get<string>('R2_ACCOUNT_ID');
+    const accessKeyId = this.config.get<string>('R2_ACCESS_KEY_ID');
+    const secretAccessKey = this.config.get<string>('R2_SECRET_ACCESS_KEY');
+    this.bucket = this.config.get<string>('R2_BUCKET_NAME', 'fs-suite-charts');
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      this.logger.warn('R2 disabled — no credentials configured');
+      return;
+    }
+
+    this.client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      credentials: { accessKeyId, secretAccessKey },
+    });
+    this.enabled = true;
+    this.logger.log(`R2 enabled — bucket: ${this.bucket}`);
+  }
+
+  isEnabled(): boolean {
+    return this.enabled;
+  }
+
+  async getObject(key: string): Promise<{ body: Readable; contentLength?: number } | null> {
+    if (!this.enabled || !this.client) return null;
+    try {
+      const resp = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      if (!resp.Body) return null;
+      return { body: resp.Body as Readable, contentLength: resp.ContentLength };
+    } catch (err: unknown) {
+      const code = (err as { name?: string }).name;
+      if (code === 'NoSuchKey') return null;
+      const status = (err as { $metadata?: { httpStatusCode?: number } }).$metadata
+        ?.httpStatusCode;
+      if (status === 404) return null;
+      this.logger.warn(`R2 GET failed for ${key}: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  async putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+    if (!this.enabled || !this.client) return;
+    if (body.length > MAX_STORAGE_BYTES) return;
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: body,
+          ContentType: contentType,
+        }),
+      );
+      this.logger.debug(`R2 PUT ${key} (${(body.length / 1024).toFixed(0)} KB)`);
+    } catch (err: unknown) {
+      this.logger.warn(`R2 PUT failed for ${key}: ${(err as Error).message}`);
+    }
+  }
+}

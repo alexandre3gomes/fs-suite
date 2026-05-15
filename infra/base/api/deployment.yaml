@@ -116,6 +116,26 @@ spec:
                 secretKeyRef:
                   name: api-secrets
                   key: GROQ_API_KEY
+            - name: R2_ACCOUNT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: R2_ACCOUNT_ID
+            - name: R2_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: R2_ACCESS_KEY_ID
+            - name: R2_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: R2_SECRET_ACCESS_KEY
+            - name: R2_BUCKET_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: api-config
+                  key: R2_BUCKET_NAME
           livenessProbe:
             httpGet:
               path: /v1/health
