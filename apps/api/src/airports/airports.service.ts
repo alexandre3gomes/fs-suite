@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Airport, Runway } from '@prisma/client';
+import type { Airport, Frequency, Runway } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -8,7 +8,7 @@ const SEARCH_CACHE_TTL = 3600; // 1 hour
 const MAX_RESULTS = 20;
 const MAX_MAP_RESULTS = 300;
 
-export type AirportWithRunways = Airport & { runways: Runway[] };
+export type AirportWithRunways = Airport & { runways: Runway[]; frequencies: Frequency[] };
 
 export interface MapBounds {
   south: number;
@@ -90,7 +90,10 @@ export class AirportsService {
   async findByIcao(icao: string): Promise<AirportWithRunways | null> {
     return this.prisma.airport.findUnique({
       where: { icao: icao.toUpperCase() },
-      include: { runways: { where: { closed: false }, orderBy: { ident: 'asc' } } },
+      include: {
+        runways: { where: { closed: false }, orderBy: { ident: 'asc' } },
+        frequencies: { orderBy: { type: 'asc' } },
+      },
     });
   }
 

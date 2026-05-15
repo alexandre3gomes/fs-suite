@@ -1,8 +1,7 @@
 import { Input } from '@fs-suite/ui';
-import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
 import { apiClient } from '../../../src/services/api.client';
@@ -15,10 +14,10 @@ import {
 
 type AiProviderValue = 'openai' | 'anthropic' | 'google';
 
-const AI_PROVIDERS: { label: string; value: AiProviderValue }[] = [
-  { label: 'OpenAI', value: 'openai' },
-  { label: 'Anthropic', value: 'anthropic' },
-  { label: 'Google (Gemini)', value: 'google' },
+const AI_PROVIDERS: { label: string; value: AiProviderValue; keyUrl: string }[] = [
+  { label: 'OpenAI', value: 'openai', keyUrl: 'https://platform.openai.com/api-keys' },
+  { label: 'Anthropic', value: 'anthropic', keyUrl: 'https://console.anthropic.com/settings/keys' },
+  { label: 'Google (Gemini)', value: 'google', keyUrl: 'https://aistudio.google.com/apikey' },
 ];
 
 function UnitPicker<T extends string>({ label, options, value, onChange }: { label: string; options: T[]; value: T; onChange: (v: T) => void }) {
@@ -145,8 +144,6 @@ export default function ProfileScreen() {
   }, [t]);
 
   return (
-    <>
-      <Stack.Screen options={{ title: t('dashboard.profile'), headerShown: true, headerBackTitle: t('common.back') }} />
       <ScrollView className="flex-1 bg-background" contentContainerStyle={{ paddingBottom: 40 }}>
         <View className="md:mx-auto md:w-full md:max-w-2xl">
           {/* User info */}
@@ -245,6 +242,17 @@ export default function ProfileScreen() {
                         </Pressable>
                       ))}
                     </View>
+                    <Pressable
+                      onPress={() => {
+                        const provider = AI_PROVIDERS.find((p) => p.value === aiProvider);
+                        if (provider) Linking.openURL(provider.keyUrl);
+                      }}
+                      className="mt-1.5"
+                    >
+                      <Text className="text-xs text-primary underline">
+                        {t('profile.aiGetKey', { provider: AI_PROVIDERS.find((p) => p.value === aiProvider)?.label })}
+                      </Text>
+                    </Pressable>
                   </View>
                   <View className="flex-row items-end gap-2">
                     <View className="flex-1">
@@ -277,6 +285,5 @@ export default function ProfileScreen() {
           </View>
         </View>
       </ScrollView>
-    </>
   );
 }

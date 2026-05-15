@@ -8,8 +8,16 @@ export interface ValidationItem {
   description: string;
 }
 
+export interface AiMeta {
+  provider: string;
+  model: string;
+  byok: boolean;
+  remaining?: number;
+}
+
 export interface ValidationResponse {
   overallStatus: ValidationStatus;
   items: ValidationItem[];
   summary: string;
+  meta?: AiMeta;
 }

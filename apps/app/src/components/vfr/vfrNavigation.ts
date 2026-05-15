@@ -1,5 +1,6 @@
 // VFR navigation calculations — Haversine, bearings, magnetic declination, altitudes
-// Regulatory sources documented in docs/vfr-regulatory-references.md
+// All aviation logic must conform to ICAO/DECEA/ANAC standards.
+// Regulatory sources and decision log: docs/vfr-regulatory-references.md
 
 export interface RouteWaypoint {
   lat: number;
@@ -35,32 +36,55 @@ export function toVfrCoord(lat: number, lng: number): string {
 }
 
 /**
- * Build VFR route text per ICAO Doc 4444 Item 15 / MCA 100-11.
- *
- * Field 15 contains only the route description — departure (Field 13) and
- * destination (Field 16) are NOT included. DCT separates each pair of
- * consecutive points not connected by an airway.
- *
- * Standard VFR:
- *   DCT                                          (direct, no intermediate points)
- *   DCT 2338S04640W DCT 2345S04655W DCT          (with waypoints)
- *
- * REA corridor (entry and exit coordinates with REA designator):
- *   DCT 2337S04640W REA 2345S04655W DCT
+ * Parse VFR coordinate notation back to decimal degrees.
+ * Accepts: "2337S04639W", "2337N04639E", etc.
+ * Returns null if not a valid VFR coordinate.
  */
+export function parseVfrCoord(token: string): { lat: number; lng: number } | null {
+  const m = token.match(/^(\d{2})(\d{2})([NS])(\d{3})(\d{2})([EW])$/);
+  if (!m) return null;
+  const latD = parseInt(m[1]!, 10);
+  const latM = parseInt(m[2]!, 10);
+  const lngD = parseInt(m[4]!, 10);
+  const lngM = parseInt(m[5]!, 10);
+  let lat = latD + latM / 60;
+  let lng = lngD + lngM / 60;
+  if (m[3] === 'S') lat = -lat;
+  if (m[6] === 'W') lng = -lng;
+  return { lat, lng };
+}
+
+/**
+ * Parse a VFR route text into waypoints.
+ * Extracts tokens that are either VFR coordinates or named identifiers,
+ * skipping DCT and airway identifiers.
+ * Named identifiers are returned with lat/lng = 0 (caller must resolve).
+ */
+export function parseVfrRouteText(text: string): RouteWaypoint[] {
+  const tokens = text.toUpperCase().split(/[\s/]+/).filter((t) => t && t !== 'DCT');
+  const waypoints: RouteWaypoint[] = [];
+  for (const token of tokens) {
+    const coord = parseVfrCoord(token);
+    if (coord) {
+      waypoints.push({ lat: coord.lat, lng: coord.lng, name: token });
+    } else if (/^[A-Z][A-Z0-9]{1,9}$/.test(token)) {
+      waypoints.push({ lat: 0, lng: 0, name: token });
+    }
+  }
+  return waypoints;
+}
+
+// ICAO Doc 4444 Field 15 route format (DECEA practice):
+// - DCT between all successive points including leading/trailing
+// - Corridor name goes in Item 18 (RMK/REA), NOT in Field 15
+// - Ref: docs/vfr-regulatory-references.md §1
 export function buildVfrRouteText(
   _originIcao: string | null,
   waypoints: RouteWaypoint[],
   _destinationIcao: string | null,
-  corridorName?: string | null,
+  _corridorName?: string | null,
 ): string {
   if (waypoints.length === 0) return 'DCT';
-
-  if (corridorName && waypoints.length >= 2) {
-    const entry = toVfrCoord(waypoints[0]!.lat, waypoints[0]!.lng);
-    const exit = toVfrCoord(waypoints[waypoints.length - 1]!.lat, waypoints[waypoints.length - 1]!.lng);
-    return `DCT ${entry} REA ${exit} DCT`;
-  }
 
   const coords = waypoints.map((w) => toVfrCoord(w.lat, w.lng));
   return `DCT ${coords.join(' DCT ')} DCT`;
@@ -80,7 +104,8 @@ export function buildReaRemarks(corridorName: string | null): string {
 
 // Default transition altitudes (feet) per region.
 // Below TA: altitude on QNH (expressed as "A045").
-// Above TA: flight level on 1013.25 hPa (expressed as "F055").
+// Above TA: flight level on 1013.25 hPa (expressed as "FL055").
+// Ref: docs/vfr-regulatory-references.md §1.1
 const TRANSITION_ALTITUDES: [string[], number][] = [
   [['SB', 'SD', 'SI', 'SJ', 'SN', 'SS', 'SW'], 5000], // Brazil — varies 3000-7000; 5000 covers most TMAs
   [['K', 'PA', 'PH', 'PB', 'PF', 'PM', 'PP', 'TJ', 'C'], 18000], // USA/Canada — FL180
@@ -106,7 +131,7 @@ export function formatAltitudeDisplay(altFt: number, icaoPrefix?: string): strin
 export function formatAltitudeIcao(altFt: number, icaoPrefix?: string): string {
   const ta = getDefaultTransitionAltitude(icaoPrefix);
   if (altFt < ta) return `A${String(Math.round(altFt / 100)).padStart(3, '0')}`;
-  return `F${String(Math.round(altFt / 100)).padStart(3, '0')}`;
+  return `FL${String(Math.round(altFt / 100)).padStart(3, '0')}`;
 }
 
 export function parseCruiseLevelFt(cruiseLevel: string): number | null {
@@ -291,28 +316,23 @@ function isInOddRange(mc: number, rule: SemicircularRule): boolean {
   return mc >= start || mc < end;
 }
 
-function generateAltitudes(odd: boolean, maxFL: number, imc: boolean): number[] {
+// VFR altitudes are ALWAYS odd/even thousands + 500 ft (ICAO Annex 2, Table S3-1).
+// There is no "IMC" variant — if conditions are IFR/LIFR, VFR flight is not permitted.
+function generateAltitudes(odd: boolean, maxFL: number): number[] {
   const result: number[] = [];
-  const offset = imc ? 0 : 500;
   const start = odd ? 3 : 4;
   const maxAlt = maxFL * 100;
-  for (let n = start; n * 1000 + offset <= maxAlt; n += 2) {
-    result.push(n * 1000 + offset);
+  for (let n = start; n * 1000 + 500 <= maxAlt; n += 2) {
+    result.push(n * 1000 + 500);
   }
   return result;
 }
 
-/**
- * VFR semicircular altitude rule — region-aware.
- * Returns valid cruising altitudes (in feet) based on magnetic course
- * and the departure aerodrome's ICAO prefix.
- * When imc=true (IFR/LIFR conditions), uses full thousands instead of +500.
- */
-export function suggestedVfrAltitudes(magneticCourse: number, icaoPrefix?: string, imc = false): number[] {
+export function suggestedVfrAltitudes(magneticCourse: number, icaoPrefix?: string): number[] {
   const mc = ((magneticCourse % 360) + 360) % 360;
   const rule = icaoPrefix ? getRuleForIcao(icaoPrefix) : RULE_ICAO;
   const odd = isInOddRange(mc, rule);
-  return generateAltitudes(odd, rule.maxFL, imc);
+  return generateAltitudes(odd, rule.maxFL);
 }
 
 /**
@@ -328,19 +348,12 @@ export function getVfrRuleInfo(icaoPrefix: string): { name: string; oddRange: [n
   return { name: 'icao', ...rule };
 }
 
-/**
- * Suggest a single cruise level for the entire route based on the average
- * magnetic course, the departure aerodrome prefix, and weather conditions.
- * When imc=true (IFR/LIFR), altitudes use full thousands (ICA 100-12).
- */
 export function suggestCruiseLevel(
   routeLegs: RouteLeg[],
   departureIcao?: string,
-  imc = false,
 ): { altitudes: number[]; averageMC: number } | null {
   if (routeLegs.length === 0) return null;
 
-  // Weighted average magnetic course (weighted by leg distance)
   let sinSum = 0;
   let cosSum = 0;
   for (const leg of routeLegs) {
@@ -352,7 +365,7 @@ export function suggestCruiseLevel(
   const avgMC = ((toDeg(Math.atan2(sinSum, cosSum)) % 360) + 360) % 360;
 
   return {
-    altitudes: suggestedVfrAltitudes(avgMC, departureIcao, imc),
+    altitudes: suggestedVfrAltitudes(avgMC, departureIcao),
     averageMC: Math.round(avgMC),
   };
 }
@@ -514,4 +527,189 @@ export function calculateRouteLegs(waypoints: RouteWaypoint[], departureIcao?: s
   }
 
   return legs;
+}
+
+// --------------- Route Segments ---------------
+
+export interface RouteSegment {
+  id: string;
+  type: 'corridor' | 'free';
+  legs: RouteLeg[];
+  legIndices: number[];
+  averageMC: number;
+  totalDistanceNm: number;
+  suggestedAltitudes: number[];
+  corridorAltRange?: { min: number; max: number };
+  corridorCompAlt?: number | null;
+}
+
+export interface TocTodPosition {
+  lat: number;
+  lng: number;
+  distanceFromOriginNm: number;
+  label: 'TOC' | 'TOD';
+}
+
+const MIN_SEGMENT_NM = 3;
+
+function weightedAverageMC(legs: RouteLeg[]): number {
+  let sinSum = 0;
+  let cosSum = 0;
+  for (const leg of legs) {
+    const rad = toRad(leg.magneticCourse);
+    const w = leg.distanceNm || 1;
+    sinSum += Math.sin(rad) * w;
+    cosSum += Math.cos(rad) * w;
+  }
+  return Math.round(((toDeg(Math.atan2(sinSum, cosSum)) % 360) + 360) % 360);
+}
+
+export function segmentRouteLegs(
+  routeLegs: RouteLeg[],
+  corridorName: string | null,
+  corridorAltRange: { min: number; max: number } | null,
+  corridorCompAlt: number | null,
+  icaoPrefix?: string,
+): RouteSegment[] {
+  if (routeLegs.length === 0) return [];
+
+  if (!corridorName) {
+    const mc = weightedAverageMC(routeLegs);
+    const totalNm = routeLegs.reduce((s, l) => s + l.distanceNm, 0);
+    return [{
+      id: 'seg-0',
+      type: 'free',
+      legs: routeLegs,
+      legIndices: routeLegs.map((_, i) => i),
+      averageMC: mc,
+      totalDistanceNm: totalNm,
+      suggestedAltitudes: suggestedVfrAltitudes(mc, icaoPrefix),
+    }];
+  }
+
+  const segments: RouteSegment[] = [];
+  const preLeg = routeLegs[0]!;
+  const postLeg = routeLegs[routeLegs.length - 1]!;
+  const corridorLegs = routeLegs.slice(1, -1);
+  const corridorIndices = corridorLegs.map((_, i) => i + 1);
+
+  const preNm = preLeg.distanceNm;
+  const postNm = postLeg.distanceNm;
+  const corridorNm = corridorLegs.reduce((s, l) => s + l.distanceNm, 0);
+
+  if (routeLegs.length <= 2) {
+    const mc = weightedAverageMC(routeLegs);
+    return [{
+      id: 'seg-0',
+      type: 'corridor',
+      legs: routeLegs,
+      legIndices: routeLegs.map((_, i) => i),
+      averageMC: mc,
+      totalDistanceNm: routeLegs.reduce((s, l) => s + l.distanceNm, 0),
+      suggestedAltitudes: filterCorridorAltitudes(suggestedVfrAltitudes(mc, icaoPrefix), corridorAltRange, corridorCompAlt),
+      corridorAltRange: corridorAltRange ?? undefined,
+      corridorCompAlt,
+    }];
+  }
+
+  // Pre-corridor segment (merge into corridor if too short)
+  if (preNm >= MIN_SEGMENT_NM) {
+    const mc = Math.round(preLeg.magneticCourse);
+    segments.push({
+      id: 'seg-pre',
+      type: 'free',
+      legs: [preLeg],
+      legIndices: [0],
+      averageMC: mc,
+      totalDistanceNm: preNm,
+      suggestedAltitudes: suggestedVfrAltitudes(mc, icaoPrefix),
+    });
+  } else {
+    corridorLegs.unshift(preLeg);
+    corridorIndices.unshift(0);
+  }
+
+  // Corridor segment
+  if (corridorLegs.length > 0) {
+    const mc = weightedAverageMC(corridorLegs);
+    segments.push({
+      id: 'seg-corridor',
+      type: 'corridor',
+      legs: corridorLegs,
+      legIndices: corridorIndices,
+      averageMC: mc,
+      totalDistanceNm: corridorNm + (preNm < MIN_SEGMENT_NM ? preNm : 0),
+      suggestedAltitudes: filterCorridorAltitudes(suggestedVfrAltitudes(mc, icaoPrefix), corridorAltRange, corridorCompAlt),
+      corridorAltRange: corridorAltRange ?? undefined,
+      corridorCompAlt,
+    });
+  }
+
+  // Post-corridor segment (merge into corridor if too short)
+  if (postNm >= MIN_SEGMENT_NM) {
+    const mc = Math.round(postLeg.magneticCourse);
+    segments.push({
+      id: 'seg-post',
+      type: 'free',
+      legs: [postLeg],
+      legIndices: [routeLegs.length - 1],
+      averageMC: mc,
+      totalDistanceNm: postNm,
+      suggestedAltitudes: suggestedVfrAltitudes(mc, icaoPrefix),
+    });
+  }
+
+  return segments;
+}
+
+function filterCorridorAltitudes(
+  alts: number[],
+  range: { min: number; max: number } | null,
+  compAlt: number | null,
+): number[] {
+  if (compAlt != null) return [compAlt];
+  if (range) return alts.filter((a) => a >= range.min && a <= range.max);
+  return alts;
+}
+
+// --------------- TOC / TOD ---------------
+
+export function calculateTocDistance(
+  originElevFt: number,
+  cruiseAltFt: number,
+  climbRateFpm = 700,
+  groundSpeedKts = 90,
+): number {
+  const gain = cruiseAltFt - originElevFt;
+  if (gain <= 0) return 0;
+  const timeMin = gain / climbRateFpm;
+  return Math.round(((timeMin / 60) * groundSpeedKts) * 10) / 10;
+}
+
+export function calculateTodFromDestination(cruiseAltFt: number, destElevFt: number): number {
+  const descent = cruiseAltFt - destElevFt;
+  if (descent <= 0) return 0;
+  return Math.round((descent / 1000) * 3);
+}
+
+export function interpolatePositionOnRoute(
+  routePoints: { lat: number; lng: number }[],
+  targetDistanceNm: number,
+): { lat: number; lng: number } | null {
+  if (routePoints.length < 2) return null;
+  let accumulated = 0;
+  for (let i = 0; i < routePoints.length - 1; i++) {
+    const a = routePoints[i]!;
+    const b = routePoints[i + 1]!;
+    const legDist = haversineDistanceNm(a.lat, a.lng, b.lat, b.lng);
+    if (accumulated + legDist >= targetDistanceNm) {
+      const frac = legDist > 0 ? (targetDistanceNm - accumulated) / legDist : 0;
+      return {
+        lat: a.lat + frac * (b.lat - a.lat),
+        lng: a.lng + frac * (b.lng - a.lng),
+      };
+    }
+    accumulated += legDist;
+  }
+  return routePoints[routePoints.length - 1] ?? null;
 }

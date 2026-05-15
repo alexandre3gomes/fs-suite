@@ -28,7 +28,8 @@ export interface ParsedTaf {
 interface Props {
   taf: ParsedTaf | null;
   loading?: boolean;
-  etaMinutes?: number;
+  targetEpoch?: number;
+  targetLabel?: string;
 }
 
 function categoryColor(cat: string | null): string {
@@ -92,14 +93,9 @@ function changeLabel(change: string | null, prob: number | null): string | null 
   return change;
 }
 
-function getEtaEpoch(etaMinutes?: number): number | null {
-  if (!etaMinutes) return null;
-  return Math.floor(Date.now() / 1000) + etaMinutes * 60;
-}
-
-function isPeriodAtEta(p: TafForecastPeriod, etaEpoch: number | null): boolean {
-  if (!etaEpoch) return false;
-  return etaEpoch >= p.timeFrom && etaEpoch < p.timeTo;
+function isPeriodAtTarget(p: TafForecastPeriod, targetEpoch: number | undefined): boolean {
+  if (!targetEpoch) return false;
+  return targetEpoch >= p.timeFrom && targetEpoch < p.timeTo;
 }
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -111,7 +107,7 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function TafDisplay({ taf, loading, etaMinutes }: Props) {
+export function TafDisplay({ taf, loading, targetEpoch, targetLabel }: Props) {
   const { t } = useTranslation();
 
   if (loading) {
@@ -130,7 +126,7 @@ export function TafDisplay({ taf, loading, etaMinutes }: Props) {
     );
   }
 
-  const etaEpoch = getEtaEpoch(etaMinutes);
+  const label = targetLabel ?? 'ETA';
 
   return (
     <View className="mt-1 rounded-sm border border-border bg-surface-muted px-3 py-2">
@@ -143,7 +139,7 @@ export function TafDisplay({ taf, loading, etaMinutes }: Props) {
       </Text>
 
       {taf.periods.map((period, idx) => {
-        const isEta = isPeriodAtEta(period, etaEpoch);
+        const isEta = isPeriodAtTarget(period, targetEpoch);
         const change = changeLabel(period.fcstChange, period.probability);
         const cavok = isCavok(period);
         const timeLabel = periodTimeLabel(period);
@@ -173,7 +169,7 @@ export function TafDisplay({ taf, loading, etaMinutes }: Props) {
               ) : null}
               {isEta ? (
                 <View className="rounded bg-primary/20 px-1.5 py-0.5">
-                  <Text className="text-[9px] font-bold text-primary">ETA</Text>
+                  <Text className="text-[9px] font-bold text-primary">{label}</Text>
                 </View>
               ) : null}
               <Text className={`ml-auto text-[10px] font-bold ${categoryColor(period.flightCategory)}`}>

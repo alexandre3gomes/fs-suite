@@ -14,7 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
 import type { ValidateFlightPlanDto } from './dto/validate-flight-plan.dto';
-import type { ValidationItem, ValidationResponse } from './dto/validation-response.dto';
+import type { AiMeta, ValidationItem, ValidationResponse } from './dto/validation-response.dto';
 import { FLIGHT_PLAN_VALIDATION_SYSTEM_PROMPT } from './prompts/system-prompt';
 import type { AiProvider } from './providers/ai-provider.interface';
 import { AnthropicProvider } from './providers/anthropic.provider';
@@ -37,6 +37,8 @@ function getDefaultModel(provider: string): string {
   return (DEFAULT_MODELS as Record<string, string>)[provider] ?? DEFAULT_MODELS.openai;
 }
 
+type FreqMap = Map<string, { type: string; description: string; frequencyMhz: number }[]>;
+
 @Injectable()
 export class AiValidationService {
   private readonly logger = new Logger(AiValidationService.name);
@@ -57,186 +59,227 @@ export class AiValidationService {
     userId: string,
     dto: ValidateFlightPlanDto,
   ): Promise<ValidationResponse> {
-    const userPrompt = this.buildUserPrompt(dto);
-    const raw = await this.callAiWithFallback(userId, userPrompt);
+    const freqMap = await this.lookupFrequencies(dto);
+    const userPrompt = this.buildUserPrompt(dto, freqMap);
+    const { raw, meta } = await this.callAiWithFallback(userId, userPrompt);
     const result = this.parseValidationResponse(raw);
+    result.meta = meta;
 
     void this.activity.log('ai_validation.completed', userId, {
       origin: dto.originIcao,
       destination: dto.destinationIcao,
       status: result.overallStatus,
+      provider: meta.provider,
+      byok: meta.byok,
     });
 
     return result;
   }
 
-  private formatRunways(
-    runways: { ident: string; headingDeg?: number | null; lengthFt?: number | null }[] | undefined,
-  ): string | null {
-    if (!runways?.length) return null;
-    return runways
-      .map((r) => {
-        const parts = [r.ident];
-        if (r.headingDeg != null) parts.push(`hdg ${Math.round(r.headingDeg)}°`);
-        if (r.lengthFt != null) parts.push(`${r.lengthFt} ft`);
-        return parts.join(' ');
-      })
-      .join(' | ');
+  private async lookupFrequencies(dto: ValidateFlightPlanDto): Promise<FreqMap> {
+    const icaos = [dto.originIcao, dto.destinationIcao, dto.alternateIcao].filter(
+      (v): v is string => !!v,
+    );
+    if (icaos.length === 0) return new Map();
+
+    const frequencies = await this.prisma.frequency.findMany({
+      where: { airportIcao: { in: icaos } },
+      orderBy: [{ airportIcao: 'asc' }, { type: 'asc' }],
+    });
+
+    const map: FreqMap = new Map();
+    for (const f of frequencies) {
+      const list = map.get(f.airportIcao) ?? [];
+      list.push({ type: f.type, description: f.description, frequencyMhz: f.frequencyMhz });
+      map.set(f.airportIcao, list);
+    }
+    return map;
   }
 
-  private buildUserPrompt(dto: ValidateFlightPlanDto): string {
-    const lines: string[] = ['## Flight Plan to Validate', ''];
+  private buildUserPrompt(dto: ValidateFlightPlanDto, freqMap: FreqMap): string {
+    const plan: Record<string, unknown> = {};
 
-    if (dto.flightRules) lines.push(`**Flight Rules**: ${dto.flightRules}`);
-    if (dto.flightCondition) lines.push(`**Flight Condition**: ${dto.flightCondition === 'night' ? 'NOTURNO' : 'DIURNO'}`);
+    plan.flight = {
+      rules: dto.flightRules ?? 'VFR',
+      condition: dto.flightCondition === 'night' ? 'NOTURNO' : 'DIURNO',
+    };
 
-    // Origin
-    lines.push('', '### Origin');
-    if (dto.originIcao) {
-      lines.push(
-        `**Aerodrome**: ${dto.originIcao}${dto.originName ? ` (${dto.originName})` : ''}${dto.originElevationFt != null ? ` — Elevation: ${dto.originElevationFt} ft` : ''}`,
-      );
-    }
-    if (dto.originRunwayInUse) lines.push(`**Runway in use**: ${dto.originRunwayInUse}`);
-    const originRwys = this.formatRunways(dto.originRunways);
-    if (originRwys) lines.push(`**Available runways**: ${originRwys}`);
-    if (dto.originMetarRaw) lines.push(`**METAR**: ${dto.originMetarRaw}`);
-    if (dto.originTafRaw) lines.push(`**TAF**: ${dto.originTafRaw}`);
+    plan.origin = this.buildAerodromeBlock(
+      dto.originIcao, dto.originName, dto.originElevationFt,
+      dto.originRunwayInUse, dto.originRunways, dto.originMetarRaw, dto.originTafRaw,
+      freqMap.get(dto.originIcao ?? '') ?? [],
+    );
 
-    // Destination
-    lines.push('', '### Destination');
-    if (dto.destinationIcao) {
-      lines.push(
-        `**Aerodrome**: ${dto.destinationIcao}${dto.destinationName ? ` (${dto.destinationName})` : ''}${dto.destinationElevationFt != null ? ` — Elevation: ${dto.destinationElevationFt} ft` : ''}`,
-      );
-    }
-    if (dto.destinationRunwayInUse) lines.push(`**Runway in use**: ${dto.destinationRunwayInUse}`);
-    const destRwys = this.formatRunways(dto.destinationRunways);
-    if (destRwys) lines.push(`**Available runways**: ${destRwys}`);
-    if (dto.destinationMetarRaw) lines.push(`**METAR**: ${dto.destinationMetarRaw}`);
-    if (dto.destinationTafRaw) lines.push(`**TAF**: ${dto.destinationTafRaw}`);
+    plan.destination = this.buildAerodromeBlock(
+      dto.destinationIcao, dto.destinationName, dto.destinationElevationFt,
+      dto.destinationRunwayInUse, dto.destinationRunways, dto.destinationMetarRaw, dto.destinationTafRaw,
+      freqMap.get(dto.destinationIcao ?? '') ?? [],
+    );
     if (dto.tripMinutes != null) {
-      const now = new Date();
-      const eta = new Date(now.getTime() + dto.tripMinutes * 60_000);
-      lines.push(`**ETA**: ${eta.toISOString().slice(0, 16)}Z (~${dto.tripMinutes} min)`);
+      const eta = new Date(Date.now() + dto.tripMinutes * 60_000);
+      (plan.destination as Record<string, unknown>).etaZulu = eta.toISOString().slice(0, 16) + 'Z';
+      (plan.destination as Record<string, unknown>).etaMinutes = dto.tripMinutes;
     }
 
-    // Alternate
     if (dto.alternateIcao) {
-      lines.push('', '### Alternate');
-      lines.push(
-        `**Aerodrome**: ${dto.alternateIcao}${dto.alternateName ? ` (${dto.alternateName})` : ''}${dto.alternateElevationFt != null ? ` — Elevation: ${dto.alternateElevationFt} ft` : ''}`,
-      );
-      if (dto.alternateRunwayInUse) lines.push(`**Runway in use**: ${dto.alternateRunwayInUse}`);
-      const altRwys = this.formatRunways(dto.alternateRunways);
-      if (altRwys) lines.push(`**Available runways**: ${altRwys}`);
-      if (dto.alternateMetarRaw) lines.push(`**METAR**: ${dto.alternateMetarRaw}`);
-      if (dto.alternateTafRaw) lines.push(`**TAF**: ${dto.alternateTafRaw}`);
-      if (dto.altDistanceNm != null) lines.push(`**Distance from destination**: ${dto.altDistanceNm} NM`);
+      plan.alternate = {
+        ...this.buildAerodromeBlock(
+          dto.alternateIcao, dto.alternateName, dto.alternateElevationFt,
+          dto.alternateRunwayInUse, dto.alternateRunways, dto.alternateMetarRaw, dto.alternateTafRaw,
+          freqMap.get(dto.alternateIcao) ?? [],
+        ),
+        distanceFromDestNm: dto.altDistanceNm ?? null,
+      };
     }
 
-    // Aircraft
-    lines.push('', '### Aircraft');
-    if (dto.aircraftType)
-      lines.push(`**Type**: ${dto.aircraftType}${dto.aircraftName ? ` (${dto.aircraftName})` : ''}`);
-    if (dto.cruiseSpeedKts != null) lines.push(`**Cruise speed**: ${dto.cruiseSpeedKts} kt`);
+    plan.aircraft = {
+      icaoType: dto.aircraftType ?? null,
+      name: dto.aircraftName ?? null,
+      cruiseSpeedKts: dto.cruiseSpeedKts ?? null,
+      performanceCategory: dto.performanceCategory ?? null,
+    };
 
-    // Route
-    lines.push('', '### Route');
-    if (dto.routeText) lines.push(`**Route string**: ${dto.routeText}`);
-    if (dto.cruiseLevel) lines.push(`**Cruise Level**: ${dto.cruiseLevel}`);
-    if (dto.totalDistanceNm != null) lines.push(`**Total distance**: ${dto.totalDistanceNm} NM`);
-    if (dto.tripMinutes != null) lines.push(`**Trip time**: ${dto.tripMinutes} min`);
-    if (dto.todMinutes != null) lines.push(`**Top of descent**: ${dto.todMinutes} min before destination`);
-    if (dto.todDistanceNm != null) lines.push(`**TOD distance**: ${dto.todDistanceNm} NM before destination`);
+    plan.route = {
+      routeString: dto.routeText ?? null,
+      cruiseLevel: dto.cruiseLevel ?? null,
+      totalDistanceNm: dto.totalDistanceNm ?? null,
+      tripMinutes: dto.tripMinutes ?? null,
+      todMinutes: dto.todMinutes ?? null,
+      todDistanceNm: dto.todDistanceNm ?? null,
+    };
 
     if (dto.routeLegs?.length) {
-      lines.push('', '**Route Legs** (in order):');
-      for (const leg of dto.routeLegs.slice(0, 50)) {
-        const altStr = leg.suggestedAltitudes?.length
-          ? ` | Alt sugeridas: ${leg.suggestedAltitudes.join(', ')} ft`
-          : '';
-        lines.push(
-          `- ${leg.from} → ${leg.to}: ${leg.distanceNm.toFixed(1)} NM, TC ${Math.round(leg.trueCourse)}°, MC ${Math.round(leg.magneticCourse)}° (MagVar ${leg.magneticDeclination > 0 ? '+' : ''}${leg.magneticDeclination.toFixed(1)}°)${altStr}`,
-        );
-      }
+      plan.routeLegs = dto.routeLegs.slice(0, 50).map((leg) => ({
+        from: leg.from,
+        to: leg.to,
+        distanceNm: +leg.distanceNm.toFixed(1),
+        trueCourse: Math.round(leg.trueCourse),
+        magneticCourse: Math.round(leg.magneticCourse),
+        magneticDeclination: +leg.magneticDeclination.toFixed(1),
+        suggestedAltitudesFt: leg.suggestedAltitudes ?? [],
+      }));
     }
 
-    // Visual references
     if (dto.visualReferences?.length) {
-      lines.push('', '**Visual References** (route reconnaissance):');
-      for (const ref of dto.visualReferences.slice(0, 30)) {
-        const parts = [`#${ref.sequence} ${ref.name}`];
-        if (ref.distanceNm != null) parts.push(`${ref.distanceNm} NM from origin`);
-        if (ref.timeMin != null) parts.push(`~${ref.timeMin} min`);
-        lines.push(`- ${parts.join(' — ')}`);
-      }
+      plan.visualReferences = dto.visualReferences.slice(0, 30).map((ref) => ({
+        seq: ref.sequence,
+        name: ref.name,
+        distanceNm: ref.distanceNm ?? null,
+        timeMin: ref.timeMin ?? null,
+      }));
     }
 
-    // REA Corridors
     if (dto.reaCorridors?.length) {
-      lines.push('', '### REA Corridors (route crosses these regions)');
-      for (const corridor of dto.reaCorridors) {
-        lines.push(`**${corridor.regionName} — ${corridor.corridorName}** (${corridor.tipo === 'Obrig' ? 'OBRIGATÓRIO' : 'RECOMENDADO'})`);
-        if (corridor.segments?.length) {
-          for (const seg of corridor.segments) {
-            const altComp = seg.altComp != null ? ` (alt compulsória: ${seg.altComp} ft)` : '';
-            lines.push(`  - ${seg.from} → ${seg.to}: ${seg.altMin}–${seg.altMax} ft${altComp}`);
-          }
-        }
-      }
+      plan.reaCorridors = dto.reaCorridors.map((c) => ({
+        region: c.regionName,
+        corridor: c.corridorName,
+        type: c.tipo === 'Obrig' ? 'OBRIGATÓRIO' : 'RECOMENDADO',
+        segments: c.segments?.map((s) => ({
+          from: s.from, to: s.to,
+          altMinFt: s.altMin, altMaxFt: s.altMax,
+          altCompulsoryFt: s.altComp ?? null,
+        })) ?? [],
+      }));
     }
 
-    // Weight
-    lines.push('', '### Weight & Balance');
-    if (dto.emptyWeightKg != null) lines.push(`**Empty weight**: ${dto.emptyWeightKg} kg`);
-    if (dto.payloadKg != null) lines.push(`**Payload**: ${dto.payloadKg} kg`);
-    if (dto.takeoffWeightKg != null) lines.push(`**Takeoff weight**: ${dto.takeoffWeightKg} kg`);
-    if (dto.mtowKg != null) lines.push(`**MTOW**: ${dto.mtowKg} kg`);
+    plan.weight = {
+      emptyWeightKg: dto.emptyWeightKg ?? null,
+      payloadKg: dto.payloadKg ?? null,
+      takeoffWeightKg: dto.takeoffWeightKg ?? null,
+      mtowKg: dto.mtowKg ?? null,
+    };
 
-    // Fuel
-    lines.push('', '### Fuel');
-    if (dto.fuelCurrentTotal != null) lines.push(`**Fuel on board**: ${dto.fuelCurrentTotal} kg`);
-    if (dto.fuelConsumptionPerHour != null) lines.push(`**Consumption**: ${dto.fuelConsumptionPerHour} kg/h`);
-    if (dto.fuelCapacityL != null) lines.push(`**Tank capacity**: ${dto.fuelCapacityL} L`);
-    if (dto.fuelPerWing != null) lines.push(`**Per wing**: ${dto.fuelPerWing} kg`);
-    if (dto.tripFuelKg != null) lines.push(`**Trip fuel**: ${dto.tripFuelKg} kg`);
-    if (dto.altFuelKg != null) lines.push(`**Alternate fuel**: ${dto.altFuelKg} kg`);
-    if (dto.contingencyPct != null) lines.push(`**Contingency**: ${dto.contingencyPct}%`);
-    if (dto.contingencyFuelKg != null) lines.push(`**Contingency fuel**: ${dto.contingencyFuelKg} kg`);
-    if (dto.reserveFuelKg != null) lines.push(`**Reserve fuel**: ${dto.reserveFuelKg} kg`);
-    if (dto.fuelReserveMinutes != null) lines.push(`**Reserve time**: ${dto.fuelReserveMinutes} min`);
-    if (dto.minFuelKg != null) lines.push(`**Minimum required fuel**: ${dto.minFuelKg} kg`);
-    if (dto.fuelRequiredTotal != null) lines.push(`**Total required**: ${dto.fuelRequiredTotal} kg`);
-    if (dto.enduranceMinutes != null) lines.push(`**Endurance**: ${dto.enduranceMinutes} min`);
+    plan.fuel = {
+      onBoardKg: dto.fuelCurrentTotal ?? null,
+      consumptionKgPerHour: dto.fuelConsumptionPerHour ?? null,
+      tankCapacityL: dto.fuelCapacityL ?? null,
+      perWingKg: dto.fuelPerWing ?? null,
+      tripFuelKg: dto.tripFuelKg ?? null,
+      altFuelKg: dto.altFuelKg ?? null,
+      contingencyPct: dto.contingencyPct ?? null,
+      contingencyFuelKg: dto.contingencyFuelKg ?? null,
+      reserveFuelKg: dto.reserveFuelKg ?? null,
+      reserveMinutes: dto.fuelReserveMinutes ?? null,
+      minRequiredKg: dto.minFuelKg ?? null,
+      totalRequiredKg: dto.fuelRequiredTotal ?? null,
+      enduranceMinutes: dto.enduranceMinutes ?? null,
+    };
 
-    // Operational
-    lines.push('', '### Operational');
-    if (dto.callsign) lines.push(`**Callsign**: ${dto.callsign}`);
-    if (dto.performanceCategory) lines.push(`**Performance category**: ${dto.performanceCategory}`);
-    if (dto.item18Text) lines.push(`**Item 18 (Other Information)**: ${dto.item18Text}`);
-    if (dto.remarks) lines.push(`**Remarks (Item 18 full)**: ${dto.remarks.slice(0, 500)}`);
+    plan.operational = {
+      callsign: dto.callsign ?? null,
+      item18: dto.item18Text ?? dto.remarks ?? null,
+    };
 
-    return lines.join('\n');
+    const json = JSON.stringify(plan, null, 2);
+
+    return `Analise o plano de voo VFR abaixo e produza o briefing completo conforme o template do sistema.
+
+DADOS DO PLANO:
+${json}
+
+LEMBRETE: produza 20-35 items. Cada description deve ser um parágrafo completo com dados concretos: cálculos de vento (fórmula + valores), frequências reais (MHz), V-speeds, fraseologia completa (chamada do piloto + resposta ATC + readback), sequência cold-and-dark, circuito de tráfego detalhado. Nunca genérico.`;
+  }
+
+  private buildAerodromeBlock(
+    icao?: string, name?: string, elevationFt?: number,
+    runwayInUse?: string,
+    runways?: { ident: string; headingDeg?: number | null; lengthFt?: number | null }[],
+    metar?: string, taf?: string,
+    frequencies?: { type: string; description: string; frequencyMhz: number }[],
+  ): Record<string, unknown> {
+    return {
+      icao: icao ?? null,
+      name: name ?? null,
+      elevationFt: elevationFt ?? null,
+      runwayInUse: runwayInUse ?? null,
+      runways: runways?.map((r) => ({
+        ident: r.ident,
+        headingDeg: r.headingDeg ?? null,
+        lengthFt: r.lengthFt ?? null,
+      })) ?? [],
+      frequencies: frequencies?.map((f) => ({
+        type: f.type,
+        description: f.description,
+        mhz: f.frequencyMhz,
+      })) ?? [],
+      metar: metar ?? null,
+      taf: taf ?? null,
+    };
   }
 
   private async callAiWithFallback(
     userId: string,
     userPrompt: string,
-  ): Promise<string> {
+  ): Promise<{ raw: string; meta: AiMeta }> {
     const byok = await this.getUserByokConfig(userId);
 
     if (byok) {
+      const model = getDefaultModel(byok.provider);
       try {
         const provider = this.getProvider(byok.provider);
-        return await provider.generateCompletion(
+        const raw = await provider.generateCompletion(
           FLIGHT_PLAN_VALIDATION_SYSTEM_PROMPT,
           userPrompt,
-          { apiKey: byok.apiKey, model: getDefaultModel(byok.provider) },
+          { apiKey: byok.apiKey, model },
         );
+        return { raw, meta: { provider: byok.provider, model, byok: true } };
       } catch (err) {
+        const message = (err as Error).message ?? '';
+        const isQuotaOrAuth = /429|401|403|quota|billing|insufficient|invalid.*key/i.test(message);
+
+        if (isQuotaOrAuth) {
+          throw new HttpException(
+            {
+              statusCode: HttpStatus.PAYMENT_REQUIRED,
+              message: `Your ${byok.provider.toUpperCase()} API key returned an error: ${message}. Check your billing/quota at the provider dashboard.`,
+              provider: byok.provider,
+            },
+            HttpStatus.PAYMENT_REQUIRED,
+          );
+        }
+
         this.logger.warn(
-          `BYOK provider ${byok.provider} failed for user ${userId}, falling through to free tier: ${(err as Error).message}`,
+          `BYOK provider ${byok.provider} failed for user ${userId}, falling through to free tier: ${message}`,
         );
       }
     }
@@ -256,13 +299,15 @@ export class AiValidationService {
     const geminiKey = this.config.get<string>('GEMINI_API_KEY');
     if (geminiKey) {
       try {
-        const result = await this.geminiProvider.generateCompletion(
+        const model = DEFAULT_MODELS.gemini as string;
+        const raw = await this.geminiProvider.generateCompletion(
           FLIGHT_PLAN_VALIDATION_SYSTEM_PROMPT,
           userPrompt,
-          { apiKey: geminiKey, model: DEFAULT_MODELS.gemini as string },
+          { apiKey: geminiKey, model },
         );
         await this.incrementRateLimit(userId);
-        return result;
+        const remaining = RATE_LIMIT_PER_DAY - (await this.getCurrentUsage(userId));
+        return { raw, meta: { provider: 'gemini', model, byok: false, remaining } };
       } catch (err) {
         this.logger.warn(`Gemini free tier failed: ${(err as Error).message}`);
       }
@@ -271,13 +316,15 @@ export class AiValidationService {
     const groqKey = this.config.get<string>('GROQ_API_KEY');
     if (groqKey) {
       try {
-        const result = await this.groqProvider.generateCompletion(
+        const model = DEFAULT_MODELS.groq as string;
+        const raw = await this.groqProvider.generateCompletion(
           FLIGHT_PLAN_VALIDATION_SYSTEM_PROMPT,
           userPrompt,
-          { apiKey: groqKey, model: DEFAULT_MODELS.groq as string },
+          { apiKey: groqKey, model },
         );
         await this.incrementRateLimit(userId);
-        return result;
+        const remaining = RATE_LIMIT_PER_DAY - (await this.getCurrentUsage(userId));
+        return { raw, meta: { provider: 'groq', model, byok: false, remaining } };
       } catch (err) {
         this.logger.warn(`Groq free tier failed: ${(err as Error).message}`);
       }
@@ -333,6 +380,11 @@ export class AiValidationService {
     const count = parseInt((await client.get(key)) ?? '0', 10);
     const remaining = Math.max(0, RATE_LIMIT_PER_DAY - count);
     return { allowed: count < RATE_LIMIT_PER_DAY, remaining };
+  }
+
+  private async getCurrentUsage(userId: string): Promise<number> {
+    const key = `ai-validation:rate:${userId}:${new Date().toISOString().slice(0, 10)}`;
+    return parseInt((await this.redis.getClient().get(key)) ?? '0', 10);
   }
 
   private async incrementRateLimit(userId: string): Promise<void> {

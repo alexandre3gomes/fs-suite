@@ -17,8 +17,10 @@ const prisma = new PrismaClient();
 
 const AIRPORTS_CSV_URL = 'https://davidmegginson.github.io/ourairports-data/airports.csv';
 const RUNWAYS_CSV_URL = 'https://davidmegginson.github.io/ourairports-data/runways.csv';
+const FREQUENCIES_CSV_URL = 'https://davidmegginson.github.io/ourairports-data/airport-frequencies.csv';
 const AIRPORTS_CACHE = path.join(__dirname, 'airports-cache.csv');
 const RUNWAYS_CACHE = path.join(__dirname, 'runways-cache.csv');
+const FREQUENCIES_CACHE = path.join(__dirname, 'frequencies-cache.csv');
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const ALLOWED_TYPES = ['large_airport', 'medium_airport', 'small_airport'];
@@ -104,14 +106,14 @@ function readCsv(filePath: string): { headers: string[]; headerMap: Map<string, 
   const csv = fs.readFileSync(filePath, 'utf-8');
   const lines = csv.split('\n').filter((l) => l.trim().length > 0);
   if (lines.length < 2) throw new Error('CSV file appears empty or malformed');
-  const headers = parseCsvLine(lines[0]);
+  const headers = parseCsvLine(lines[0]!);
   const headerMap = new Map(headers.map((h, i) => [h, i]));
   return { headers, headerMap, lines };
 }
 
 function getField(fields: string[], headerMap: Map<string, number>, name: string): string {
   const idx = headerMap.get(name);
-  return idx !== undefined ? fields[idx] : '';
+  return idx !== undefined ? (fields[idx] ?? '') : '';
 }
 
 async function seedAirports(): Promise<void> {
@@ -132,7 +134,7 @@ async function seedAirports(): Promise<void> {
   }[] = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const fields = parseCsvLine(lines[i]);
+    const fields = parseCsvLine(lines[i]!);
     const airportType = getField(fields, headerMap, 'type');
     const ident = getField(fields, headerMap, 'ident');
 
@@ -230,7 +232,7 @@ async function seedRunways(): Promise<void> {
   }[] = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const fields = parseCsvLine(lines[i]);
+    const fields = parseCsvLine(lines[i]!);
     const airportIdent = getField(fields, headerMap, 'airport_ident');
 
     if (!icaoSet.has(airportIdent)) continue;
@@ -281,9 +283,65 @@ async function seedRunways(): Promise<void> {
   console.log(`Runways seed complete: ${created}`);
 }
 
+async function seedFrequencies(): Promise<void> {
+  await ensureCached(FREQUENCIES_CSV_URL, FREQUENCIES_CACHE, 'frequencies CSV');
+  const { headerMap, lines } = readCsv(FREQUENCIES_CACHE);
+
+  const existingAirports = await prisma.airport.findMany({ select: { icao: true } });
+  const icaoSet = new Set(existingAirports.map((a) => a.icao));
+
+  await prisma.frequency.deleteMany({});
+  console.log('Cleared existing frequencies');
+
+  const frequencies: {
+    airportIcao: string;
+    type: string;
+    description: string;
+    frequencyMhz: number;
+  }[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const fields = parseCsvLine(lines[i]!);
+    const airportIdent = getField(fields, headerMap, 'airport_ident');
+
+    if (!icaoSet.has(airportIdent)) continue;
+
+    const freqStr = getField(fields, headerMap, 'frequency_mhz');
+    const freq = parseFloat(freqStr);
+    if (isNaN(freq) || freq <= 0) continue;
+
+    const freqType = getField(fields, headerMap, 'type') || 'OTHER';
+    const desc = getField(fields, headerMap, 'description') || freqType;
+
+    frequencies.push({
+      airportIcao: airportIdent,
+      type: freqType,
+      description: desc,
+      frequencyMhz: freq,
+    });
+  }
+
+  console.log(`Parsed ${frequencies.length} frequencies for seeded airports`);
+
+  const BATCH_SIZE = 500;
+  let created = 0;
+
+  for (let i = 0; i < frequencies.length; i += BATCH_SIZE) {
+    const batch = frequencies.slice(i, i + BATCH_SIZE);
+    await prisma.frequency.createMany({ data: batch });
+    created += batch.length;
+    if (created % 5000 === 0 || created === frequencies.length) {
+      console.log(`  Frequencies: ${created}/${frequencies.length}`);
+    }
+  }
+
+  console.log(`Frequencies seed complete: ${created}`);
+}
+
 async function main(): Promise<void> {
   await seedAirports();
   await seedRunways();
+  await seedFrequencies();
 }
 
 main()

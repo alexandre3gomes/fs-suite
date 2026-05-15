@@ -21,11 +21,11 @@ export class AnthropicProvider implements AiProvider {
       },
       body: JSON.stringify({
         model: config.model,
-        max_tokens: 4096,
+        max_tokens: 16_384,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(120_000),
     });
 
     if (!response.ok) {

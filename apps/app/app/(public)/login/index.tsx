@@ -17,6 +17,24 @@ const FEATURES = [
   { key: 'Charts', icon: '📄', color: '#16a34a' },
 ] as const;
 
+const AI_CHECKS = [
+  { key: 'Route', icon: '🧭' },
+  { key: 'Weather', icon: '🌦' },
+  { key: 'Fuel', icon: '⛽' },
+  { key: 'Airspace', icon: '🗺' },
+  { key: 'Regulations', icon: '📋' },
+  { key: 'Risk', icon: '⚠️' },
+] as const;
+
+const EXPORT_ITEMS = [
+  { key: 'Plan', icon: '📝' },
+  { key: 'Ai', icon: '🤖' },
+  { key: 'Checklist', icon: '✅' },
+  { key: 'Charts', icon: '🗺' },
+  { key: 'Map', icon: '📍' },
+  { key: 'Viability', icon: '🛡' },
+] as const;
+
 const METHODS = [
   { key: 'Semi', icon: '🧭' },
   { key: 'Fuel', icon: '🛢' },
@@ -282,6 +300,234 @@ export default function LoginScreen(): JSX.Element {
                 </Text>
               </View>
             ))}
+          </View>
+        </View>
+      </View>
+
+      {/* ===== AI INSTRUCTOR SECTION ===== */}
+      <View
+        style={{
+          paddingHorizontal: 24,
+          paddingVertical: isWide ? 96 : 64,
+          backgroundColor: '#0c1222',
+          ...(Platform.OS === 'web' ? {
+            backgroundImage: 'linear-gradient(135deg, #0c1222 0%, #1a1040 50%, #0c1222 100%)',
+          } as never : {}),
+        }}
+      >
+        {/* Glow accent */}
+        <View
+          style={{
+            position: 'absolute', top: '30%', left: '50%', width: 400, height: 400,
+            marginLeft: -200, borderRadius: 200, opacity: 0.06,
+            backgroundColor: '#8b5cf6',
+            ...(Platform.OS === 'web' ? { filter: 'blur(80px)' } as never : {}),
+          }}
+          pointerEvents="none"
+        />
+
+        <View className="mx-auto w-full" style={{ maxWidth: 1000 }}>
+          {/* Badge */}
+          <View style={{ alignSelf: 'center', backgroundColor: '#8b5cf620', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6, marginBottom: 20 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#a78bfa', letterSpacing: 1 }}>
+              {t('home.aiBadge')}
+            </Text>
+          </View>
+
+          <Text
+            style={{
+              fontSize: isWide ? 32 : 24,
+              fontWeight: '700',
+              color: '#ffffff',
+              textAlign: 'center',
+              letterSpacing: -0.5,
+            }}
+          >
+            {t('home.aiTitle')}
+          </Text>
+          <View style={{ alignSelf: 'center', width: 60, height: 3, backgroundColor: '#8b5cf6', borderRadius: 2, marginTop: 16 }} />
+
+          <Text
+            style={{
+              fontSize: isWide ? 16 : 14,
+              color: '#94a3b8',
+              textAlign: 'center',
+              lineHeight: isWide ? 26 : 22,
+              marginTop: 24,
+              maxWidth: 680,
+              alignSelf: 'center',
+            }}
+          >
+            {t('home.aiDescription')}
+          </Text>
+
+          {/* AI checks grid */}
+          <View
+            style={{
+              marginTop: 48,
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: isWide ? 16 : 12,
+              justifyContent: 'center',
+            }}
+          >
+            {AI_CHECKS.map((check) => (
+              <View
+                key={check.key}
+                style={{
+                  width: isWide ? '30%' : '46%',
+                  minWidth: isWide ? 180 : 140,
+                  maxWidth: isWide ? 300 : undefined,
+                  backgroundColor: '#ffffff08',
+                  borderRadius: 12,
+                  padding: isWide ? 20 : 16,
+                  borderWidth: 1,
+                  borderColor: '#ffffff10',
+                }}
+              >
+                <Text style={{ fontSize: 24, marginBottom: 8 }}>{check.icon}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#e2e8f0' }}>
+                  {t(`home.aiCheck${check.key}`)}
+                </Text>
+                <Text style={{ fontSize: 12, color: '#64748b', lineHeight: 18, marginTop: 6 }}>
+                  {t(`home.aiCheck${check.key}Desc`)}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          {/* How it works */}
+          <View
+            style={{
+              marginTop: 48,
+              backgroundColor: '#ffffff06',
+              borderRadius: 16,
+              padding: isWide ? 32 : 20,
+              borderWidth: 1,
+              borderColor: '#ffffff08',
+            }}
+          >
+            <Text style={{ fontSize: isWide ? 18 : 16, fontWeight: '700', color: '#e2e8f0', textAlign: 'center', marginBottom: 24 }}>
+              {t('home.aiHowTitle')}
+            </Text>
+            <View style={{ flexDirection: isWide ? 'row' : 'column', gap: isWide ? 32 : 20, justifyContent: 'center' }}>
+              {(['1', '2', '3'] as const).map((step) => (
+                <View key={step} style={{ flex: isWide ? 1 : undefined, alignItems: 'center' }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#8b5cf620', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#a78bfa' }}>{step}</Text>
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#e2e8f0', textAlign: 'center' }}>
+                    {t(`home.aiStep${step}Title`)}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#64748b', textAlign: 'center', lineHeight: 18, marginTop: 6 }}>
+                    {t(`home.aiStep${step}Desc`)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* ===== ALL-IN-ONE EXPORT SECTION ===== */}
+      <View className="bg-background px-6 py-16 md:py-24">
+        <View className="mx-auto w-full" style={{ maxWidth: 1000 }}>
+          <View style={{ alignSelf: 'center', backgroundColor: '#16a34a18', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6, marginBottom: 20 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#16a34a', letterSpacing: 1 }}>
+              {t('home.exportBadge')}
+            </Text>
+          </View>
+
+          <Text
+            style={{
+              fontSize: isWide ? 32 : 24,
+              fontWeight: '700',
+              color: '#1a1d26',
+              textAlign: 'center',
+              letterSpacing: -0.5,
+            }}
+          >
+            {t('home.exportTitle')}
+          </Text>
+          <View style={{ alignSelf: 'center', width: 60, height: 3, backgroundColor: '#16a34a', borderRadius: 2, marginTop: 16 }} />
+
+          <Text
+            style={{
+              fontSize: isWide ? 16 : 14,
+              color: '#6b7280',
+              textAlign: 'center',
+              lineHeight: isWide ? 26 : 22,
+              marginTop: 24,
+              maxWidth: 680,
+              alignSelf: 'center',
+            }}
+          >
+            {t('home.exportDescription')}
+          </Text>
+
+          {/* Export items grid */}
+          <View
+            style={{
+              marginTop: 48,
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: isWide ? 16 : 12,
+              justifyContent: 'center',
+            }}
+          >
+            {EXPORT_ITEMS.map((item) => (
+              <View
+                key={item.key}
+                style={{
+                  width: isWide ? '30%' : '46%',
+                  minWidth: isWide ? 180 : 140,
+                  maxWidth: isWide ? 300 : undefined,
+                  backgroundColor: '#ffffff',
+                  borderRadius: 12,
+                  padding: isWide ? 20 : 16,
+                  borderLeftWidth: 3,
+                  borderLeftColor: '#16a34a',
+                  ...(Platform.OS === 'web' ? {
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+                  } as never : { elevation: 2 }),
+                }}
+              >
+                <View className="flex-row items-center gap-2 mb-1.5">
+                  <Text style={{ fontSize: 20 }}>{item.icon}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#1a1d26' }}>
+                    {t(`home.exportItem${item.key}`)}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 12, color: '#6b7280', lineHeight: 18 }}>
+                  {t(`home.exportItem${item.key}Desc`)}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Single PDF callout */}
+          <View
+            style={{
+              marginTop: 32,
+              backgroundColor: '#16a34a08',
+              borderRadius: 12,
+              padding: isWide ? 24 : 16,
+              borderWidth: 1,
+              borderColor: '#16a34a20',
+              flexDirection: isWide ? 'row' : 'column',
+              alignItems: 'center',
+              gap: 16,
+            }}
+          >
+            <Text style={{ fontSize: 40 }}>📄</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: isWide ? 16 : 15, fontWeight: '700', color: '#1a1d26' }}>
+                {t('home.exportSinglePdf')}
+              </Text>
+              <Text style={{ fontSize: 13, color: '#6b7280', lineHeight: 20, marginTop: 6 }}>
+                {t('home.exportSinglePdfDesc')}
+              </Text>
+            </View>
           </View>
         </View>
       </View>

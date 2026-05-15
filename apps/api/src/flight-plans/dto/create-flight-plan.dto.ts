@@ -17,7 +17,7 @@ import {
 
 export class RouteWaypointDto {
   @ApiProperty({ example: 0 }) @IsInt() @Min(0) sequence!: number;
-  @ApiProperty({ example: 'ERNAS' }) @IsString() @MinLength(1) @MaxLength(10) waypointIdent!: string;
+  @ApiProperty({ example: 'ERNAS' }) @IsString() @MinLength(1) @MaxLength(50) waypointIdent!: string;
   @ApiPropertyOptional({ example: -23.43 }) @IsOptional() @IsNumber() latitude?: number;
   @ApiPropertyOptional({ example: -46.47 }) @IsOptional() @IsNumber() longitude?: number;
   @ApiPropertyOptional({ example: 'UW2' }) @IsOptional() @IsString() @MaxLength(10) airway?: string;
@@ -71,6 +71,7 @@ export class CreateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() takeoffWeightKg?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() mtowKg?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) callsign?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) registration?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) simbriefOfpId?: string;
 
   // Route
@@ -110,6 +111,9 @@ export class CreateFlightPlanDto {
   @ValidateNested({ each: true })
   @Type(() => VisualReferenceDto)
   visualReferences?: VisualReferenceDto[];
+
+  // AI validation result cache
+  @ApiPropertyOptional() @IsOptional() aiValidation?: object;
 
   // Briefing items
   @ApiPropertyOptional({ type: [BriefingItemDto] })

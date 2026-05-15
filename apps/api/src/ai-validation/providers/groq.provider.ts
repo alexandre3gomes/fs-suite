@@ -28,8 +28,9 @@ export class GroqProvider implements AiProvider {
           ],
           response_format: { type: 'json_object' },
           temperature: 0.3,
+          max_tokens: 16_384,
         }),
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(120_000),
       },
     );
 

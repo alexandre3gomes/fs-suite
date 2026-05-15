@@ -140,4 +140,10 @@ export class ValidateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() remarks?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() performanceCategory?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() item18Text?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() registration?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() plannedDepartureTime?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsArray()
+  routeWaypoints?: { lat: number; lng: number; name: string }[];
 }

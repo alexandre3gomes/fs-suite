@@ -88,7 +88,8 @@ model Airport {
   type      String? // large_airport, medium_airport, small_airport, heliport, seaplane_base, closed
   raw       Json? // full source record (OurAirports) for future enrichment
 
-  runways Runway[]
+  runways     Runway[]
+  frequencies Frequency[]
 
   @@map("airports")
 }
@@ -112,6 +113,19 @@ model Runway {
 
   @@index([airportIcao])
   @@map("runways")
+}
+
+model Frequency {
+  id           String @id @default(cuid())
+  airportIcao  String @map("airport_icao")
+  type         String // TWR, GND, APP, ATIS, AFIS, CTAF, RDO, DEP, CLD, OPS, etc.
+  description  String
+  frequencyMhz Float  @map("frequency_mhz")
+
+  airport Airport @relation(fields: [airportIcao], references: [icao], onDelete: Cascade)
+
+  @@index([airportIcao])
+  @@map("frequencies")
 }
 
 // --- Unified Flight Plan ---
@@ -149,6 +163,7 @@ model FlightPlan {
   takeoffWeightKg Float?  @map("takeoff_weight_kg")
   mtowKg          Float?  @map("mtow_kg")
   callsign        String?
+  registration    String?
   simbriefOfpId   String? @map("simbrief_ofp_id")
 
   // Route
@@ -158,6 +173,9 @@ model FlightPlan {
   remarks       String?
   todMinutes    Int?    @map("tod_minutes")
   todDistanceNm Float?  @map("tod_distance_nm")
+
+  // AI validation cache
+  aiValidation Json? @map("ai_validation")
 
   // Fuel / endurance
   fuelConsumptionPerHour Float? @map("fuel_consumption_per_hour")

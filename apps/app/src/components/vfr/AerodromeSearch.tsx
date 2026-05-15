@@ -78,6 +78,7 @@ export function AerodromeSearch({ label, value, onSelect, onClear }: Props) {
           onChangeText={setQuery}
           onFocus={() => { setFocused(true); setQuery(value ? value.icao : ''); }}
           onBlur={() => setTimeout(() => setFocused(false), 200)}
+          onSubmitEditing={() => { const first = results[0]; if (first) handleSelect(first); }}
           placeholder={t('vfr.searchAerodrome')}
           placeholderTextColor="#9ca3af"
           className="w-full rounded-button border border-border bg-input px-3 py-2 text-sm text-foreground"

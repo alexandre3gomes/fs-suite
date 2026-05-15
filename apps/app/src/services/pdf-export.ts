@@ -3,6 +3,13 @@ import autoTable from 'jspdf-autotable';
 import { PDFDocument } from 'pdf-lib';
 
 import type { VfrPlanData } from '../components/vfr/VfrPlanForm';
+import type { PlanViability } from '../components/vfr/weatherTimeUtils';
+
+export interface AiValidationResult {
+  overallStatus: 'pass' | 'warnings' | 'issues';
+  items: { category: string; status: 'pass' | 'warn' | 'fail'; title: string; description: string }[];
+  summary: string;
+}
 
 function tableEndY(doc: jsPDF): number {
   return (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 0;
@@ -66,6 +73,181 @@ function checkPage(doc: jsPDF, y: number, needed: number): number {
   return y;
 }
 
+function sanitizeText(text: string): string {
+  return text
+    .replace(/→/g, '>') // → not in helvetica
+    .replace(/←/g, '<')
+    .replace(/↔/g, '<>')
+    .replace(/–/g, '-') // en-dash
+    .replace(/—/g, '--') // em-dash
+    .replace(/‘|’/g, "'")
+    .replace(/“|”/g, '"')
+    .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1')
+    .replace(/`([^`]+)`/g, '$1');
+}
+
+interface MdBlock {
+  type: 'text' | 'heading' | 'table' | 'list';
+  content?: string;
+  level?: number;
+  headers?: string[];
+  rows?: string[][];
+  items?: string[];
+}
+
+function parseMarkdownBlocks(text: string): MdBlock[] {
+  const lines = text.split('\n');
+  const blocks: MdBlock[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i]!.trimEnd();
+    const trimmed = line.trim();
+
+    if (!trimmed) { i++; continue; }
+
+    // Table: starts with | ... |
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i]!.trim().startsWith('|') && lines[i]!.trim().endsWith('|')) {
+        tableLines.push(lines[i]!.trim());
+        i++;
+      }
+      const parsed = tableLines
+        .filter(l => !/^[-|:\s]+$/.test(l.replace(/\|/g, '').trim()) && !/^[\s|:-]+$/.test(l))
+        .map(l => l.split('|').slice(1, -1).map(c => sanitizeText(c.trim())));
+      if (parsed.length > 0) {
+        blocks.push({
+          type: 'table',
+          headers: parsed[0],
+          rows: parsed.slice(1),
+        });
+      }
+      continue;
+    }
+
+    // Heading
+    const hMatch = trimmed.match(/^(#{1,3})\s+(.+)/);
+    if (hMatch) {
+      blocks.push({ type: 'heading', content: sanitizeText(hMatch[2]!), level: hMatch[1]!.length });
+      i++;
+      continue;
+    }
+
+    // List item
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || /^\d+\.\s/.test(trimmed)) {
+      const items: string[] = [];
+      while (i < lines.length) {
+        const li = lines[i]!.trim();
+        if (li.startsWith('- ') || li.startsWith('* ')) {
+          items.push(sanitizeText(li.slice(2)));
+        } else if (/^\d+\.\s/.test(li)) {
+          items.push(sanitizeText(li.replace(/^\d+\.\s/, '')));
+        } else {
+          break;
+        }
+        i++;
+      }
+      blocks.push({ type: 'list', items });
+      continue;
+    }
+
+    // Plain text - collect consecutive non-empty lines
+    let para = '';
+    while (i < lines.length && lines[i]!.trim() && !lines[i]!.trim().startsWith('|') && !lines[i]!.trim().startsWith('#') && !lines[i]!.trim().startsWith('- ') && !lines[i]!.trim().startsWith('* ') && !/^\d+\.\s/.test(lines[i]!.trim())) {
+      para += (para ? ' ' : '') + lines[i]!.trim();
+      i++;
+    }
+    if (para) blocks.push({ type: 'text', content: sanitizeText(para) });
+  }
+  return blocks;
+}
+
+function renderMarkdownToPdf(doc: jsPDF, text: string, startY: number, leftX: number, maxWidth: number, checkPageFn: (d: jsPDF, y: number, h: number) => number): number {
+  let y = startY;
+  const blocks = parseMarkdownBlocks(text);
+
+  for (const block of blocks) {
+    switch (block.type) {
+      case 'heading': {
+        const fontSize = block.level === 1 ? 9 : block.level === 2 ? 8.5 : 8;
+        y = checkPageFn(doc, y, 8);
+        doc.setFontSize(fontSize);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.text);
+        doc.text(block.content!, leftX, y);
+        y += 5;
+        break;
+      }
+      case 'text': {
+        doc.setFontSize(7.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.muted);
+        const wrapped: string[] = doc.splitTextToSize(block.content!, maxWidth);
+        y = checkPageFn(doc, y, wrapped.length * 3.5 + 2);
+        doc.text(wrapped, leftX, y);
+        y += wrapped.length * 3.5 + 2;
+        break;
+      }
+      case 'list': {
+        for (const item of block.items ?? []) {
+          doc.setFontSize(7.5);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...COLORS.muted);
+          const wrapped: string[] = doc.splitTextToSize(item, maxWidth - 4);
+          y = checkPageFn(doc, y, wrapped.length * 3.5 + 1);
+          doc.text('-', leftX, y);
+          doc.text(wrapped, leftX + 4, y);
+          y += wrapped.length * 3.5 + 1;
+        }
+        y += 1;
+        break;
+      }
+      case 'table': {
+        const headers = block.headers ?? [];
+        const rows = block.rows ?? [];
+        const colCount = headers.length || (rows[0]?.length ?? 0);
+        if (colCount === 0) break;
+
+        const colW = maxWidth / colCount;
+        const rowH = 5;
+        const totalH = (1 + rows.length) * rowH + 2;
+        y = checkPageFn(doc, y, Math.min(totalH, 60));
+
+        // Header row
+        doc.setFillColor(240, 240, 245);
+        doc.rect(leftX, y - 3.5, maxWidth, rowH, 'F');
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.text);
+        for (let c = 0; c < colCount; c++) {
+          const cellText = (headers[c] ?? '').substring(0, Math.floor(colW / 1.8));
+          doc.text(cellText, leftX + c * colW + 1.5, y);
+        }
+        y += rowH;
+
+        // Data rows
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(...COLORS.muted);
+        for (const row of rows) {
+          y = checkPageFn(doc, y, rowH);
+          doc.setDrawColor(220, 220, 225);
+          doc.line(leftX, y - 3.5, leftX + maxWidth, y - 3.5);
+          for (let c = 0; c < colCount; c++) {
+            const cellText = (row[c] ?? '').substring(0, Math.floor(colW / 1.8));
+            doc.text(cellText, leftX + c * colW + 1.5, y);
+          }
+          y += rowH;
+        }
+        y += 2;
+        break;
+      }
+    }
+  }
+  return y;
+}
+
 function labelValue(doc: jsPDF, label: string, value: string, x: number, y: number): void {
   doc.setFont('helvetica', 'bold');
   doc.text(label, x, y);
@@ -74,7 +256,7 @@ function labelValue(doc: jsPDF, label: string, value: string, x: number, y: numb
   doc.text(value, x + w, y);
 }
 
-export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string): jsPDF {
+export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, aiValidation?: AiValidationResult, viability?: PlanViability): jsPDF {
   const doc = new jsPDF('p', 'mm', 'a4');
   const now = new Date();
   const hasIfr = plan.flightRules === 'IFR' || plan.flightRules === 'VFR_IFR' || plan.flightRules === 'IFR_VFR';
@@ -88,7 +270,13 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string):
   doc.text('FS SUITE — FLIGHT PLAN', 14, 14);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text(`${plan.flightRules ?? 'VFR'}  |  ${now.toLocaleDateString()}  ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, 14, 22);
+  const eobt = plan.plannedDepartureTime
+    ? (() => { const d = new Date(plan.plannedDepartureTime); const dd = String(d.getUTCDate()).padStart(2,'0'); const hh = String(d.getUTCHours()).padStart(2,'0'); const mm = String(d.getUTCMinutes()).padStart(2,'0'); return `EOBT ${dd}${hh}${mm}Z`; })()
+    : null;
+  const headerParts: string[] = [plan.flightRules ?? 'VFR'];
+  if (eobt) headerParts.push(eobt);
+  headerParts.push(`${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+  doc.text(headerParts.join('  |  '), 14, 22);
 
   if (plan.callsign) {
     doc.setFont('helvetica', 'bold');
@@ -180,11 +368,8 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string):
     y += 5;
   }
 
-  if (plan.todMinutes || plan.todDistanceNm) {
-    const todParts: string[] = [];
-    if (plan.todMinutes) todParts.push(`${plan.todMinutes} min`);
-    if (plan.todDistanceNm) todParts.push(`${plan.todDistanceNm} NM`);
-    labelValue(doc, 'TOD: ', todParts.join(' / ') + ' before destination', 14, y);
+  if (plan.todDistanceNm) {
+    labelValue(doc, 'TOD: ', `${plan.todDistanceNm} NM before destination`, 14, y);
     y += 5;
   }
   y += 2;
@@ -196,7 +381,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string):
 
     const legRows = plan.routeLegs.map((leg, i) => [
       String(i + 1),
-      `${leg.from} → ${leg.to}`,
+      `${leg.from} > ${leg.to}`,
       leg.distanceNm.toFixed(1),
       `${leg.trueCourse.toFixed(0)}°`,
       `${leg.magneticDeclination >= 0 ? '+' : ''}${leg.magneticDeclination.toFixed(0)}°`,
@@ -471,6 +656,124 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string):
     y = tableEndY(doc) + 6;
   }
 
+  // ─── AI VALIDATION ───
+  if (aiValidation) {
+    const statusLabel = aiValidation.overallStatus === 'pass' ? 'APROVADO' : aiValidation.overallStatus === 'warnings' ? 'ATENÇÃO' : 'PROBLEMAS';
+    const statusColor: [number, number, number] = aiValidation.overallStatus === 'pass' ? [22, 163, 74] : aiValidation.overallStatus === 'warnings' ? [217, 119, 6] : [220, 38, 38];
+
+    doc.addPage();
+    y = 15;
+
+    doc.setFillColor(...COLORS.headerBg);
+    doc.rect(0, 0, 210, 22, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(...COLORS.headerText);
+    doc.text('REVISÃO DO INSTRUTOR IA', 14, 12);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(statusLabel, 196, 12, { align: 'right' });
+
+    y = 28;
+
+    const itemStatusColor = (status: string): [number, number, number] =>
+      status === 'pass' ? [22, 163, 74] : status === 'warn' ? [217, 119, 6] : [220, 38, 38];
+
+    const itemStatusIcon = (status: string): string =>
+      status === 'pass' ? 'OK' : status === 'warn' ? '!!' : 'XX';
+
+    for (const item of aiValidation.items) {
+      y = checkPage(doc, y, 16);
+
+      // Category badge
+      const color = itemStatusColor(item.status);
+      doc.setFillColor(...color);
+      doc.roundedRect(14, y - 3.5, 2, 10, 1, 1, 'F');
+
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...color);
+      doc.text(`${itemStatusIcon(item.status)} ${item.category}`, 19, y);
+
+      // Title
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...COLORS.text);
+      doc.text(sanitizeText(item.title), 19, y + 5);
+
+      y += 12;
+
+      // Description — render markdown with tables
+      y = renderMarkdownToPdf(doc, item.description, y, 19, 173, checkPage);
+
+      y += 2;
+    }
+
+    // Summary
+    y = checkPage(doc, y, 20);
+    y += 3;
+    doc.setDrawColor(...statusColor);
+    doc.setLineWidth(0.5);
+    doc.line(14, y, 196, y);
+    y += 5;
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(...COLORS.text);
+    y = renderMarkdownToPdf(doc, aiValidation.summary, y, 16, 178, checkPage);
+    y += 4;
+  }
+
+  // ─── FLIGHT VIABILITY ───
+  if (viability) {
+    const statusLabels: Record<string, string> = {
+      'viable': 'VIABLE',
+      'viable-with-warnings': 'VIABLE WITH REMARKS',
+      'incomplete': 'INCOMPLETE',
+      'not-viable': 'NOT VIABLE',
+      'unverifiable': 'UNVERIFIABLE',
+    };
+    const statusColors: Record<string, [number, number, number]> = {
+      'viable': [22, 163, 74],
+      'viable-with-warnings': [217, 119, 6],
+      'incomplete': [234, 88, 12],
+      'not-viable': [220, 38, 38],
+      'unverifiable': [120, 130, 150],
+    };
+    const color = statusColors[viability.status] ?? COLORS.muted;
+    y = checkPage(doc, y, 12 + viability.items.length * 5);
+    y = sectionTitle(doc, 'FLIGHT VIABILITY', y);
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...color);
+    doc.text(statusLabels[viability.status] ?? viability.status.toUpperCase(), 14, y);
+    y += 5;
+
+    if (viability.items.length > 0) {
+      const severityColors: Record<string, [number, number, number]> = {
+        blocking: [220, 38, 38],
+        actionable: [234, 88, 12],
+        warning: [217, 119, 6],
+        unverifiable: [120, 130, 150],
+      };
+
+      for (const item of viability.items) {
+        y = checkPage(doc, y, 8);
+        const ic = severityColors[item.severity] ?? COLORS.muted;
+        doc.setFillColor(...ic);
+        doc.circle(16, y - 1, 1, 'F');
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.text);
+        const msgLines = doc.splitTextToSize(item.message, 174);
+        doc.text(msgLines, 20, y);
+        y += msgLines.length * 3.5 + 2;
+      }
+    }
+    y += 4;
+  }
+
   // ─── NOTES AREA ───
   y = checkPage(doc, y, 30);
   y = sectionTitle(doc, 'NOTES', y);
@@ -519,8 +822,10 @@ export async function exportFlightPlanWithAttachments(
   plan: VfrPlanData,
   attachments: ExportAttachments,
   mapImageDataUrl?: string,
+  aiValidation?: AiValidationResult,
+  viability?: PlanViability,
 ): Promise<void> {
-  const doc = buildFlightPlanDoc(plan, mapImageDataUrl);
+  const doc = buildFlightPlanDoc(plan, mapImageDataUrl, aiValidation, viability);
   const mainBytes = doc.output('arraybuffer');
 
   const merged = await PDFDocument.create();

@@ -106,7 +106,13 @@ export class WeatherService {
     for (const icao of normalized) {
       const cached = await client.get(`metar:${icao}`).catch(() => null);
       if (cached) {
-        results.push(JSON.parse(cached) as ParsedMetar);
+        const parsed = JSON.parse(cached) as ParsedMetar;
+        const obsAge = Date.now() - new Date(parsed.observationTime).getTime();
+        if (obsAge > 3_600_000) {
+          missing.push(icao);
+        } else {
+          results.push(parsed);
+        }
       } else {
         missing.push(icao);
       }

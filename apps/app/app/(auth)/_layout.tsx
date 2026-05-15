@@ -1,5 +1,7 @@
 import { Redirect, Stack } from 'expo-router';
+import { View } from 'react-native';
 
+import { AppHeader } from '../../src/components/AppHeader';
 import { useAuthStore } from '../../src/stores/auth.store';
 
 export default function AuthLayout(): JSX.Element {
@@ -9,5 +11,10 @@ export default function AuthLayout(): JSX.Element {
     return <Redirect href="/(public)/login" />;
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <View style={{ flex: 1 }}>
+      <AppHeader />
+      <Stack screenOptions={{ headerShown: false }} />
+    </View>
+  );
 }

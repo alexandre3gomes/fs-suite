@@ -40,16 +40,6 @@ export default function VfrPlansListScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* Header */}
-      <View className="flex-row items-center justify-between border-b border-border px-4 py-3 md:px-8">
-        <Pressable onPress={() => router.push('/(auth)/dashboard')}>
-          <Text className="text-sm font-medium text-primary">{t('common.back')}</Text>
-        </Pressable>
-        <Text className="text-base font-bold text-foreground">{t('dashboard.flightPlanning')}</Text>
-        <View className="w-12 md:w-[50px]" />
-      </View>
-
-      {/* Content — centered on desktop */}
       <View className="flex-1 md:mx-auto md:w-full md:max-w-4xl">
         {loading ? (
           <View className="flex-1 items-center justify-center">
@@ -74,7 +64,6 @@ export default function VfrPlansListScreen() {
                 </Text>
               </View>
             ) : (
-              /* Plan cards — grid on desktop */
               <View className="md:flex-row md:flex-wrap md:gap-4">
                 {plans.map((plan) => (
                   <Pressable
