@@ -14,9 +14,8 @@ infra/
 │   ├── api/                       # Deployment, Service, ConfigMap, Secret
 │   └── ingress/                   # Ingress (nginx, Cloudflare-terminated SSL)
 ├── overlays/
-│   └── production/                # Production overlay (external DBs, VATSIM patch)
+│   └── production/                # Production overlay (external DBs)
 │       ├── kustomization.yaml
-│       ├── patch-deployment-external-db.yaml
 │       └── setup.sh              # Interactive initial setup script
 └── scripts/
     ├── kube-aliases.sh            # Shell alias: kprod → kubectl on production
@@ -85,7 +84,7 @@ Internet → Cloudflare (SSL/CDN)
                        │
         ┌──────────────┼──────────────┐
         │              │              │
-  Neon (Postgres) Upstash (Redis) Google/VATSIM
+  Neon (Postgres) Upstash (Redis) Google
   (external TLS) (external TLS)  (OAuth)
 ```
 
@@ -169,7 +168,6 @@ On each merge to `main` that changes frontend code:
 | `DATABASE_URL` | PostgreSQL connection string (Neon) |
 | `REDIS_URL` | Redis connection string (Upstash, `rediss://` for TLS) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials |
-| `VATSIM_CLIENT_ID` / `VATSIM_CLIENT_SECRET` | VATSIM OAuth (optional) |
 | `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | RS256 keypair |
 | `ENCRYPTION_KEY` | AES-256-GCM key (32-byte hex) |
 | `SENTRY_DSN` / `SENTRY_AUTH_TOKEN` | Sentry error tracking (optional) |

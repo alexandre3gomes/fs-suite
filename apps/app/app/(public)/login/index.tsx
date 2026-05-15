@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Linking, Platform, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { apiClient } from '../../../src/services/api.client';
-import { signInWithDev, signInWithGoogle, signInWithVatsim } from '../../../src/services/auth.service';
+import { signInWithDev, signInWithGoogle } from '../../../src/services/auth.service';
 import { useAuthStore } from '../../../src/stores/auth.store';
 
 const FEATURES = [
@@ -45,14 +45,12 @@ function LoginButtons({
   providers,
   loading,
   onGoogle,
-  onVatsim,
   onDev,
   t,
 }: {
   providers: string[];
-  loading: 'google' | 'vatsim' | 'dev' | null;
+  loading: 'google' | 'dev' | null;
   onGoogle: () => void;
-  onVatsim: () => void;
   onDev: () => void;
   t: (k: string) => string;
 }): JSX.Element {
@@ -72,22 +70,6 @@ function LoginButtons({
         )}
         <Text className="text-sm font-medium text-foreground">{t('login.signInButton')}</Text>
       </Button>
-      {providers.includes('vatsim') ? (
-        <Button
-          variant="outline"
-          size="lg"
-          className="w-full gap-3 border-border bg-white shadow-sm"
-          onPress={onVatsim}
-          disabled={loading !== null}
-        >
-          {loading === 'vatsim' ? (
-            <ActivityIndicator size="small" color="#29B473" />
-          ) : (
-            <Text style={{ fontSize: 14, fontWeight: '700', color: '#29B473' }}>V</Text>
-          )}
-          <Text className="text-sm font-medium text-foreground">{t('login.signInVatsim')}</Text>
-        </Button>
-      ) : null}
       {providers.includes('dev') ? (
         <Button
           variant="outline"
@@ -111,7 +93,7 @@ function LoginButtons({
 export default function LoginScreen(): JSX.Element {
   const { t } = useTranslation();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const [loading, setLoading] = useState<'google' | 'vatsim' | 'dev' | null>(null);
+  const [loading, setLoading] = useState<'google' | 'dev' | null>(null);
   const [providers, setProviders] = useState<string[]>(['google']);
   const { width } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
@@ -132,10 +114,6 @@ export default function LoginScreen(): JSX.Element {
   const handleGoogleSignIn = async (): Promise<void> => {
     setLoading('google');
     try { await signInWithGoogle(); } finally { setLoading(null); }
-  };
-  const handleVatsimSignIn = async (): Promise<void> => {
-    setLoading('vatsim');
-    try { await signInWithVatsim(); } finally { setLoading(null); }
   };
   const handleDevSignIn = async (): Promise<void> => {
     setLoading('dev');
@@ -676,7 +654,6 @@ export default function LoginScreen(): JSX.Element {
               providers={providers}
               loading={loading}
               onGoogle={() => { void handleGoogleSignIn(); }}
-              onVatsim={() => { void handleVatsimSignIn(); }}
               onDev={() => { void handleDevSignIn(); }}
               t={t}
             />

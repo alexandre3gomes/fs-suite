@@ -3,9 +3,3 @@ kind: Kustomization
 
 resources:
   - ../../base
-
-patches:
-  - path: patch-deployment-external-db.yaml
-    target:
-      kind: Deployment
-      name: api

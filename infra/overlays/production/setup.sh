@@ -89,12 +89,6 @@ read_secret "GOOGLE_CLIENT_ID" GOOGLE_CLIENT_ID
 read_secret "GOOGLE_CLIENT_SECRET" GOOGLE_CLIENT_SECRET
 echo ""
 
-echo "── VATSIM OAuth (leave empty to skip) ──"
-echo ""
-read_secret "VATSIM_CLIENT_ID" VATSIM_CLIENT_ID ""
-read_secret "VATSIM_CLIENT_SECRET" VATSIM_CLIENT_SECRET ""
-echo ""
-
 echo "── JWT RS256 keypair ──"
 echo ""
 read_multiline "JWT_PRIVATE_KEY" JWT_PRIVATE_KEY
@@ -131,8 +125,6 @@ $K create secret generic api-secrets \
   --from-literal="REDIS_URL=${REDIS_URL}" \
   --from-literal="GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}" \
   --from-literal="GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}" \
-  --from-literal="VATSIM_CLIENT_ID=${VATSIM_CLIENT_ID}" \
-  --from-literal="VATSIM_CLIENT_SECRET=${VATSIM_CLIENT_SECRET}" \
   --from-literal="JWT_PRIVATE_KEY=$(echo -e "${JWT_PRIVATE_KEY}")" \
   --from-literal="JWT_PUBLIC_KEY=$(echo -e "${JWT_PUBLIC_KEY}")" \
   --from-literal="ENCRYPTION_KEY=${ENCRYPTION_KEY}" \

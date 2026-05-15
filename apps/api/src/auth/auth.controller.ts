@@ -20,7 +20,6 @@ import { PrismaService } from '../prisma/prisma.service';
 
 import { AuthService } from './auth.service';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
-import { VatsimAuthGuard } from './guards/vatsim-auth.guard';
 
 const REFRESH_COOKIE = 'refresh_token';
 const COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -40,9 +39,6 @@ export class AuthController {
   @ApiOperation({ summary: 'List enabled OAuth providers' })
   getProviders(): { providers: string[] } {
     const providers = ['google'];
-    if (this.config.get<string>('VATSIM_CLIENT_ID')) {
-      providers.push('vatsim');
-    }
     if (this.config.get<string>('NODE_ENV') !== 'production') {
       providers.push('dev');
     }
@@ -126,49 +122,6 @@ export class AuthController {
     }
 
     // Web: set httpOnly cookie for refresh token, redirect with access token in URL
-    const isProduction = process.env['NODE_ENV'] === 'production';
-    res.cookie(REFRESH_COOKIE, refreshToken, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'strict' : 'lax',
-      maxAge: COOKIE_MAX_AGE_MS,
-    });
-
-    const callbackUrl = `${this.authService.getWebOrigin()}/auth/callback?access_token=${encodeURIComponent(accessToken)}`;
-    res.redirect(callbackUrl);
-  }
-
-  @Get('vatsim')
-  @UseGuards(VatsimAuthGuard)
-  @ApiOperation({ summary: 'Redirect to VATSIM OAuth consent screen' })
-  vatsimAuth(): void {
-    // Passport handles the redirect
-  }
-
-  @Get('vatsim/callback')
-  @UseGuards(VatsimAuthGuard)
-  @ApiOperation({ summary: 'VATSIM OAuth callback — issues tokens and redirects to app' })
-  async vatsimCallback(
-    @Req() req: Request & { user: User },
-    @Res() res: Response,
-  ): Promise<void> {
-    const platform: string = (req.cookies as Record<string, string>)['oauth_platform'] ?? 'web';
-    res.clearCookie('oauth_platform');
-
-    const { accessToken, refreshToken } = await this.authService.createSession(req.user, {
-      userAgent: req.headers['user-agent'],
-      ipAddress: req.ip,
-    });
-
-    if (platform === 'native') {
-      const params = new URLSearchParams({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
-      res.redirect(`fssuite://auth/callback?${params.toString()}`);
-      return;
-    }
-
     const isProduction = process.env['NODE_ENV'] === 'production';
     res.cookie(REFRESH_COOKIE, refreshToken, {
       httpOnly: true,

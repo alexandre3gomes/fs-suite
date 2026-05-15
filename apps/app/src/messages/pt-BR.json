@@ -14,7 +14,6 @@
   },
   "login": {
     "signInButton": "Entrar com Google",
-    "signInVatsim": "Entrar com VATSIM",
     "signInDev": "Login Dev (bypass)",
     "terms": "Ao entrar, você concorda com nossos Termos de Uso e Política de Privacidade."
   },

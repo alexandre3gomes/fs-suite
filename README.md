@@ -113,7 +113,7 @@ pnpm --filter @fs-suite/app build:web
 
 | Module | Purpose |
 |--------|---------|
-| `auth` | Google/VATSIM OAuth, JWT sessions, token refresh |
+| `auth` | Google OAuth, JWT sessions, token refresh |
 | `users` | User profile management |
 | `aircraft-profiles` | Aircraft configuration CRUD |
 | `airports` | Airport search, runway data, chart proxy |
