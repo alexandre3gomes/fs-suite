@@ -9,6 +9,7 @@ export interface AiValidationResult {
   overallStatus: 'pass' | 'warnings' | 'issues';
   items: { category: string; status: 'pass' | 'warn' | 'fail'; title: string; description: string }[];
   summary: string;
+  meta?: { provider: string; model: string; byok: boolean; remaining?: number };
 }
 
 function tableEndY(doc: jsPDF): number {

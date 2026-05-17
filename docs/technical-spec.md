@@ -86,13 +86,17 @@ src/
 └── common/         # Guards, interceptors, filters, decorators
 ```
 
-**Authentication flow:**
+**Authentication flow** (see `docs/adr-001-auth-code-exchange.md`):
 1. Web client redirects to `/auth/google` (NestJS Passport redirect)
 2. Google callback hits `/auth/google/callback`
 3. NestJS creates or updates `User` + `OAuthAccount` records
 4. Creates a `Session` row; issues a short-lived JWT access token (15 min) and a refresh token JWT (30 days) containing the `sessionId` as the `sid` claim — only the bcrypt hash of the raw refresh token is stored in `Session.refreshTokenHash` (see Section 10 for full token policy)
-5. Raw refresh token sent as `httpOnly; Secure; SameSite=Strict` cookie; access token returned in JSON response body
-6. `/auth/refresh` rotates both tokens using `sid` from the refresh token to locate the session — no access token required (see Section 10)
+5. Tokens are stored in Redis under a one-time auth code (TTL 60s). The redirect URL carries only `?code=XXXXX` — no tokens in the URL (security: prevents token exposure in browser history, logs, and referrer headers)
+6. Client calls `POST /auth/exchange` with the code → receives access token in JSON body; refresh token set as `httpOnly; Secure; SameSite=Strict` cookie (web) or returned in body (native)
+7. `/auth/refresh` rotates both tokens using `sid` from the refresh token to locate the session — no access token required (see Section 10)
+
+**Client-side 401 handling:**
+The API client (`apps/app/src/services/api.client.ts`) intercepts 401 responses, attempts a single token refresh via `POST /auth/refresh`, and retries the original request. A mutex prevents concurrent refresh races. If refresh fails, the session is cleared and the user is redirected to login.
 
 **API contract style:** REST, JSON. Versioned under `/v1/`. OpenAPI spec auto-generated via `@nestjs/swagger`.
 
@@ -234,7 +238,7 @@ model Airport {
 model FlightPlan {
   id                String       @id @default(cuid())
   status            PlanStatus   @default(DRAFT)
-  flightType        FlightType   // VFR | IFR
+  flightRules       FlightRules  // VFR | IFR | VFR_IFR | IFR_VFR
   plannedAltitude   Int?         // feet
   remarks           String?
   simBriefOfpId     String?      // SimBrief OFP ID stored as reference after successful import
@@ -297,13 +301,15 @@ model ActivityLog {
 
 enum PlanStatus {
   DRAFT
-  SAVED
+  COMPLETED
   ARCHIVED
 }
 
-enum FlightType {
+enum FlightRules {
   VFR
   IFR
+  VFR_IFR
+  IFR_VFR
 }
 ```
 
@@ -321,12 +327,13 @@ enum FlightType {
 
 ### Auth
 
-| Method | Path                     | Description                                |
-|--------|--------------------------|--------------------------------------------|
-| GET    | /v1/auth/google          | Redirect to Google OAuth consent screen    |
-| GET    | /v1/auth/google/callback | OAuth callback, issue tokens, set cookie   |
-| POST   | /v1/auth/refresh         | Rotate access + refresh tokens             |
-| POST   | /v1/auth/logout          | Revoke session (delete Session row from DB)|
+| Method | Path                     | Description                                             |
+|--------|--------------------------|---------------------------------------------------------|
+| GET    | /v1/auth/google          | Redirect to Google OAuth consent screen                 |
+| GET    | /v1/auth/google/callback | OAuth callback, store auth code in Redis, redirect      |
+| POST   | /v1/auth/exchange        | Exchange one-time auth code for tokens (see ADR-001)    |
+| POST   | /v1/auth/refresh         | Rotate access + refresh tokens                          |
+| POST   | /v1/auth/logout          | Revoke session (delete Session row from DB)             |
 
 ### Users
 

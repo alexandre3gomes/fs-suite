@@ -112,9 +112,6 @@ export class CreateFlightPlanDto {
   @Type(() => VisualReferenceDto)
   visualReferences?: VisualReferenceDto[];
 
-  // AI validation result cache
-  @ApiPropertyOptional() @IsOptional() aiValidation?: object;
-
   // Briefing items
   @ApiPropertyOptional({ type: [BriefingItemDto] })
   @IsOptional()

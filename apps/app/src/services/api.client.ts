@@ -18,9 +18,29 @@ class ApiError extends Error {
   }
 }
 
+let refreshPromise: Promise<string | null> | null = null;
+
+async function attemptRefresh(): Promise<string | null> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  refreshPromise = (async () => {
+    try {
+      const { refreshAccessToken } = await import('./auth.service');
+      return await refreshAccessToken();
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
+  _isRetry = false,
 ): Promise<T> {
   const { accessToken } = useAuthStore.getState();
 
@@ -36,19 +56,48 @@ async function request<T>(
   const response = await fetch(`${API_URL}/v1${path}`, {
     ...options,
     headers,
-    credentials: 'include', // send cookies on web
+    credentials: 'include',
   });
+
+  if (response.status === 401 && !_isRetry && accessToken) {
+    const newToken = await attemptRefresh();
+    if (newToken) {
+      return request<T>(path, options, true);
+    }
+    useAuthStore.getState().clear();
+  }
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({ message: response.statusText })) as { message?: string };
     const error = new ApiError(response.status, body.message ?? response.statusText);
-    // Report server errors (5xx) to Sentry; 4xx are client-side and handled by UI
     if (response.status >= 500) {
       Sentry.captureException(error, {
         tags: { api_path: path, status_code: response.status },
       });
     }
     throw error;
+  }
+
+  if (response.status === 204) {
+    return undefined as unknown as T;
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function rawPost<T>(path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+  const response = await fetch(`${API_URL}/v1${path}`, {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({ message: response.statusText })) as { message?: string };
+    throw new ApiError(response.status, data.message ?? response.statusText);
   }
 
   if (response.status === 204) {
@@ -78,6 +127,8 @@ export const apiClient = {
 
   delete: <T>(path: string, options?: RequestInit): Promise<T> =>
     request<T>(path, { ...options, method: 'DELETE' }),
+
+  rawPost,
 };
 
 export { API_URL, ApiError };

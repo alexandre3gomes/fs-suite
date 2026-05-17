@@ -10,7 +10,7 @@ import { ValidateFlightPlanDto } from './dto/validate-flight-plan.dto';
 import type { ValidationResponse } from './dto/validation-response.dto';
 
 @ApiTags('ai-validation')
-@Controller('flight-plans')
+@Controller('ai-validation')
 @UseGuards(JwtAuthGuard)
 export class AiValidationController {
   constructor(private readonly service: AiValidationService) {}

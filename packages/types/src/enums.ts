@@ -1,11 +1,13 @@
-export enum FlightType {
+export enum FlightRules {
   VFR = 'VFR',
   IFR = 'IFR',
+  VFR_IFR = 'VFR_IFR',
+  IFR_VFR = 'IFR_VFR',
 }
 
 export enum PlanStatus {
   DRAFT = 'DRAFT',
-  SAVED = 'SAVED',
+  COMPLETED = 'COMPLETED',
   ARCHIVED = 'ARCHIVED',
 }
 

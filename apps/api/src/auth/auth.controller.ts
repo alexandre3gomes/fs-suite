@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -64,29 +65,19 @@ export class AuthController {
       return;
     }
 
-    const { accessToken, refreshToken } = await this.authService.createSession(user, {
+    const tokens = await this.authService.createSession(user, {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,
     });
 
+    const code = await this.authService.storeAuthCode(tokens);
+
     if (platform === 'native') {
-      const params = new URLSearchParams({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
-      res.redirect(`fssuite://auth/callback?${params.toString()}`);
+      res.redirect(`fssuite://auth/callback?code=${encodeURIComponent(code)}`);
       return;
     }
 
-    const isProduction = false;
-    res.cookie(REFRESH_COOKIE, refreshToken, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax',
-      maxAge: COOKIE_MAX_AGE_MS,
-    });
-
-    const callbackUrl = `${this.authService.getWebOrigin()}/auth/callback?access_token=${encodeURIComponent(accessToken)}`;
+    const callbackUrl = `${this.authService.getWebOrigin()}/auth/callback?code=${encodeURIComponent(code)}`;
     res.redirect(callbackUrl);
   }
 
@@ -99,7 +90,7 @@ export class AuthController {
 
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
-  @ApiOperation({ summary: 'Google OAuth callback — issues tokens and redirects to app' })
+  @ApiOperation({ summary: 'Google OAuth callback — issues auth code and redirects to app' })
   async googleCallback(
     @Req() req: Request & { user: User },
     @Res() res: Response,
@@ -107,21 +98,37 @@ export class AuthController {
     const platform: string = (req.cookies as Record<string, string>)['oauth_platform'] ?? 'web';
     res.clearCookie('oauth_platform');
 
-    const { accessToken, refreshToken } = await this.authService.createSession(req.user, {
+    const tokens = await this.authService.createSession(req.user, {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,
     });
 
+    const code = await this.authService.storeAuthCode(tokens);
+
     if (platform === 'native') {
-      const params = new URLSearchParams({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
-      res.redirect(`fssuite://auth/callback?${params.toString()}`);
+      res.redirect(`fssuite://auth/callback?code=${encodeURIComponent(code)}`);
       return;
     }
 
-    // Web: set httpOnly cookie for refresh token, redirect with access token in URL
+    const callbackUrl = `${this.authService.getWebOrigin()}/auth/callback?code=${encodeURIComponent(code)}`;
+    res.redirect(callbackUrl);
+  }
+
+  @Public()
+  @Post('exchange')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Exchange one-time auth code for tokens' })
+  async exchange(
+    @Body() body: { code: string; platform?: string },
+    @Res() res: Response,
+  ): Promise<void> {
+    const { accessToken, refreshToken } = await this.authService.exchangeAuthCode(body.code);
+
+    if (body.platform === 'native') {
+      res.json({ accessToken, refreshToken });
+      return;
+    }
+
     const isProduction = process.env['NODE_ENV'] === 'production';
     res.cookie(REFRESH_COOKIE, refreshToken, {
       httpOnly: true,
@@ -129,9 +136,7 @@ export class AuthController {
       sameSite: isProduction ? 'strict' : 'lax',
       maxAge: COOKIE_MAX_AGE_MS,
     });
-
-    const callbackUrl = `${this.authService.getWebOrigin()}/auth/callback?access_token=${encodeURIComponent(accessToken)}`;
-    res.redirect(callbackUrl);
+    res.json({ accessToken });
   }
 
   @Post('refresh')

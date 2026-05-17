@@ -174,9 +174,6 @@ model FlightPlan {
   todMinutes    Int?    @map("tod_minutes")
   todDistanceNm Float?  @map("tod_distance_nm")
 
-  // AI validation cache
-  aiValidation Json? @map("ai_validation")
-
   // Fuel / endurance
   fuelConsumptionPerHour Float? @map("fuel_consumption_per_hour")
   fuelCurrentTotal       Float? @map("fuel_current_total")

@@ -9,6 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { ActivityService } from '../activity/activity.service';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
 interface OAuthUserProfile {
   provider: string;
@@ -38,6 +39,8 @@ interface RefreshPayload {
 
 const REFRESH_TOKEN_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 const BCRYPT_ROUNDS = 12;
+const AUTH_CODE_PREFIX = 'auth_code:';
+const AUTH_CODE_TTL_SECONDS = 60;
 
 @Injectable()
 export class AuthService {
@@ -47,6 +50,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly encryption: EncryptionService,
     private readonly activity: ActivityService,
+    private readonly redis: RedisService,
   ) {}
 
   async upsertOAuthUser(profile: OAuthUserProfile): Promise<User> {
@@ -173,6 +177,29 @@ export class AuthService {
 
     await this.prisma.session.deleteMany({ where: { id: payload.sid } });
     void this.activity.log('auth.logout', payload.sub);
+  }
+
+  async storeAuthCode(tokens: TokenPair): Promise<string> {
+    const code = crypto.randomBytes(32).toString('hex');
+    const client = this.redis.getClient();
+    await client.setEx(
+      `${AUTH_CODE_PREFIX}${code}`,
+      AUTH_CODE_TTL_SECONDS,
+      JSON.stringify(tokens),
+    );
+    return code;
+  }
+
+  async exchangeAuthCode(code: string): Promise<TokenPair> {
+    const client = this.redis.getClient();
+    const key = `${AUTH_CODE_PREFIX}${code}`;
+    const raw = await client.getDel(key);
+
+    if (!raw) {
+      throw new UnauthorizedException('Invalid or expired auth code');
+    }
+
+    return JSON.parse(raw) as TokenPair;
   }
 
   getWebOrigin(): string {

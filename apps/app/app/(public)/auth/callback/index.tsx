@@ -3,10 +3,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
-import { handleWebCallback } from '../../../../src/services/auth.service';
+import { exchangeAuthCode } from '../../../../src/services/auth.service';
 
 export default function AuthCallbackScreen(): JSX.Element {
-  const { access_token } = useLocalSearchParams<{ access_token?: string }>();
+  const { code } = useLocalSearchParams<{ code?: string }>();
   const router = useRouter();
   const handled = useRef(false);
 
@@ -14,12 +14,12 @@ export default function AuthCallbackScreen(): JSX.Element {
     if (handled.current) return;
     handled.current = true;
 
-    if (!access_token) {
+    if (!code) {
       router.replace('/(public)/login');
       return;
     }
 
-    handleWebCallback(access_token)
+    exchangeAuthCode(code)
       .then(() => {
         router.replace('/(auth)/dashboard');
       })
@@ -27,7 +27,7 @@ export default function AuthCallbackScreen(): JSX.Element {
         Sentry.captureException(err, { tags: { context: 'auth_callback' } });
         router.replace('/(public)/login');
       });
-  }, [access_token, router]);
+  }, [code, router]);
 
   return (
     <View className="flex-1 items-center justify-center bg-background">

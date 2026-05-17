@@ -41,14 +41,12 @@ export async function signInWithGoogle(): Promise<void> {
   }
 
   const url = new URL(result.url);
-  const accessToken = url.searchParams.get('access_token');
-  const refreshToken = url.searchParams.get('refresh_token');
-
-  if (!accessToken) {
+  const code = url.searchParams.get('code');
+  if (!code) {
     return;
   }
 
-  await handleNativeTokens(accessToken, refreshToken ?? null);
+  await exchangeAuthCodeNative(code);
 }
 
 export async function signInWithDev(): Promise<void> {
@@ -69,36 +67,37 @@ export async function signInWithDev(): Promise<void> {
   }
 
   const url = new URL(result.url);
-  const accessToken = url.searchParams.get('access_token');
-  const refreshToken = url.searchParams.get('refresh_token');
-
-  if (!accessToken) {
+  const code = url.searchParams.get('code');
+  if (!code) {
     return;
   }
 
-  await handleNativeTokens(accessToken, refreshToken ?? null);
+  await exchangeAuthCodeNative(code);
 }
 
-export async function handleNativeTokens(
-  accessToken: string,
-  refreshToken: string | null,
-): Promise<void> {
+async function exchangeAuthCodeNative(code: string): Promise<void> {
   const { setTokens, setUser } = useAuthStore.getState();
 
-  setTokens(accessToken);
+  const response = await apiClient.rawPost<TokenResponse>('/auth/exchange', {
+    code,
+    platform: 'native',
+  });
 
-  if (refreshToken) {
-    await SecureStore.setItemAsync(SECURE_STORE_REFRESH_KEY, refreshToken);
+  setTokens(response.accessToken);
+
+  if (response.refreshToken) {
+    await SecureStore.setItemAsync(SECURE_STORE_REFRESH_KEY, response.refreshToken);
   }
 
   const user = await apiClient.get<UserProfile>('/users/me');
   setUser(user);
 }
 
-export async function handleWebCallback(accessToken: string): Promise<void> {
+export async function exchangeAuthCode(code: string): Promise<void> {
   const { setTokens, setUser } = useAuthStore.getState();
 
-  setTokens(accessToken);
+  const response = await apiClient.rawPost<TokenResponse>('/auth/exchange', { code });
+  setTokens(response.accessToken);
 
   const user = await apiClient.get<UserProfile>('/users/me');
   setUser(user);
@@ -114,7 +113,7 @@ export async function refreshAccessToken(): Promise<string | null> {
       body = { refreshToken: storedToken };
     }
 
-    const { accessToken, refreshToken } = await apiClient.post<TokenResponse>(
+    const { accessToken, refreshToken } = await apiClient.rawPost<TokenResponse>(
       '/auth/refresh',
       body,
     );
@@ -145,7 +144,7 @@ export async function signOut(): Promise<void> {
       }
     }
 
-    await apiClient.post('/auth/logout', body);
+    await apiClient.rawPost('/auth/logout', body);
   } catch (err) {
     Sentry.captureException(err, { level: 'warning', tags: { context: 'logout' } });
   } finally {

@@ -7,6 +7,7 @@ import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text,
 import { type AircraftSpec, findAircraftByIcao } from '../../data/aircraftCatalog';
 import { getChecklistsForAircraft } from '../../data/checklistCatalog';
 import { apiClient, API_URL } from '../../services/api.client';
+import type { AiValidationResult } from '../../services/pdf-export';
 import { buildFlightPlanDoc, exportFlightPlanWithAttachments } from '../../services/pdf-export';
 import { useUnitsStore, formatWeight, formatVolume, formatFuelWeight, formatSpeed, formatFuelFlow } from '../../stores/units.store';
 
@@ -192,12 +193,6 @@ export interface VfrPlanData {
   performanceCategory?: string;
   item18Text?: string;
   plannedDepartureTime?: string;
-  aiValidation?: {
-    overallStatus: 'pass' | 'warnings' | 'issues';
-    items: { category: string; status: 'pass' | 'warn' | 'fail'; title: string; description: string }[];
-    summary: string;
-    meta?: { provider: string; model: string; byok: boolean; remaining?: number };
-  };
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -1210,7 +1205,6 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             longitude: wp.lng,
           }))
         : undefined,
-      aiValidation: validationResult ?? undefined,
     };
     void onSave(savePayload as VfrPlanData);
   };
@@ -1330,9 +1324,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
   const [showValidationModal, setShowValidationModal] = useState(false);
   const [validating, setValidating] = useState(false);
-  const [validationResult, setValidationResult] = useState<VfrPlanData['aiValidation'] | null>(
-    initialData?.aiValidation ?? null,
-  );
+  const [validationResult, setValidationResult] = useState<AiValidationResult | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const requestAiValidation = async () => {
@@ -1345,8 +1337,8 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     setValidationError(null);
     setValidationResult(null);
     try {
-      const result = await apiClient.post<NonNullable<VfrPlanData['aiValidation']>>(
-        '/flight-plans/validate', data,
+      const result = await apiClient.post<AiValidationResult>(
+        '/ai-validation/validate', data,
       );
       setValidationResult(result);
     } catch (err: unknown) {
