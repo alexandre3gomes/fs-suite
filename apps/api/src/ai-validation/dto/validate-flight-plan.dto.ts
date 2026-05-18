@@ -32,6 +32,13 @@ class RunwayDto {
   @IsOptional() @IsNumber() lengthFt?: number | null;
 }
 
+class AircraftStationDto {
+  @IsString() id!: string;
+  @IsString() labelKey!: string;
+  @IsNumber() maxKg!: number;
+  @IsNumber() arm!: number;
+}
+
 class ReaSegmentDto {
   @IsString() from!: string;
   @IsString() to!: string;
@@ -95,6 +102,11 @@ export class ValidateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() aircraftType?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() aircraftName?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() cruiseSpeedKts?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() fuelBurnLph?: number;
+
+  @ApiPropertyOptional({ type: [AircraftStationDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => AircraftStationDto)
+  stations?: AircraftStationDto[];
 
   @ApiPropertyOptional() @IsOptional() @IsNumber() takeoffWeightKg?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() mtowKg?: number;

@@ -13,6 +13,8 @@ import * as fs from 'fs';
 import * as https from 'https';
 import * as path from 'path';
 
+import { seedAircraft } from './seed-aircraft';
+
 const prisma = new PrismaClient();
 
 const AIRPORTS_CSV_URL = 'https://davidmegginson.github.io/ourairports-data/airports.csv';
@@ -342,6 +344,7 @@ async function main(): Promise<void> {
   await seedAirports();
   await seedRunways();
   await seedFrequencies();
+  await seedAircraft(prisma);
 }
 
 main()

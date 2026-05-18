@@ -142,6 +142,7 @@ const DECEA_CHART_OVERLAYS: Record<ChartOverlayKey, { layers: string; i18nKey: s
   airspaceDecea: { layers: 'ICA:SETOR_FIR,ICA:TMA,ICA:CTR,ICA:ATZ', i18nKey: 'vfr.layerAirspaceDecea', minZoom: 5, maxZoom: 14, opacity: 0.5 },
 };
 
+
 const ROUTE_COLOR = '#a855f7';
 const ROUTE_OUTLINE = '#4c1d95';
 const ALT_ROUTE_COLOR = '#f59e0b';
@@ -1076,6 +1077,7 @@ export function AerodromeMap({
           </View>
         ))}
       </View>
+
     </View>
   );
 }
@@ -1182,8 +1184,13 @@ function buildAirportPopupHtml(
       ? metar.clouds.map((c) => `${c.cover} ${c.base}`).join(' / ')
       : '—';
 
+    const nearbyLabel = metar.source === 'nearby' && metar.nearbyFrom
+      ? `<div style="font-size:9px;color:#d97706;font-weight:600;margin-bottom:3px">METAR ${escapeHtml(metar.nearbyFrom)} (${metar.nearbyDistanceNm ?? '?'} nm)</div>`
+      : '';
+
     metarHtml = `
       <div style="margin:6px 0;padding:6px 8px;background:#f1f5f9;border-radius:4px;border:1px solid #e2e8f0">
+        ${nearbyLabel}
         <div style="font-family:monospace;font-size:10px;color:#334155;margin-bottom:5px;word-break:break-all;line-height:1.4">${escapeHtml(metar.raw)}</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px 12px;font-size:10px;color:#475569">
           <span><b>${escapeHtml(t('vfr.wind'))}:</b> ${formatPopupWind(metar.windDirection, metar.windSpeed)}</span>

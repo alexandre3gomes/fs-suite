@@ -15,6 +15,10 @@ export interface AircraftSpec {
   fuelCapacityL: number;
   fuelBurnLph: number;
   cruiseSpeedKts: number;
+  climbSpeedKts?: number;
+  climbRateFpm?: number;
+  descentSpeedKts?: number;
+  descentRateFpm?: number;
   stations: WeightStation[];
 }
 
@@ -29,6 +33,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 98,
     fuelBurnLph: 23,
     cruiseSpeedKts: 107,
+    climbSpeedKts: 67, climbRateFpm: 715, descentSpeedKts: 90, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 0.89 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 0.89 },
@@ -44,6 +49,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 212,
     fuelBurnLph: 34,
     cruiseSpeedKts: 124,
+    climbSpeedKts: 74, climbRateFpm: 730, descentSpeedKts: 100, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 0.94 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 0.94 },
@@ -60,6 +66,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 288,
     fuelBurnLph: 49,
     cruiseSpeedKts: 145,
+    climbSpeedKts: 80, climbRateFpm: 924, descentSpeedKts: 120, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 0.94 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 0.94 },
@@ -76,6 +83,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 341,
     fuelBurnLph: 55,
     cruiseSpeedKts: 142,
+    climbSpeedKts: 83, climbRateFpm: 920, descentSpeedKts: 115, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 0.94 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 0.94 },
@@ -93,6 +101,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 1249,
     fuelBurnLph: 205,
     cruiseSpeedKts: 186,
+    climbSpeedKts: 110, climbRateFpm: 890, descentSpeedKts: 150, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 4.50 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 4.50 },
@@ -110,6 +119,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 189,
     fuelBurnLph: 34,
     cruiseSpeedKts: 117,
+    climbSpeedKts: 76, climbRateFpm: 644, descentSpeedKts: 95, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.05 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.05 },
@@ -126,6 +136,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 284,
     fuelBurnLph: 42,
     cruiseSpeedKts: 138,
+    climbSpeedKts: 82, climbRateFpm: 831, descentSpeedKts: 110, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.05 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.05 },
@@ -142,6 +153,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 371,
     fuelBurnLph: 57,
     cruiseSpeedKts: 155,
+    climbSpeedKts: 87, climbRateFpm: 890, descentSpeedKts: 125, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.05 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.05 },
@@ -159,6 +171,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 400,
     fuelBurnLph: 80,
     cruiseSpeedKts: 190,
+    climbSpeedKts: 100, climbRateFpm: 1188, descentSpeedKts: 150, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.14 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.14 },
@@ -177,6 +190,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 318,
     fuelBurnLph: 53,
     cruiseSpeedKts: 165,
+    climbSpeedKts: 96, climbRateFpm: 1030, descentSpeedKts: 130, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.05 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.05 },
@@ -193,6 +207,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 536,
     fuelBurnLph: 100,
     cruiseSpeedKts: 192,
+    climbSpeedKts: 107, climbRateFpm: 1340, descentSpeedKts: 155, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.10 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.10 },
@@ -210,6 +225,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 1514,
     fuelBurnLph: 280,
     cruiseSpeedKts: 226,
+    climbSpeedKts: 130, climbRateFpm: 1500, descentSpeedKts: 180, descentRateFpm: 700,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 4.30 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 4.30 },
@@ -227,6 +243,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 148,
     fuelBurnLph: 31,
     cruiseSpeedKts: 130,
+    climbSpeedKts: 76, climbRateFpm: 750, descentSpeedKts: 105, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.37 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.37 },
@@ -243,6 +260,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 292,
     fuelBurnLph: 42,
     cruiseSpeedKts: 169,
+    climbSpeedKts: 90, climbRateFpm: 1050, descentSpeedKts: 135, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.37 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.37 },
@@ -259,6 +277,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 326,
     fuelBurnLph: 52,
     cruiseSpeedKts: 183,
+    climbSpeedKts: 95, climbRateFpm: 1100, descentSpeedKts: 145, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.50 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.50 },
@@ -277,6 +296,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 227,
     fuelBurnLph: 38,
     cruiseSpeedKts: 145,
+    climbSpeedKts: 87, climbRateFpm: 820, descentSpeedKts: 115, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.41 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.41 },
@@ -293,6 +313,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 336,
     fuelBurnLph: 50,
     cruiseSpeedKts: 176,
+    climbSpeedKts: 100, climbRateFpm: 1100, descentSpeedKts: 140, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.41 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.41 },
@@ -310,6 +331,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 242,
     fuelBurnLph: 38,
     cruiseSpeedKts: 155,
+    climbSpeedKts: 85, climbRateFpm: 850, descentSpeedKts: 125, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.05 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.05 },
@@ -327,6 +349,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 110,
     fuelBurnLph: 32,
     cruiseSpeedKts: 130,
+    climbSpeedKts: 75, climbRateFpm: 700, descentSpeedKts: 105, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 0.41 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 0.41 },
@@ -344,6 +367,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 151,
     fuelBurnLph: 27,
     cruiseSpeedKts: 175,
+    climbSpeedKts: 100, climbRateFpm: 1400, descentSpeedKts: 140, descentRateFpm: 700,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.03 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.03 },
@@ -359,6 +383,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 227,
     fuelBurnLph: 38,
     cruiseSpeedKts: 175,
+    climbSpeedKts: 100, climbRateFpm: 1300, descentSpeedKts: 140, descentRateFpm: 700,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.03 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.03 },
@@ -376,6 +401,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 1048,
     fuelBurnLph: 160,
     cruiseSpeedKts: 330,
+    climbSpeedKts: 130, climbRateFpm: 1800, descentSpeedKts: 200, descentRateFpm: 1500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.70 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.70 },
@@ -393,6 +419,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 1048,
     fuelBurnLph: 157,
     cruiseSpeedKts: 320,
+    climbSpeedKts: 125, climbRateFpm: 1700, descentSpeedKts: 195, descentRateFpm: 1500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.70 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.70 },
@@ -411,6 +438,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 1318,
     fuelBurnLph: 240,
     cruiseSpeedKts: 280,
+    climbSpeedKts: 140, climbRateFpm: 1500, descentSpeedKts: 180, descentRateFpm: 1000,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 3.80 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 3.80 },
@@ -428,6 +456,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 200,
     fuelBurnLph: 36,
     cruiseSpeedKts: 135,
+    climbSpeedKts: 78, climbRateFpm: 750, descentSpeedKts: 110, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.15 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.15 },
@@ -444,6 +473,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 120,
     fuelBurnLph: 18,
     cruiseSpeedKts: 105,
+    climbSpeedKts: 65, climbRateFpm: 600, descentSpeedKts: 85, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 0.38 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 0.38 },
@@ -460,6 +490,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 160,
     fuelBurnLph: 45,
     cruiseSpeedKts: 170,
+    climbSpeedKts: 95, climbRateFpm: 1500, descentSpeedKts: 135, descentRateFpm: 700,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 0.27 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 0.60 },
@@ -476,6 +507,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 220,
     fuelBurnLph: 50,
     cruiseSpeedKts: 100,
+    climbSpeedKts: 65, climbRateFpm: 600, descentSpeedKts: 80, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.20 },
       { id: 'hopper', labelKey: 'aircraft.cargo', defaultKg: 0, maxKg: 600, arm: 1.45 },
@@ -491,6 +523,7 @@ const AIRCRAFT_CATALOG: AircraftSpec[] = [
     fuelCapacityL: 189,
     fuelBurnLph: 34,
     cruiseSpeedKts: 117,
+    climbSpeedKts: 76, climbRateFpm: 644, descentSpeedKts: 95, descentRateFpm: 500,
     stations: [
       { id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 2.05 },
       { id: 'copilot', labelKey: 'aircraft.copilot', defaultKg: 0, maxKg: 120, arm: 2.05 },

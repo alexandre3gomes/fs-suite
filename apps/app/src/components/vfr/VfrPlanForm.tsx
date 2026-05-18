@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
-import { type AircraftSpec, findAircraftByIcao } from '../../data/aircraftCatalog';
+import type { AircraftSpec } from '../../data/aircraftCatalog';
+import { findAircraftByIcao } from '../../data/aircraftCatalog';
 import { getChecklistsForAircraft } from '../../data/checklistCatalog';
+import { useAircraftCatalog } from '../../hooks/useAircraftCatalog';
 import { apiClient, API_URL } from '../../services/api.client';
 import type { AiValidationResult } from '../../services/pdf-export';
 import { buildFlightPlanDoc, exportFlightPlanWithAttachments } from '../../services/pdf-export';
@@ -23,7 +25,7 @@ import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
 import { TafDisplay, type ParsedTaf } from './TafDisplay';
 import { VfrPlanLayout } from './VfrPlanLayout';
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
-import { type RouteWaypoint, type AltitudeTransition, type RouteSegment, type TocTodPosition, buildVfrRouteText, parseVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getPerformanceCategory, segmentRouteLegs, calculateTocDistance, calculateTodFromDestination, interpolatePositionOnRoute } from './vfrNavigation';
+import { type RouteWaypoint, type AltitudeTransition, type RouteSegment, type TocTodPosition, type EnrichedLeg, type AircraftPerformance, buildVfrRouteText, parseVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getPerformanceCategory, segmentRouteLegs, calculateTocDistance, calculateTodFromDestination, interpolatePositionOnRoute, enrichRouteLegs } from './vfrNavigation';
 import { defaultDepartureTime, toDatetimeLocalValue, fromDatetimeLocalValue, formatZulu, isNightFlight, validateVfrPlan, type PlanViability } from './weatherTimeUtils';
 
 function SimpleMarkdown({ text, italic }: { text: string; italic?: boolean }) {
@@ -189,6 +191,9 @@ export interface VfrPlanData {
   emptyWeightKg?: number;
   payloadKg?: number;
   fuelCapacityL?: number;
+  fuelBurnLph?: number;
+  aircraftStations?: unknown;
+  stations?: { id: string; labelKey: string; maxKg: number; arm: number }[];
   remarks?: string;
   performanceCategory?: string;
   item18Text?: string;
@@ -273,6 +278,7 @@ function FabButton({ onPress, disabled, svg, title, bg, size = 34 }: { onPress: 
 export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const { t } = useTranslation();
   const { weight: wu, volume: vu, speed: su } = useUnitsStore();
+  const { catalog: aircraftCatalog, loading: catalogLoading } = useAircraftCatalog();
 
   // Flight rules
   type FlightRulesType = 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
@@ -345,12 +351,22 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const [todDistanceNm, setTodDistanceNm] = useState(initialData?.todDistanceNm?.toString() ?? '');
 
   // Aircraft & weight
+  const findAircraft = useCallback(
+    (icao: string) => aircraftCatalog.find((a) => a.icaoType === icao) ?? findAircraftByIcao(icao) ?? null,
+    [aircraftCatalog],
+  );
   const [selectedAircraft, setSelectedAircraft] = useState<AircraftSpec | null>(
     initialData?.aircraftType ? findAircraftByIcao(initialData.aircraftType) ?? null : null,
   );
   const [weightMode, setWeightMode] = useState<'simple' | 'advanced'>('simple');
   const [simpleTotalWeight, setSimpleTotalWeight] = useState('');
   const [stationWeights, setStationWeights] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!catalogLoading && initialData?.aircraftType && !selectedAircraft) {
+      setSelectedAircraft(findAircraft(initialData.aircraftType));
+    }
+  }, [catalogLoading, initialData?.aircraftType, selectedAircraft, findAircraft]);
 
   // Fuel
   const [consumptionPerHour, setConsumptionPerHour] = useState(
@@ -673,6 +689,35 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const enduranceHours = Math.floor(enduranceMin / 60);
   const enduranceRemainder = enduranceMin % 60;
   const tripMinutes = Math.round(tripHours * 60);
+
+  const aircraftPerf: AircraftPerformance | null = useMemo(() => {
+    if (!selectedAircraft || selectedAircraft.cruiseSpeedKts <= 0) return null;
+    const cs = selectedAircraft.cruiseSpeedKts;
+    return {
+      climbSpeedKts: selectedAircraft.climbSpeedKts ?? Math.round(cs * 0.65),
+      cruiseSpeedKts: cs,
+      descentSpeedKts: selectedAircraft.descentSpeedKts ?? Math.round(cs * 0.8),
+      climbRateFpm: selectedAircraft.climbRateFpm ?? 700,
+      descentRateFpm: selectedAircraft.descentRateFpm ?? 500,
+    };
+  }, [selectedAircraft]);
+
+  const originWindDir = origin ? (metars[origin.icao]?.windDirection ?? null) : null;
+  const originWindSpd = origin ? (metars[origin.icao]?.windSpeed ?? null) : null;
+
+  const enrichedLegs: EnrichedLeg[] = useMemo(() => {
+    if (!aircraftPerf || routeLegs.length === 0) return [];
+    const altFt = parseCruiseLevelFt(cruiseLevel);
+    return enrichRouteLegs(
+      routeLegs,
+      aircraftPerf,
+      origin?.elevation ?? 0,
+      destination?.elevation ?? 0,
+      altFt,
+      typeof originWindDir === 'number' ? originWindDir : null,
+      originWindSpd,
+    );
+  }, [routeLegs, aircraftPerf, cruiseLevel, origin, destination, originWindDir, originWindSpd]);
 
   // Computed epochs for time-aware weather
   const departureEpochSec = useMemo(() => Math.floor(plannedDepartureTime.getTime() / 1000), [plannedDepartureTime]);
@@ -1148,6 +1193,11 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       emptyWeightKg: selectedAircraft?.emptyWeightKg,
       payloadKg: payloadKg || undefined,
       fuelCapacityL: selectedAircraft?.fuelCapacityL,
+      fuelBurnLph: selectedAircraft?.fuelBurnLph || undefined,
+      aircraftStations: selectedAircraft?.stations?.length ? selectedAircraft.stations : undefined,
+      stations: selectedAircraft?.stations?.length
+        ? selectedAircraft.stations.map((s) => ({ id: s.id, labelKey: s.labelKey, maxKg: s.maxKg, arm: s.arm }))
+        : undefined,
       remarks: fullRemarks || undefined,
       performanceCategory: performanceCategory || undefined,
       item18Text: fullRemarks || undefined,
@@ -1193,6 +1243,10 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       fuelReserveMinutes: data.fuelReserveMinutes,
       fuelRequiredTotal: data.fuelRequiredTotal,
       fuelPerWing: data.fuelPerWing,
+      emptyWeightKg: data.emptyWeightKg,
+      fuelCapacityL: data.fuelCapacityL,
+      fuelBurnLph: data.fuelBurnLph,
+      aircraftStations: data.aircraftStations,
       enduranceMinutes: data.enduranceMinutes,
       visualReferences: data.visualReferences,
       status: data.status,
@@ -1621,6 +1675,8 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           value={selectedAircraft}
           onSelect={handleSelectAircraft}
           onClear={handleClearAircraft}
+          catalog={aircraftCatalog}
+          loading={catalogLoading}
         />
 
         {selectedAircraft ? (
@@ -2012,6 +2068,12 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
                               for (const other of region.corridors) {
                                 if (other.name === corridor.name) continue;
                                 if (combinedName.includes(other.name)) continue;
+                                if (requiredExit) {
+                                  if (!other.name.toLowerCase().includes(requiredExit.toLowerCase())) {
+                                    const gateNames = destGateMap ? Object.values(destGateMap).flatMap((g) => [g.entry, g.exit]) : [];
+                                    if (gateNames.some((gn) => other.name.toLowerCase().includes(gn.toLowerCase()))) continue;
+                                  }
+                                }
                                 const otherSegs = [...other.segments].sort((a, b) => a.trecho - b.trecho);
                                 const otherWps: RouteWaypoint[] = [];
                                 const seenE = new Set<string>();
@@ -2053,6 +2115,16 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
                                   // Remove junction (already in combinedWps)
                                   const appendWps = ordered.slice(1);
                                   if (appendWps.length === 0) continue;
+
+                                  const exitStart = ordered[0]!;
+                                  const exitDirBlocked = otherSegs.some((seg) => {
+                                    const dA = haversineDistanceNm(exitStart.lat, exitStart.lng, seg.fixoA.lat, seg.fixoA.lon);
+                                    const dB = haversineDistanceNm(exitStart.lat, exitStart.lng, seg.fixoB.lat, seg.fixoB.lon);
+                                    if (dA < dB && seg.rumoAtoB === null) return true;
+                                    if (dB < dA && seg.rumoBtoA === null) return true;
+                                    return false;
+                                  });
+                                  if (exitDirBlocked) continue;
 
                                   exitCandidates.push({
                                     appendWps,
@@ -2137,40 +2209,55 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             </Pressable>
           }
         >
-          <View className="rounded-sm border border-border bg-surface-muted">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View className="rounded-sm border border-border bg-surface-muted" style={{ minWidth: 720 }}>
             {/* Header */}
             <View className="flex-row border-b border-border px-2 py-1.5">
-              <Text className="w-8 text-[10px] font-bold text-muted-foreground">#</Text>
-              <Text className="flex-[2] text-[10px] font-bold text-muted-foreground">Leg</Text>
-              <Text className="flex-1 text-center text-[10px] font-bold text-muted-foreground">NM</Text>
-              <Text className="flex-1 text-center text-[10px] font-bold text-muted-foreground">TC</Text>
-              <Text className="flex-1 text-center text-[10px] font-bold text-muted-foreground">VAR</Text>
-              <Text className="flex-1 text-center text-[10px] font-bold text-muted-foreground">MC</Text>
-              <Text className="flex-1 text-center text-[10px] font-bold text-muted-foreground">{t('vfr.suggestedAlt')}</Text>
-              <Text className="w-8 text-center text-[10px] font-bold text-muted-foreground">Ref</Text>
+              <Text className="w-6 text-[10px] font-bold text-muted-foreground">#</Text>
+              <Text style={{ width: 110 }} className="text-[10px] font-bold text-muted-foreground">Leg</Text>
+              <Text style={{ width: 45 }} className="text-center text-[10px] font-bold text-muted-foreground">NM</Text>
+              <Text style={{ width: 38 }} className="text-center text-[10px] font-bold text-muted-foreground">MC</Text>
+              <Text style={{ width: 38 }} className="text-center text-[10px] font-bold text-muted-foreground">MH</Text>
+              <Text style={{ width: 38 }} className="text-center text-[10px] font-bold text-muted-foreground">GS</Text>
+              <Text style={{ width: 42 }} className="text-center text-[10px] font-bold text-muted-foreground">ETE</Text>
+              <Text style={{ width: 42 }} className="text-center text-[10px] font-bold text-muted-foreground">ETA</Text>
+              <Text style={{ width: 38 }} className="text-center text-[10px] font-bold text-muted-foreground">TC</Text>
+              <Text style={{ width: 38 }} className="text-center text-[10px] font-bold text-muted-foreground">VAR</Text>
+              <Text style={{ width: 80 }} className="text-center text-[10px] font-bold text-muted-foreground">{t('vfr.suggestedAlt')}</Text>
+              <Text style={{ width: 28 }} className="text-center text-[10px] font-bold text-muted-foreground">Ref</Text>
             </View>
             {/* Rows */}
-            {routeLegs.map((leg, idx) => (
+            {routeLegs.map((leg, idx) => {
+              const el = enrichedLegs[idx];
+              const ete = el ? (el.timeMin < 1 ? '<1' : Math.round(el.timeMin).toString()) : '—';
+              const eta = el ? `${Math.floor(el.cumulativeTimeMin / 60)}:${String(el.cumulativeTimeMin % 60).padStart(2, '0')}` : '—';
+              const phaseColor = el?.phase === 'climb' ? '#f59e0b' : el?.phase === 'descent' ? '#8b5cf6' : undefined;
+              return (
               <View key={idx}>
                 <View
                   className={`flex-row items-center px-2 py-1.5 ${idx < routeLegs.length - 1 || expandedLegRef === idx ? 'border-b border-border' : ''}`}
                 >
-                  <Text className="w-8 text-[10px] font-medium text-muted-foreground">{idx + 1}</Text>
-                  <Text className="flex-[2] text-[10px] font-medium text-foreground" numberOfLines={1}>
+                  <Text className="w-6 text-[10px] font-medium text-muted-foreground" style={phaseColor ? { color: phaseColor } : undefined}>{idx + 1}</Text>
+                  <Text style={{ width: 110 }} className="text-[10px] font-medium text-foreground" numberOfLines={1}>
                     {leg.from.name} → {leg.to.name}
                   </Text>
-                  <Text className="flex-1 text-center text-[10px] text-foreground">{leg.distanceNm.toFixed(1)}</Text>
-                  <Text className="flex-1 text-center text-[10px] text-foreground">{leg.trueCourse.toFixed(0)}°</Text>
-                  <Text className="flex-1 text-center text-[10px] text-foreground">{leg.magneticDeclination.toFixed(0)}°</Text>
-                  <Text className="flex-1 text-center text-[10px] text-foreground">{leg.magneticCourse.toFixed(0)}°</Text>
-                  <Text className="flex-1 text-center text-[10px] text-foreground">
+                  <Text style={{ width: 45 }} className="text-center text-[10px] text-foreground">{leg.distanceNm.toFixed(1)}</Text>
+                  <Text style={{ width: 38 }} className="text-center text-[10px] text-foreground">{leg.magneticCourse.toFixed(0)}°</Text>
+                  <Text style={{ width: 38 }} className="text-center text-[10px] text-foreground">{el ? `${el.magneticHeading}°` : '—'}</Text>
+                  <Text style={{ width: 38 }} className="text-center text-[10px] font-medium text-foreground">{el ? el.groundSpeedKts : '—'}</Text>
+                  <Text style={{ width: 42 }} className="text-center text-[10px] font-medium text-foreground">{ete}</Text>
+                  <Text style={{ width: 42 }} className="text-center text-[10px] text-muted-foreground">{eta}</Text>
+                  <Text style={{ width: 38 }} className="text-center text-[10px] text-muted-foreground">{leg.trueCourse.toFixed(0)}°</Text>
+                  <Text style={{ width: 38 }} className="text-center text-[10px] text-muted-foreground">{leg.magneticDeclination.toFixed(0)}°</Text>
+                  <Text style={{ width: 80 }} className="text-center text-[10px] text-foreground">
                     {leg.suggestedAltitudes.slice(0, 3).map((a) =>
                       hasIfr ? `FL${String(Math.round(a / 100)).padStart(3, '0')}` : a.toLocaleString()
                     ).join(', ')}
                   </Text>
                   <Pressable
                     onPress={() => setExpandedLegRef(expandedLegRef === idx ? null : idx)}
-                    className="w-8 items-center"
+                    style={{ width: 28 }}
+                    className="items-center"
                   >
                     <Text className="text-[10px] text-primary">{expandedLegRef === idx ? '▲' : '📍'}</Text>
                   </Pressable>
@@ -2184,19 +2271,27 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
                   />
                 ) : null}
               </View>
-            ))}
+              );
+            })}
             {/* Total */}
             <View className="flex-row border-t border-border px-2 py-1.5">
-              <Text className="w-8 text-[10px] font-bold text-foreground" />
-              <Text className="flex-[2] text-[10px] font-bold text-foreground">{t('vfr.totalDistance')}</Text>
-              <Text className="flex-1 text-center text-[10px] font-bold text-foreground">{totalDistanceNm.toFixed(1)}</Text>
-              <Text className="flex-1" />
-              <Text className="flex-1" />
-              <Text className="flex-1" />
-              <Text className="flex-1" />
-              <Text className="w-8" />
+              <Text className="w-6 text-[10px] font-bold text-foreground" />
+              <Text style={{ width: 110 }} className="text-[10px] font-bold text-foreground">{t('vfr.totalDistance')}</Text>
+              <Text style={{ width: 45 }} className="text-center text-[10px] font-bold text-foreground">{totalDistanceNm.toFixed(1)}</Text>
+              <Text style={{ width: 38 }} />
+              <Text style={{ width: 38 }} />
+              <Text style={{ width: 38 }} />
+              <Text style={{ width: 42 }} className="text-center text-[10px] font-bold text-foreground">
+                {enrichedLegs.length > 0 ? `${Math.round(enrichedLegs[enrichedLegs.length - 1]!.cumulativeTimeMin)}'` : ''}
+              </Text>
+              <Text style={{ width: 42 }} />
+              <Text style={{ width: 38 }} />
+              <Text style={{ width: 38 }} />
+              <Text style={{ width: 80 }} />
+              <Text style={{ width: 28 }} />
             </View>
           </View>
+          </ScrollView>
           {tocTodPositions.length > 0 && selectedAircraft ? (
             <View className="mt-1.5 flex-row gap-3">
               {tocTodPositions.map((tp) => {

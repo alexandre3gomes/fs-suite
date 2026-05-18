@@ -18,6 +18,27 @@ export interface RouteLeg {
   suggestedAltitudes: number[];
 }
 
+export type FlightPhase = 'climb' | 'cruise' | 'descent';
+
+export interface EnrichedLeg extends RouteLeg {
+  phase: FlightPhase;
+  tas: number;
+  groundSpeedKts: number;
+  windCorrectionAngle: number;
+  magneticHeading: number;
+  timeMin: number;
+  cumulativeTimeMin: number;
+  cumulativeDistanceNm: number;
+}
+
+export interface AircraftPerformance {
+  climbSpeedKts: number;
+  cruiseSpeedKts: number;
+  descentSpeedKts: number;
+  climbRateFpm: number;
+  descentRateFpm: number;
+}
+
 /**
  * Format decimal degrees to VFR flight plan coordinate notation.
  * Lat: DDMM[N/S]  Lon: DDDMM[E/W]
@@ -712,4 +733,99 @@ export function interpolatePositionOnRoute(
     accumulated += legDist;
   }
   return routePoints[routePoints.length - 1] ?? null;
+}
+
+// --------------- Wind Triangle & Leg Enrichment ---------------
+
+export function calculateWindTriangle(
+  tas: number,
+  trueCourse: number,
+  windDirection: number | null,
+  windSpeed: number | null,
+): { groundSpeed: number; wca: number } {
+  if (windDirection === null || windSpeed === null || windSpeed === 0 || tas <= 0) {
+    return { groundSpeed: tas, wca: 0 };
+  }
+
+  const tcRad = toRad(trueCourse);
+  const wdRad = toRad(windDirection);
+
+  const xwind = windSpeed * Math.sin(wdRad - tcRad);
+
+  if (Math.abs(xwind) >= tas) {
+    return { groundSpeed: Math.max(1, tas - windSpeed), wca: 0 };
+  }
+
+  const wcaRad = Math.asin(xwind / tas);
+  const headwind = windSpeed * Math.cos(wdRad - tcRad);
+  const gs = tas * Math.cos(wcaRad) - headwind;
+
+  return {
+    groundSpeed: Math.max(1, Math.round(gs)),
+    wca: Math.round((wcaRad * 180) / Math.PI),
+  };
+}
+
+export function enrichRouteLegs(
+  legs: RouteLeg[],
+  perf: AircraftPerformance,
+  originElevFt: number,
+  destElevFt: number,
+  cruiseAltFt: number | null,
+  windDirection: number | null,
+  windSpeed: number | null,
+): EnrichedLeg[] {
+  if (legs.length === 0 || perf.cruiseSpeedKts <= 0) return [];
+
+  const altFt = cruiseAltFt && cruiseAltFt > 0 ? cruiseAltFt : null;
+
+  const tocNm = altFt
+    ? calculateTocDistance(originElevFt, altFt, perf.climbRateFpm, perf.climbSpeedKts)
+    : 0;
+  const todFromDestNm = altFt ? calculateTodFromDestination(altFt, destElevFt) : 0;
+  const totalDistNm = legs.reduce((s, l) => s + l.distanceNm, 0);
+  const todFromOriginNm = totalDistNm - todFromDestNm;
+
+  let cumDist = 0;
+  let cumTime = 0;
+  const enriched: EnrichedLeg[] = [];
+
+  for (const leg of legs) {
+    const legMidDist = cumDist + leg.distanceNm / 2;
+
+    let phase: FlightPhase;
+    let tas: number;
+    if (altFt && legMidDist < tocNm) {
+      phase = 'climb';
+      tas = perf.climbSpeedKts;
+    } else if (altFt && legMidDist > todFromOriginNm && todFromOriginNm > tocNm) {
+      phase = 'descent';
+      tas = perf.descentSpeedKts;
+    } else {
+      phase = 'cruise';
+      tas = perf.cruiseSpeedKts;
+    }
+
+    const { groundSpeed, wca } = calculateWindTriangle(tas, leg.trueCourse, windDirection, windSpeed);
+    const timeMin = groundSpeed > 0 ? (leg.distanceNm / groundSpeed) * 60 : 0;
+
+    cumDist += leg.distanceNm;
+    cumTime += timeMin;
+
+    const mh = ((leg.magneticCourse + wca) % 360 + 360) % 360;
+
+    enriched.push({
+      ...leg,
+      phase,
+      tas,
+      groundSpeedKts: groundSpeed,
+      windCorrectionAngle: wca,
+      magneticHeading: Math.round(mh),
+      timeMin: Math.round(timeMin * 10) / 10,
+      cumulativeTimeMin: Math.round(cumTime),
+      cumulativeDistanceNm: Math.round(cumDist * 10) / 10,
+    });
+  }
+
+  return enriched;
 }

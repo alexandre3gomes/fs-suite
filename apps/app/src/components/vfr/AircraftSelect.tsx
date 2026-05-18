@@ -1,28 +1,30 @@
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { Dropdown } from 'react-native-element-dropdown';
 
-import { type AircraftSpec, AIRCRAFT_CATALOG } from '../../data/aircraftCatalog';
+import type { AircraftSpec } from '../../data/aircraftCatalog';
 
 interface Props {
   value: AircraftSpec | null;
   onSelect: (aircraft: AircraftSpec) => void;
   onClear: () => void;
+  catalog: AircraftSpec[];
+  loading?: boolean;
 }
 
-export function AircraftSelect({ value, onSelect, onClear }: Props) {
+export function AircraftSelect({ value, onSelect, onClear, catalog, loading }: Props) {
   const { t } = useTranslation();
 
   const data = useMemo(
     () =>
-      AIRCRAFT_CATALOG.map((a) => ({
+      catalog.map((a) => ({
         label: `${a.icaoType} — ${a.manufacturer} ${a.model}`,
         value: a.icaoType,
         search: `${a.icaoType} ${a.manufacturer} ${a.model}`.toLowerCase(),
         spec: a,
       })),
-    [],
+    [catalog],
   );
 
   const handleChange = useCallback(
@@ -31,6 +33,20 @@ export function AircraftSelect({ value, onSelect, onClear }: Props) {
     },
     [onSelect],
   );
+
+  if (loading) {
+    return (
+      <View className="mb-3">
+        <Text className="mb-1 text-xs font-medium text-muted-foreground">
+          {t('aircraft.selectAircraft')}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}>
+          <ActivityIndicator size="small" />
+          <Text style={{ fontSize: 13, color: '#9ca3af' }}>{t('common.loading')}</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View className="mb-3">

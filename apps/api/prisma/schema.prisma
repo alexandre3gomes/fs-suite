@@ -62,17 +62,27 @@ model Session {
 }
 
 model AircraftProfile {
-  id          String   @id @default(cuid())
-  name        String
-  icaoType    String?  @map("icao_type") // e.g. "B738"
-  cruiseSpeed Int?     @map("cruise_speed") // knots
-  fuelUnit    String?  @map("fuel_unit") // "kg" | "lbs" | "liters"
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(cuid())
+  name           String
+  icaoType       String?  @map("icao_type")
+  manufacturer   String?
+  model          String?
+  emptyWeightKg  Float?   @map("empty_weight_kg")
+  mtowKg         Float?   @map("mtow_kg")
+  fuelCapacityL  Float?   @map("fuel_capacity_l")
+  fuelBurnLph    Float?   @map("fuel_burn_lph")
+  cruiseSpeedKts Int?     @map("cruise_speed_kts")
+  stations       Json?
+  source         String?
+  isTemplate     Boolean  @default(false) @map("is_template")
+  clonedFromId   String?  @map("cloned_from_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id])
 
+  @@index([icaoType, isTemplate])
   @@map("aircraft_profiles")
 }
 
@@ -157,14 +167,18 @@ model FlightPlan {
   alternateRunwayInUse String? @map("alternate_runway_in_use")
   alternateMetarRaw    String? @map("alternate_metar_raw")
 
-  // Aircraft
-  aircraftType    String? @map("aircraft_type")
-  aircraftName    String? @map("aircraft_name")
-  takeoffWeightKg Float?  @map("takeoff_weight_kg")
-  mtowKg          Float?  @map("mtow_kg")
-  callsign        String?
-  registration    String?
-  simbriefOfpId   String? @map("simbrief_ofp_id")
+  // Aircraft (snapshot)
+  aircraftType     String? @map("aircraft_type")
+  aircraftName     String? @map("aircraft_name")
+  emptyWeightKg    Float?  @map("empty_weight_kg")
+  takeoffWeightKg  Float?  @map("takeoff_weight_kg")
+  mtowKg           Float?  @map("mtow_kg")
+  fuelCapacityL    Float?  @map("fuel_capacity_l")
+  fuelBurnLph      Float?  @map("fuel_burn_lph")
+  aircraftStations Json?   @map("aircraft_stations")
+  callsign         String?
+  registration     String?
+  simbriefOfpId    String? @map("simbrief_ofp_id")
 
   // Route
   routeText     String? @map("route_text")

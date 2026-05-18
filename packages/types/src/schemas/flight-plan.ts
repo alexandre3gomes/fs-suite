@@ -64,11 +64,15 @@ export const FlightPlanSchema = z.object({
   alternateRunwayInUse: z.string().nullable(),
   alternateMetarRaw: z.string().nullable(),
 
-  // Aircraft
+  // Aircraft (snapshot)
   aircraftType: z.string().nullable(),
   aircraftName: z.string().nullable(),
+  emptyWeightKg: z.number().nullable(),
   takeoffWeightKg: z.number().nullable(),
   mtowKg: z.number().nullable(),
+  fuelCapacityL: z.number().nullable(),
+  fuelBurnLph: z.number().nullable(),
+  aircraftStations: z.unknown().nullable(),
   callsign: z.string().nullable(),
   registration: z.string().nullable(),
   simbriefOfpId: z.string().nullable(),
@@ -128,11 +132,15 @@ export const CreateFlightPlanSchema = z.object({
   alternateRunwayInUse: z.string().optional(),
   alternateMetarRaw: z.string().optional(),
 
-  // Aircraft
+  // Aircraft (snapshot)
   aircraftType: z.string().optional(),
   aircraftName: z.string().optional(),
+  emptyWeightKg: z.number().optional(),
   takeoffWeightKg: z.number().optional(),
   mtowKg: z.number().optional(),
+  fuelCapacityL: z.number().optional(),
+  fuelBurnLph: z.number().optional(),
+  aircraftStations: z.unknown().optional(),
   callsign: z.string().max(20).optional(),
   registration: z.string().max(20).optional(),
   simbriefOfpId: z.string().max(100).optional(),

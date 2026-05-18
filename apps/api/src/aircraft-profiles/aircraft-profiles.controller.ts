@@ -15,10 +15,25 @@ import { UpdateAircraftProfileDto } from './dto/update-aircraft-profile.dto';
 export class AircraftProfilesController {
   constructor(private readonly service: AircraftProfilesService) {}
 
+  @Get('catalog')
+  @ApiOperation({ summary: 'List all system aircraft templates' })
+  async catalog(): Promise<unknown> {
+    return this.service.findAllTemplates();
+  }
+
   @Get()
   @ApiOperation({ summary: "List user's aircraft profiles" })
   async findAll(@CurrentUser() user: User): Promise<unknown> {
     return this.service.findAllByUser(user.id);
+  }
+
+  @Post(':id/clone')
+  @ApiOperation({ summary: 'Clone a system template into user profiles' })
+  async clone(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ): Promise<unknown> {
+    return this.service.clone(id, user.id);
   }
 
   @Post()

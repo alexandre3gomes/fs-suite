@@ -1,0 +1,1837 @@
+[
+  {
+    "icaoType": "247D",
+    "name": "Boeing 247D Chevron",
+    "manufacturer": "Boeing",
+    "model": "247D Chevron",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 1022,
+    "fuelBurnLph": 123,
+    "cruiseSpeedKts": 128,
+    "stations": null
+  },
+  {
+    "icaoType": "310R",
+    "name": "Cessna",
+    "manufacturer": "Cessna",
+    "model": null,
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 617,
+    "fuelBurnLph": 115,
+    "cruiseSpeedKts": 185,
+    "stations": null
+  },
+  {
+    "icaoType": "A-1C",
+    "name": "Aviat Husky A-1C",
+    "manufacturer": "Aviat",
+    "model": "Husky A-1C",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 220,
+    "fuelBurnLph": 31,
+    "cruiseSpeedKts": 91,
+    "stations": null
+  },
+  {
+    "icaoType": "A19N",
+    "name": "Airbus A319neo",
+    "manufacturer": "Airbus",
+    "model": "A319neo",
+    "source": "openap",
+    "emptyWeightKg": 42600,
+    "mtowKg": 75500,
+    "fuelCapacityL": 37125,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 447,
+    "stations": null
+  },
+  {
+    "icaoType": "A20N",
+    "name": "Airbus A320neo",
+    "manufacturer": "Airbus",
+    "model": "A320neo",
+    "source": "openap+lnm",
+    "emptyWeightKg": 44300,
+    "mtowKg": 79000,
+    "fuelCapacityL": 37125,
+    "fuelBurnLph": 2250,
+    "cruiseSpeedKts": 447,
+    "stations": null
+  },
+  {
+    "icaoType": "A21N",
+    "name": "Airbus A321neo",
+    "manufacturer": "Airbus",
+    "model": "A321neo",
+    "source": "openap",
+    "emptyWeightKg": 50000,
+    "mtowKg": 97000,
+    "fuelCapacityL": 41250,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 447,
+    "stations": null
+  },
+  {
+    "icaoType": "A310",
+    "name": "iniSimulations A310-300P",
+    "manufacturer": "iniSimulations",
+    "model": "A310-300P",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 75375,
+    "fuelBurnLph": 5955,
+    "cruiseSpeedKts": 437,
+    "stations": null
+  },
+  {
+    "icaoType": "A318",
+    "name": "Airbus A318",
+    "manufacturer": "Airbus",
+    "model": "A318",
+    "source": "openap",
+    "emptyWeightKg": 39500,
+    "mtowKg": 68000,
+    "fuelCapacityL": 30263,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 447,
+    "stations": null
+  },
+  {
+    "icaoType": "A319",
+    "name": "Airbus A319",
+    "manufacturer": "Airbus",
+    "model": "A319",
+    "source": "openap",
+    "emptyWeightKg": 40800,
+    "mtowKg": 75500,
+    "fuelCapacityL": 37738,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 447,
+    "stations": null
+  },
+  {
+    "icaoType": "A320",
+    "name": "Airbus A320",
+    "manufacturer": "Airbus",
+    "model": "A320",
+    "source": "openap+lnm",
+    "emptyWeightKg": 42600,
+    "mtowKg": 78000,
+    "fuelCapacityL": 30263,
+    "fuelBurnLph": 3029,
+    "cruiseSpeedKts": 447,
+    "stations": null
+  },
+  {
+    "icaoType": "A321",
+    "name": "Airbus A321",
+    "manufacturer": "Airbus",
+    "model": "A321",
+    "source": "openap+lnm",
+    "emptyWeightKg": 48500,
+    "mtowKg": 93500,
+    "fuelCapacityL": 37538,
+    "fuelBurnLph": 2730,
+    "cruiseSpeedKts": 447,
+    "stations": null
+  },
+  {
+    "icaoType": "A332",
+    "name": "Airbus A330-200",
+    "manufacturer": "Airbus",
+    "model": "A330-200",
+    "source": "openap",
+    "emptyWeightKg": 120200,
+    "mtowKg": 230000,
+    "fuelCapacityL": 173750,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 470,
+    "stations": null
+  },
+  {
+    "icaoType": "A333",
+    "name": "Airbus A330-300",
+    "manufacturer": "Airbus",
+    "model": "A330-300",
+    "source": "openap+lnm",
+    "emptyWeightKg": 122780,
+    "mtowKg": 242000,
+    "fuelCapacityL": 173750,
+    "fuelBurnLph": 6625,
+    "cruiseSpeedKts": 470,
+    "stations": null
+  },
+  {
+    "icaoType": "A339",
+    "name": "AIRBUS® A330neo",
+    "manufacturer": "AIRBUS®",
+    "model": "A330neo",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 136483,
+    "fuelBurnLph": 7149,
+    "cruiseSpeedKts": 484,
+    "stations": null
+  },
+  {
+    "icaoType": "A343",
+    "name": "Airbus A340-300",
+    "manufacturer": "Airbus",
+    "model": "A340-300",
+    "source": "openap",
+    "emptyWeightKg": 130000,
+    "mtowKg": 276000,
+    "fuelCapacityL": 184813,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 470,
+    "stations": null
+  },
+  {
+    "icaoType": "A346",
+    "name": "ToLiss Airbus A340-642 StdDef",
+    "manufacturer": "ToLiss",
+    "model": "Airbus A340-642 StdDef",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 190030,
+    "fuelBurnLph": 8664,
+    "cruiseSpeedKts": 456,
+    "stations": null
+  },
+  {
+    "icaoType": "A359",
+    "name": "Airbus A350-900",
+    "manufacturer": "Airbus",
+    "model": "A350-900",
+    "source": "openap+lnm",
+    "emptyWeightKg": 142400,
+    "mtowKg": 280000,
+    "fuelCapacityL": 175994,
+    "fuelBurnLph": 6926,
+    "cruiseSpeedKts": 488,
+    "stations": null
+  },
+  {
+    "icaoType": "A388",
+    "name": "Airbus A380-800",
+    "manufacturer": "Airbus",
+    "model": "A380-800",
+    "source": "openap",
+    "emptyWeightKg": 277000,
+    "mtowKg": 560000,
+    "fuelCapacityL": 400000,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 474,
+    "stations": null
+  },
+  {
+    "icaoType": "AEST",
+    "name": "A2A Piper Aerostar PA-60-600",
+    "manufacturer": "A2A",
+    "model": "Piper Aerostar PA-60-600",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 625,
+    "fuelBurnLph": 106,
+    "cruiseSpeedKts": 210,
+    "stations": null
+  },
+  {
+    "icaoType": "AP22",
+    "name": "VSKYLABS Aeroprakt A22-LS",
+    "manufacturer": "VSKYLABS",
+    "model": "Aeroprakt A22-LS",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 164,
+    "fuelBurnLph": 16,
+    "cruiseSpeedKts": 77,
+    "stations": null
+  },
+  {
+    "icaoType": "B37M",
+    "name": "Boeing 737 MAX 7",
+    "manufacturer": "Boeing",
+    "model": "737 MAX 7",
+    "source": "openap",
+    "emptyWeightKg": 45000,
+    "mtowKg": 80000,
+    "fuelCapacityL": 32500,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 447,
+    "stations": null
+  },
+  {
+    "icaoType": "B38M",
+    "name": "Boeing 737 MAX 8",
+    "manufacturer": "Boeing",
+    "model": "737 MAX 8",
+    "source": "openap",
+    "emptyWeightKg": 45000,
+    "mtowKg": 82000,
+    "fuelCapacityL": 32500,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 453,
+    "stations": null
+  },
+  {
+    "icaoType": "B39M",
+    "name": "Boeing 737 MAX 9",
+    "manufacturer": "Boeing",
+    "model": "737 MAX 9",
+    "source": "openap",
+    "emptyWeightKg": 45000,
+    "mtowKg": 88000,
+    "fuelCapacityL": 32500,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 453,
+    "stations": null
+  },
+  {
+    "icaoType": "B3XM",
+    "name": "Boeing 737 MAX 10",
+    "manufacturer": "Boeing",
+    "model": "737 MAX 10",
+    "source": "openap",
+    "emptyWeightKg": 45000,
+    "mtowKg": 90000,
+    "fuelCapacityL": 32500,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 453,
+    "stations": null
+  },
+  {
+    "icaoType": "B461",
+    "name": "JustFlight BAe 146 100",
+    "manufacturer": "JustFlight",
+    "model": "BAe 146 100",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 11623,
+    "fuelBurnLph": 2563,
+    "cruiseSpeedKts": 386,
+    "stations": null
+  },
+  {
+    "icaoType": "B462",
+    "name": "JustFlight BAe 146 200",
+    "manufacturer": "JustFlight",
+    "model": "BAe 146 200",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 11623,
+    "fuelBurnLph": 2587,
+    "cruiseSpeedKts": 387,
+    "stations": null
+  },
+  {
+    "icaoType": "B463",
+    "name": "JustFlight BAe 146 300",
+    "manufacturer": "JustFlight",
+    "model": "BAe 146 300",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 11623,
+    "fuelBurnLph": 2606,
+    "cruiseSpeedKts": 386,
+    "stations": null
+  },
+  {
+    "icaoType": "B60",
+    "name": "Black Square Grand Duke - Piston",
+    "manufacturer": "Black",
+    "model": "Square Grand Duke - Piston",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 901,
+    "fuelBurnLph": 189,
+    "cruiseSpeedKts": 253,
+    "stations": null
+  },
+  {
+    "icaoType": "B733",
+    "name": "X-Aviation IXEG B733",
+    "manufacturer": "X-Aviation",
+    "model": "IXEG B733",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 20075,
+    "fuelBurnLph": 3333,
+    "cruiseSpeedKts": 429,
+    "stations": null
+  },
+  {
+    "icaoType": "B734",
+    "name": "Boeing 737-400",
+    "manufacturer": "Boeing",
+    "model": "737-400",
+    "source": "openap",
+    "emptyWeightKg": 33700,
+    "mtowKg": 68000,
+    "fuelCapacityL": 25000,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 447,
+    "stations": null
+  },
+  {
+    "icaoType": "B737",
+    "name": "Boeing 737-700",
+    "manufacturer": "Boeing",
+    "model": "737-700",
+    "source": "openap+lnm",
+    "emptyWeightKg": 37600,
+    "mtowKg": 70000,
+    "fuelCapacityL": 32500,
+    "fuelBurnLph": 2217,
+    "cruiseSpeedKts": 447,
+    "stations": null
+  },
+  {
+    "icaoType": "B738",
+    "name": "Boeing 737-800",
+    "manufacturer": "Boeing",
+    "model": "737-800",
+    "source": "openap+lnm",
+    "emptyWeightKg": 41400,
+    "mtowKg": 79000,
+    "fuelCapacityL": 32500,
+    "fuelBurnLph": 4200,
+    "cruiseSpeedKts": 453,
+    "stations": null
+  },
+  {
+    "icaoType": "B739",
+    "name": "Boeing 737-900",
+    "manufacturer": "Boeing",
+    "model": "737-900",
+    "source": "openap",
+    "emptyWeightKg": 44600,
+    "mtowKg": 85100,
+    "fuelCapacityL": 32500,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 453,
+    "stations": null
+  },
+  {
+    "icaoType": "B744",
+    "name": "Boeing 747-400",
+    "manufacturer": "Boeing",
+    "model": "747-400",
+    "source": "openap",
+    "emptyWeightKg": 182400,
+    "mtowKg": 396800,
+    "fuelCapacityL": 254375,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 488,
+    "stations": null
+  },
+  {
+    "icaoType": "B747",
+    "name": "Boeing 747-8",
+    "manufacturer": "Boeing",
+    "model": "747-8",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 241635,
+    "fuelBurnLph": 15893,
+    "cruiseSpeedKts": 490,
+    "stations": null
+  },
+  {
+    "icaoType": "B748",
+    "name": "Boeing 747-8",
+    "manufacturer": "Boeing",
+    "model": "747-8",
+    "source": "openap",
+    "emptyWeightKg": 220100,
+    "mtowKg": 447700,
+    "fuelCapacityL": 298250,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 488,
+    "stations": null
+  },
+  {
+    "icaoType": "B752",
+    "name": "Boeing 757-200",
+    "manufacturer": "Boeing",
+    "model": "757-200",
+    "source": "openap+lnm",
+    "emptyWeightKg": 58400,
+    "mtowKg": 115600,
+    "fuelCapacityL": 54375,
+    "fuelBurnLph": 3866,
+    "cruiseSpeedKts": 459,
+    "stations": null
+  },
+  {
+    "icaoType": "B763",
+    "name": "Boeing 767-300",
+    "manufacturer": "Boeing",
+    "model": "767-300",
+    "source": "openap+lnm",
+    "emptyWeightKg": 90000,
+    "mtowKg": 158700,
+    "fuelCapacityL": 79000,
+    "fuelBurnLph": 5610,
+    "cruiseSpeedKts": 459,
+    "stations": null
+  },
+  {
+    "icaoType": "B764",
+    "name": "Boeing 767-400 FF",
+    "manufacturer": "Boeing",
+    "model": "767-400 FF",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 112500,
+    "fuelBurnLph": 8056,
+    "cruiseSpeedKts": 468,
+    "stations": null
+  },
+  {
+    "icaoType": "B772",
+    "name": "Boeing 777-200/200ER",
+    "manufacturer": "Boeing",
+    "model": "777-200",
+    "source": "openap",
+    "emptyWeightKg": 138000,
+    "mtowKg": 297000,
+    "fuelCapacityL": 213750,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 482,
+    "stations": null
+  },
+  {
+    "icaoType": "B773",
+    "name": "Boeing 777-300",
+    "manufacturer": "Boeing",
+    "model": "777-300",
+    "source": "openap",
+    "emptyWeightKg": 160500,
+    "mtowKg": 299300,
+    "fuelCapacityL": 214000,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 482,
+    "stations": null
+  },
+  {
+    "icaoType": "B77L",
+    "name": "Boeing 777-200LR",
+    "manufacturer": "Boeing",
+    "model": "777-200LR",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 172500,
+    "fuelBurnLph": 9000,
+    "cruiseSpeedKts": 480,
+    "stations": null
+  },
+  {
+    "icaoType": "B77W",
+    "name": "Boeing 777-300ER",
+    "manufacturer": "Boeing",
+    "model": "777-300ER",
+    "source": "openap",
+    "emptyWeightKg": 167800,
+    "mtowKg": 351500,
+    "fuelCapacityL": 226625,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 482,
+    "stations": null
+  },
+  {
+    "icaoType": "B788",
+    "name": "Boeing 787-8",
+    "manufacturer": "Boeing",
+    "model": "787-8",
+    "source": "openap",
+    "emptyWeightKg": 119000,
+    "mtowKg": 228000,
+    "fuelCapacityL": 157750,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 488,
+    "stations": null
+  },
+  {
+    "icaoType": "B789",
+    "name": "Boeing 787-9",
+    "manufacturer": "Boeing",
+    "model": "787-9",
+    "source": "openap",
+    "emptyWeightKg": 128000,
+    "mtowKg": 254000,
+    "fuelCapacityL": 158000,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 488,
+    "stations": null
+  },
+  {
+    "icaoType": "BE36",
+    "name": "Beechcraft A36 Bonanza",
+    "manufacturer": "Beechcraft",
+    "model": "A36 Bonanza",
+    "emptyWeightKg": 1042,
+    "mtowKg": 1656,
+    "fuelCapacityL": 318,
+    "fuelBurnLph": 53,
+    "cruiseSpeedKts": 168,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 82
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 82
+      },
+      {
+        "id": "midPax",
+        "labelKey": "aircraft.midPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 121
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 145
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 136,
+        "arm": 168
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "BE58",
+    "name": "Beechcraft Baron 58",
+    "manufacturer": "Beechcraft",
+    "model": "Baron 58",
+    "emptyWeightKg": 1564,
+    "mtowKg": 2449,
+    "fuelCapacityL": 536,
+    "fuelBurnLph": 91,
+    "cruiseSpeedKts": 190,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 82
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 82
+      },
+      {
+        "id": "midPax",
+        "labelKey": "aircraft.midPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 121
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 145
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 181,
+        "arm": 168
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "BE60",
+    "name": "Blacksquare Duke - Turboprop",
+    "manufacturer": "Blacksquare",
+    "model": "Duke - Turboprop",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 1026,
+    "fuelBurnLph": 310,
+    "cruiseSpeedKts": 282,
+    "stations": null
+  },
+  {
+    "icaoType": "BN2",
+    "name": "Britten Norman Islander",
+    "manufacturer": "Britten",
+    "model": "Norman Islander",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 454,
+    "fuelBurnLph": 69,
+    "cruiseSpeedKts": 130,
+    "stations": null
+  },
+  {
+    "icaoType": "C152",
+    "name": "Cessna 152",
+    "manufacturer": "Cessna",
+    "model": "152",
+    "emptyWeightKg": 508,
+    "mtowKg": 757,
+    "fuelCapacityL": 98,
+    "fuelBurnLph": 23,
+    "cruiseSpeedKts": 107,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 39
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 39
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 54,
+        "arm": 64
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "C160",
+    "name": "Beispiel für Flugzeugleistung",
+    "manufacturer": "Beispiel",
+    "model": "für Flugzeugleistung",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 15625,
+    "fuelBurnLph": 1500,
+    "cruiseSpeedKts": 260,
+    "stations": null
+  },
+  {
+    "icaoType": "C172",
+    "name": "Cessna 172S Skyhawk SP",
+    "manufacturer": "Cessna",
+    "model": "172S Skyhawk SP",
+    "emptyWeightKg": 767,
+    "mtowKg": 1111,
+    "fuelCapacityL": 212,
+    "fuelBurnLph": 34,
+    "cruiseSpeedKts": 124,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 37
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 37
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 73
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 54,
+        "arm": 95
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "C182",
+    "name": "Cessna 182T Skylane",
+    "manufacturer": "Cessna",
+    "model": "182T Skylane",
+    "emptyWeightKg": 880,
+    "mtowKg": 1406,
+    "fuelCapacityL": 303,
+    "fuelBurnLph": 49,
+    "cruiseSpeedKts": 145,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 37
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 37
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 73
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 91,
+        "arm": 95
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "C206",
+    "name": "Cessna T206H Stationair",
+    "manufacturer": "Cessna",
+    "model": "T206H Stationair",
+    "emptyWeightKg": 998,
+    "mtowKg": 1633,
+    "fuelCapacityL": 340,
+    "fuelBurnLph": 57,
+    "cruiseSpeedKts": 150,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 37
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 37
+      },
+      {
+        "id": "midPax",
+        "labelKey": "aircraft.midPax",
+        "defaultKg": 0,
+        "maxKg": 181,
+        "arm": 73
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 181,
+        "arm": 95
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 136,
+        "arm": 123
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "C208",
+    "name": "Cessna 208 Grand Caravan",
+    "manufacturer": "Cessna",
+    "model": "208 Grand Caravan",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 1247,
+    "fuelBurnLph": 198,
+    "cruiseSpeedKts": 150,
+    "stations": null
+  },
+  {
+    "icaoType": "C25C",
+    "name": "Cessna Citation CJ4",
+    "manufacturer": "Cessna",
+    "model": "Citation CJ4",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 3267,
+    "fuelBurnLph": 533,
+    "cruiseSpeedKts": 360,
+    "stations": null
+  },
+  {
+    "icaoType": "C310",
+    "name": "Milviz Cessna 310R",
+    "manufacturer": "Milviz",
+    "model": "Cessna 310R",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 617,
+    "fuelBurnLph": 129,
+    "cruiseSpeedKts": 185,
+    "stations": null
+  },
+  {
+    "icaoType": "C337",
+    "name": "Cessna 337 Skimaster II Cruise @ 12,000 ft",
+    "manufacturer": "Cessna",
+    "model": "337 Skimaster II Cruise @ 12,000 ft",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 559,
+    "fuelBurnLph": 58,
+    "cruiseSpeedKts": 154,
+    "stations": null
+  },
+  {
+    "icaoType": "C550",
+    "name": "Cessna Citation II",
+    "manufacturer": "Cessna",
+    "model": "Citation II",
+    "source": "openap+lnm",
+    "emptyWeightKg": 3655,
+    "mtowKg": 6849,
+    "fuelCapacityL": 2755,
+    "fuelBurnLph": 463,
+    "cruiseSpeedKts": 384,
+    "stations": null
+  },
+  {
+    "icaoType": "C700",
+    "name": "Cessna Longitude Asobo",
+    "manufacturer": "Cessna",
+    "model": "Longitude Asobo",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 1325,
+    "fuelBurnLph": 874,
+    "cruiseSpeedKts": 348,
+    "stations": null
+  },
+  {
+    "icaoType": "C750",
+    "name": "Cessena Citation X-V1",
+    "manufacturer": "Cessena",
+    "model": "Citation X-V1",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 7425,
+    "fuelBurnLph": 945,
+    "cruiseSpeedKts": 505,
+    "stations": null
+  },
+  {
+    "icaoType": "CC19",
+    "name": "Asobo XCub",
+    "manufacturer": "Asobo",
+    "model": "XCub",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 185,
+    "fuelBurnLph": 31,
+    "cruiseSpeedKts": 114,
+    "stations": null
+  },
+  {
+    "icaoType": "CL30",
+    "name": "Bombardier Challenger 300",
+    "manufacturer": "Bombardier",
+    "model": "Challenger 300",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 6690,
+    "fuelBurnLph": 1066,
+    "cruiseSpeedKts": 450,
+    "stations": null
+  },
+  {
+    "icaoType": "CONI",
+    "name": "Lockheed Super-Constellation L1049 Redwing",
+    "manufacturer": "Lockheed",
+    "model": "Super-Constellation L1049 Redwing",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 24951,
+    "fuelBurnLph": 1138,
+    "cruiseSpeedKts": 227,
+    "stations": null
+  },
+  {
+    "icaoType": "CRJ7",
+    "name": "Aerosoft CRJ700ER",
+    "manufacturer": "Aerosoft",
+    "model": "CRJ700ER",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 11110,
+    "fuelBurnLph": 2155,
+    "cruiseSpeedKts": 300,
+    "stations": null
+  },
+  {
+    "icaoType": "CRJ9",
+    "name": "BOMBARDIER CRJ9",
+    "manufacturer": "Bombardier",
+    "model": "CRJ-900",
+    "source": "openap",
+    "emptyWeightKg": 20412,
+    "mtowKg": 37421,
+    "fuelCapacityL": 11110,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 430,
+    "stations": null
+  },
+  {
+    "icaoType": "DA40",
+    "name": "Diamond DA40 Diamond Star",
+    "manufacturer": "Diamond",
+    "model": "DA40 Diamond Star",
+    "emptyWeightKg": 798,
+    "mtowKg": 1150,
+    "fuelCapacityL": 148,
+    "fuelBurnLph": 30,
+    "cruiseSpeedKts": 140,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 2.4
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 2.4
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 3.27
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 45,
+        "arm": 4.07
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "DA42",
+    "name": "Diamond DA42 Twin Star",
+    "manufacturer": "Diamond",
+    "model": "DA42 Twin Star",
+    "emptyWeightKg": 1280,
+    "mtowKg": 1785,
+    "fuelCapacityL": 296,
+    "fuelBurnLph": 42,
+    "cruiseSpeedKts": 176,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 2.4
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 2.4
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 3.27
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 45,
+        "arm": 4.07
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "DA62",
+    "name": "Diamond DA62",
+    "manufacturer": "Diamond",
+    "model": "DA62",
+    "emptyWeightKg": 1410,
+    "mtowKg": 2300,
+    "fuelCapacityL": 326,
+    "fuelBurnLph": 48,
+    "cruiseSpeedKts": 192,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 2.4
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 2.4
+      },
+      {
+        "id": "midPax",
+        "labelKey": "aircraft.midPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 3.27
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 3.8
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 50,
+        "arm": 4.3
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "DC6B",
+    "name": "DC6 PMDG",
+    "manufacturer": "DC6",
+    "model": "PMDG",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 20835,
+    "fuelBurnLph": 1512,
+    "cruiseSpeedKts": 240,
+    "stations": null
+  },
+  {
+    "icaoType": "DH8D",
+    "name": "FlyJSim Q4XP",
+    "manufacturer": "FlyJSim",
+    "model": "Q4XP",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 6648,
+    "fuelBurnLph": 1055,
+    "cruiseSpeedKts": 343,
+    "stations": null
+  },
+  {
+    "icaoType": "DHC6",
+    "name": "DHC6-300",
+    "manufacturer": "DHC6-300",
+    "model": null,
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 1417,
+    "fuelBurnLph": 329,
+    "cruiseSpeedKts": 165,
+    "stations": null
+  },
+  {
+    "icaoType": "E145",
+    "name": "Embraer ERJ145 (LR)",
+    "manufacturer": "Embraer",
+    "model": "ERJ-145",
+    "source": "openap",
+    "emptyWeightKg": 12110,
+    "mtowKg": 22000,
+    "fuelCapacityL": 6420,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 413,
+    "stations": null
+  },
+  {
+    "icaoType": "E170",
+    "name": "Embraer E170",
+    "manufacturer": "Embraer",
+    "model": "E170",
+    "source": "openap",
+    "emptyWeightKg": 21140,
+    "mtowKg": 34200,
+    "fuelCapacityL": 11669,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 430,
+    "stations": null
+  },
+  {
+    "icaoType": "E190",
+    "name": "Embraer E190 (LR)",
+    "manufacturer": "Embraer",
+    "model": "E190",
+    "source": "openap",
+    "emptyWeightKg": 27753,
+    "mtowKg": 50300,
+    "fuelCapacityL": 20191,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 447,
+    "stations": null
+  },
+  {
+    "icaoType": "E195",
+    "name": "Embraer E195 (LR)",
+    "manufacturer": "Embraer",
+    "model": "E195",
+    "source": "openap",
+    "emptyWeightKg": 28583,
+    "mtowKg": 50790,
+    "fuelCapacityL": 20191,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 447,
+    "stations": null
+  },
+  {
+    "icaoType": "E35L",
+    "name": "X-Craft ERJ-650 Legacy v1.0.0",
+    "manufacturer": "X-Craft",
+    "model": "ERJ-650 Legacy v1.0.0",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 11471,
+    "fuelBurnLph": 1871,
+    "cruiseSpeedKts": 451,
+    "stations": null
+  },
+  {
+    "icaoType": "E45X",
+    "name": "X-Craft Embraer ERJ-145",
+    "manufacturer": "X-Craft",
+    "model": "Embraer ERJ-145",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 6388,
+    "fuelBurnLph": 1775,
+    "cruiseSpeedKts": 444,
+    "stations": null
+  },
+  {
+    "icaoType": "E55P",
+    "name": "Aerobask Phenom 300",
+    "manufacturer": "Aerobask",
+    "model": "Phenom 300",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 3005,
+    "fuelBurnLph": 561,
+    "cruiseSpeedKts": 389,
+    "stations": null
+  },
+  {
+    "icaoType": "E75L",
+    "name": "Embraer E175 (LR)",
+    "manufacturer": "Embraer",
+    "model": "E175",
+    "source": "openap",
+    "emptyWeightKg": 21890,
+    "mtowKg": 38790,
+    "fuelCapacityL": 14531,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 430,
+    "stations": null
+  },
+  {
+    "icaoType": "EVOT",
+    "name": "Lancair Evolution Turboprop 850HP",
+    "manufacturer": "Lancair",
+    "model": "Evolution Turboprop 850HP",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 636,
+    "fuelBurnLph": 167,
+    "cruiseSpeedKts": 220,
+    "stations": null
+  },
+  {
+    "icaoType": "F260",
+    "name": "SIAI-Marchetti SF-260D G1000",
+    "manufacturer": "SIAI-Marchetti",
+    "model": "SF-260D G1000",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 164,
+    "fuelBurnLph": 51,
+    "cruiseSpeedKts": 162,
+    "stations": null
+  },
+  {
+    "icaoType": "F27",
+    "name": "Fokker F27 Inibuild/microsoft",
+    "manufacturer": "Fokker",
+    "model": "F27 Inibuild/microsoft",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 7428,
+    "fuelBurnLph": 1000,
+    "cruiseSpeedKts": 170,
+    "stations": null
+  },
+  {
+    "icaoType": "GLF6",
+    "name": "Gulfstream G650 / 650ER",
+    "manufacturer": "Gulfstream",
+    "model": "G650",
+    "source": "openap",
+    "emptyWeightKg": 24000,
+    "mtowKg": 45200,
+    "fuelCapacityL": 26250,
+    "fuelBurnLph": null,
+    "cruiseSpeedKts": 480,
+    "stations": null
+  },
+  {
+    "icaoType": "IL76",
+    "name": "Ilyushin IL-76",
+    "manufacturer": "Ilyushin",
+    "model": "IL-76",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 136250,
+    "fuelBurnLph": 8505,
+    "cruiseSpeedKts": 430,
+    "stations": null
+  },
+  {
+    "icaoType": "L200",
+    "name": "Let L-200D Morava",
+    "manufacturer": "Let",
+    "model": "L-200D Morava",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 437,
+    "fuelBurnLph": 77,
+    "cruiseSpeedKts": 129,
+    "stations": null
+  },
+  {
+    "icaoType": "MD11",
+    "name": "MD-11 Rotate",
+    "manufacturer": "MD-11",
+    "model": "Rotate",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 144866,
+    "fuelBurnLph": 9072,
+    "cruiseSpeedKts": 425,
+    "stations": null
+  },
+  {
+    "icaoType": "MD82",
+    "name": "MD-82 Maddog X",
+    "manufacturer": "MD-82",
+    "model": "Maddog X",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 19863,
+    "fuelBurnLph": 3211,
+    "cruiseSpeedKts": 438,
+    "stations": null
+  },
+  {
+    "icaoType": "P28A",
+    "name": "Piper PA-28-181 Archer",
+    "manufacturer": "Piper",
+    "model": "PA-28-181 Archer",
+    "emptyWeightKg": 617,
+    "mtowKg": 1156,
+    "fuelCapacityL": 189,
+    "fuelBurnLph": 34,
+    "cruiseSpeedKts": 128,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 80.5
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 80.5
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 118.1
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 91,
+        "arm": 142.8
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "P28R",
+    "name": "Piper PA-28R-201 Arrow",
+    "manufacturer": "Piper",
+    "model": "PA-28R-201 Arrow",
+    "emptyWeightKg": 694,
+    "mtowKg": 1247,
+    "fuelCapacityL": 284,
+    "fuelBurnLph": 42,
+    "cruiseSpeedKts": 141,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 80.5
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 80.5
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 118.1
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 91,
+        "arm": 142.8
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "PA24",
+    "name": "Piper PA-24-250 Comanche",
+    "manufacturer": "Piper",
+    "model": "PA-24-250 Comanche",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 326,
+    "fuelBurnLph": 53,
+    "cruiseSpeedKts": 150,
+    "stations": null
+  },
+  {
+    "icaoType": "PA31",
+    "name": "Piper PA-31 Navajo for X-Plane 11",
+    "manufacturer": "Piper",
+    "model": "PA-31 Navajo for X-Plane 11",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 922,
+    "fuelBurnLph": 104,
+    "cruiseSpeedKts": 105,
+    "stations": null
+  },
+  {
+    "icaoType": "PA32",
+    "name": "Piper PA-32R-301 Saratoga",
+    "manufacturer": "Piper",
+    "model": "PA-32R-301 Saratoga",
+    "emptyWeightKg": 862,
+    "mtowKg": 1633,
+    "fuelCapacityL": 378,
+    "fuelBurnLph": 53,
+    "cruiseSpeedKts": 157,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 80.5
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 80.5
+      },
+      {
+        "id": "midPax",
+        "labelKey": "aircraft.midPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 118.1
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 142.8
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 91,
+        "arm": 178.7
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "PA34",
+    "name": "Piper PA-34-220T Seneca V",
+    "manufacturer": "Piper",
+    "model": "PA-34-220T Seneca V",
+    "emptyWeightKg": 1263,
+    "mtowKg": 2155,
+    "fuelCapacityL": 416,
+    "fuelBurnLph": 76,
+    "cruiseSpeedKts": 178,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 85.5
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 85.5
+      },
+      {
+        "id": "midPax",
+        "labelKey": "aircraft.midPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 118.1
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 153
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 91,
+        "arm": 178.7
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "PA46",
+    "name": "FSReborn 500",
+    "manufacturer": "FSReborn",
+    "model": "500",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 719,
+    "fuelBurnLph": 148,
+    "cruiseSpeedKts": 259,
+    "stations": null
+  },
+  {
+    "icaoType": "PRM1",
+    "name": "390 Premier IA",
+    "manufacturer": "390",
+    "model": "Premier IA",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 2047,
+    "fuelBurnLph": 495,
+    "cruiseSpeedKts": 454,
+    "stations": null
+  },
+  {
+    "icaoType": "R66",
+    "name": "Calculé",
+    "manufacturer": "Calculé",
+    "model": null,
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 280,
+    "fuelBurnLph": 87,
+    "cruiseSpeedKts": 120,
+    "stations": null
+  },
+  {
+    "icaoType": "SAVG",
+    "name": "Savage Shock Ultra Asobo",
+    "manufacturer": "Savage",
+    "model": "Shock Ultra Asobo",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 117,
+    "fuelBurnLph": 23,
+    "cruiseSpeedKts": 85,
+    "stations": null
+  },
+  {
+    "icaoType": "SF34",
+    "name": "LES Saab 340A",
+    "manufacturer": "LES",
+    "model": "Saab 340A",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 3225,
+    "fuelBurnLph": 538,
+    "cruiseSpeedKts": 240,
+    "stations": null
+  },
+  {
+    "icaoType": "SF50",
+    "name": "FFX Vision Jet Shuttle",
+    "manufacturer": "FFX",
+    "model": "Vision Jet Shuttle",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 1317,
+    "fuelBurnLph": 308,
+    "cruiseSpeedKts": 300,
+    "stations": null
+  },
+  {
+    "icaoType": "SR20",
+    "name": "Cirrus SR20",
+    "manufacturer": "Cirrus",
+    "model": "SR20",
+    "emptyWeightKg": 930,
+    "mtowKg": 1383,
+    "fuelCapacityL": 227,
+    "fuelBurnLph": 38,
+    "cruiseSpeedKts": 155,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 143.5
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 143.5
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 180
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 57,
+        "arm": 215
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "SR22",
+    "name": "Cirrus SR22",
+    "manufacturer": "Cirrus",
+    "model": "SR22",
+    "emptyWeightKg": 1009,
+    "mtowKg": 1542,
+    "fuelCapacityL": 340,
+    "fuelBurnLph": 53,
+    "cruiseSpeedKts": 176,
+    "stations": [
+      {
+        "id": "pilot",
+        "labelKey": "aircraft.pilot",
+        "defaultKg": 77,
+        "maxKg": 120,
+        "arm": 143.5
+      },
+      {
+        "id": "copilot",
+        "labelKey": "aircraft.copilot",
+        "defaultKg": 0,
+        "maxKg": 120,
+        "arm": 143.5
+      },
+      {
+        "id": "rearPax",
+        "labelKey": "aircraft.rearPax",
+        "defaultKg": 0,
+        "maxKg": 170,
+        "arm": 180
+      },
+      {
+        "id": "baggage",
+        "labelKey": "aircraft.baggage",
+        "defaultKg": 0,
+        "maxKg": 57,
+        "arm": 215
+      }
+    ],
+    "source": "curated"
+  },
+  {
+    "icaoType": "TBM9",
+    "name": "TBM 930 Canada",
+    "manufacturer": "TBM",
+    "model": "930 Canada",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 1105,
+    "fuelBurnLph": 178,
+    "cruiseSpeedKts": 302,
+    "stations": null
+  },
+  {
+    "icaoType": "VL3",
+    "name": "VL-3 915 Lion",
+    "manufacturer": "VL-3",
+    "model": "915 Lion",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 140,
+    "fuelBurnLph": 26,
+    "cruiseSpeedKts": 156,
+    "stations": null
+  },
+  {
+    "icaoType": "XF11",
+    "name": "Flying Fries XF-11 Mark I",
+    "manufacturer": "Flying",
+    "model": "Fries XF-11 Mark I",
+    "source": "lnm",
+    "emptyWeightKg": null,
+    "mtowKg": null,
+    "fuelCapacityL": 7737,
+    "fuelBurnLph": 538,
+    "cruiseSpeedKts": 300,
+    "stations": null
+  }
+]

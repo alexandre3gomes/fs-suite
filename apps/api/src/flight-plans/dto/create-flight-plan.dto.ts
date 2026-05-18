@@ -65,11 +65,15 @@ export class CreateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() alternateRunwayInUse?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() alternateMetarRaw?: string;
 
-  // Aircraft
+  // Aircraft (snapshot)
   @ApiPropertyOptional() @IsOptional() @IsString() aircraftType?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() aircraftName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() emptyWeightKg?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() takeoffWeightKg?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() mtowKg?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() fuelCapacityL?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() fuelBurnLph?: number;
+  @ApiPropertyOptional() @IsOptional() aircraftStations?: unknown;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) callsign?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) registration?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) simbriefOfpId?: string;

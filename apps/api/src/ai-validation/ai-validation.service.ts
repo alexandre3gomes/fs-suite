@@ -136,8 +136,24 @@ export class AiValidationService {
       icaoType: dto.aircraftType ?? null,
       name: dto.aircraftName ?? null,
       cruiseSpeedKts: dto.cruiseSpeedKts ?? null,
+      fuelBurnLph: dto.fuelBurnLph ?? null,
+      emptyWeightKg: dto.emptyWeightKg ?? null,
+      mtowKg: dto.mtowKg ?? null,
+      fuelCapacityL: dto.fuelCapacityL ?? null,
       performanceCategory: dto.performanceCategory ?? null,
     };
+
+    if (dto.stations?.length) {
+      plan.weightAndBalance = {
+        stations: dto.stations.map((s) => ({
+          id: s.id,
+          label: s.labelKey,
+          maxKg: s.maxKg,
+          arm: s.arm,
+        })),
+        note: 'Dados reais do POH — priorize estes valores sobre estimativas.',
+      };
+    }
 
     plan.route = {
       routeString: dto.routeText ?? null,
