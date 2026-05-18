@@ -9,6 +9,10 @@ const NOAA_TEXT_URL = 'https://tgftp.nws.noaa.gov/data/observations/metar/statio
 const CACHE_TTL_SECONDS = 600; // 10 minutes
 const NOAA_STALE_THRESHOLD_MS = 3_600_000; // 1 hour
 const REQUEST_TIMEOUT_MS = 8000;
+const ISIGMET_API_URL = 'https://aviationweather.gov/api/data/isigmet?format=geojson';
+const AIRSIGMET_API_URL = 'https://aviationweather.gov/api/data/airsigmet?format=geojson';
+const SIGMET_CACHE_KEY = 'weather:sigmets';
+const SIGMET_CACHE_TTL = 600;
 
 export interface MetarCloud {
   cover: string; // FEW, SCT, BKN, OVC
@@ -91,6 +95,28 @@ interface AddsTafResponse {
     visib: number | string;
     wxString: string | null;
     clouds: { cover: string; base: number | null; type: string | null }[];
+  }[];
+}
+
+type SigmetHazardType = 'TS' | 'TURB' | 'ICE' | 'IFR' | 'MTN_OBSC' | 'OTHER';
+
+export interface SigmetFeatureProperties {
+  id: string;
+  hazardType: SigmetHazardType;
+  rawText: string;
+  qualifier: string | null;
+  validFrom: string;
+  validTo: string;
+  firId: string | null;
+  sigmetType: 'SIGMET' | 'AIRMET';
+}
+
+export interface SigmetCollection {
+  type: 'FeatureCollection';
+  features: {
+    type: 'Feature';
+    geometry: unknown;
+    properties: SigmetFeatureProperties;
   }[];
 }
 
@@ -242,6 +268,97 @@ export class WeatherService {
     return normalized
       .map((icao) => results.find((r) => r.icaoId === icao))
       .filter((r): r is ParsedTaf => r != null);
+  }
+
+  // --------------- SIGMETs / AIRMETs ---------------
+
+  async getSigmets(): Promise<SigmetCollection> {
+    const client = this.redis.getClient();
+    const cached = await client.get(SIGMET_CACHE_KEY).catch(() => null);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+
+    const features: SigmetCollection['features'] = [];
+
+    // International SIGMETs
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const response = await fetch(ISIGMET_API_URL, { signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (response.ok) {
+        const data = await response.json();
+        for (const f of data.features ?? []) {
+          const p = f.properties ?? {};
+          if (!f.geometry) continue;
+          features.push({
+            type: 'Feature',
+            geometry: f.geometry,
+            properties: {
+              id: p.isigmetId ?? '',
+              hazardType: this.normalizeHazardType(p.hazard),
+              rawText: p.rawSigmet ?? '',
+              qualifier: p.qualifier ?? null,
+              validFrom: p.validTimeFrom ? new Date(p.validTimeFrom * 1000).toISOString() : '',
+              validTo: p.validTimeTo ? new Date(p.validTimeTo * 1000).toISOString() : '',
+              firId: p.firId ?? p.icaoId ?? null,
+              sigmetType: 'SIGMET',
+            },
+          });
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`ISIGMET fetch failed: ${err}`);
+    }
+
+    // US AIRSIGMETs
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const response = await fetch(AIRSIGMET_API_URL, { signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (response.ok) {
+        const data = await response.json();
+        for (const f of data.features ?? []) {
+          const p = f.properties ?? {};
+          if (!f.geometry) continue;
+          features.push({
+            type: 'Feature',
+            geometry: f.geometry,
+            properties: {
+              id: p.airsigmetId ?? '',
+              hazardType: this.normalizeHazardType(p.hazard),
+              rawText: p.rawAirSigmet ?? '',
+              qualifier: p.qualifier ?? null,
+              validFrom: p.validTimeFrom ? new Date(p.validTimeFrom * 1000).toISOString() : '',
+              validTo: p.validTimeTo ? new Date(p.validTimeTo * 1000).toISOString() : '',
+              firId: null,
+              sigmetType: p.airsigmetType === 'AIRMET' ? 'AIRMET' : 'SIGMET',
+            },
+          });
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`AIRSIGMET fetch failed: ${err}`);
+    }
+
+    const collection: SigmetCollection = { type: 'FeatureCollection', features };
+    await client.setEx(SIGMET_CACHE_KEY, SIGMET_CACHE_TTL, JSON.stringify(collection)).catch(() => {});
+    return collection;
+  }
+
+  private normalizeHazardType(hazard: string | null | undefined): SigmetHazardType {
+    if (!hazard) return 'OTHER';
+    const h = hazard.toUpperCase();
+    if (h.includes('TS') || h.includes('CONVECT')) return 'TS';
+    if (h.includes('TURB')) return 'TURB';
+    if (h.includes('ICE') || h.includes('ICING')) return 'ICE';
+    if (h.includes('IFR') || h.includes('CEIL') || h.includes('VIS')) return 'IFR';
+    if (h.includes('MTN') || h.includes('OBSC')) return 'MTN_OBSC';
+    return 'OTHER';
   }
 
   // --------------- Nearby station fallback ---------------

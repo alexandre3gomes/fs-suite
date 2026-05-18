@@ -1,11 +1,10 @@
+import type { AircraftCatalogEntry, WeightStation } from '@fs-suite/types';
 import { Input } from '@fs-suite/ui';
 import { toPng } from 'html-to-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
-import type { AircraftSpec } from '../../data/aircraftCatalog';
-import { findAircraftByIcao } from '../../data/aircraftCatalog';
 import { getChecklistsForAircraft } from '../../data/checklistCatalog';
 import { useAircraftCatalog } from '../../hooks/useAircraftCatalog';
 import { apiClient, API_URL } from '../../services/api.client';
@@ -278,7 +277,7 @@ function FabButton({ onPress, disabled, svg, title, bg, size = 34 }: { onPress: 
 export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const { t } = useTranslation();
   const { weight: wu, volume: vu, speed: su } = useUnitsStore();
-  const { catalog: aircraftCatalog, loading: catalogLoading } = useAircraftCatalog();
+  const { catalog: aircraftCatalog, loading: catalogLoading, error: catalogError } = useAircraftCatalog();
 
   // Flight rules
   type FlightRulesType = 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
@@ -352,19 +351,18 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
   // Aircraft & weight
   const findAircraft = useCallback(
-    (icao: string) => aircraftCatalog.find((a) => a.icaoType === icao) ?? findAircraftByIcao(icao) ?? null,
+    (icao: string) => aircraftCatalog.find((a) => a.icaoType === icao) ?? null,
     [aircraftCatalog],
   );
-  const [selectedAircraft, setSelectedAircraft] = useState<AircraftSpec | null>(
-    initialData?.aircraftType ? findAircraftByIcao(initialData.aircraftType) ?? null : null,
-  );
+  const [selectedAircraft, setSelectedAircraft] = useState<AircraftCatalogEntry | null>(null);
   const [weightMode, setWeightMode] = useState<'simple' | 'advanced'>('simple');
   const [simpleTotalWeight, setSimpleTotalWeight] = useState('');
   const [stationWeights, setStationWeights] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!catalogLoading && initialData?.aircraftType && !selectedAircraft) {
-      setSelectedAircraft(findAircraft(initialData.aircraftType));
+      const found = findAircraft(initialData.aircraftType);
+      if (found) setSelectedAircraft(found);
     }
   }, [catalogLoading, initialData?.aircraftType, selectedAircraft, findAircraft]);
 
@@ -569,14 +567,15 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   }, [destination, origin?.icao]);
 
   // Weight calculations
+  const acStations: WeightStation[] = selectedAircraft?.stations ?? [];
   const payloadKg = useMemo(() => {
     if (weightMode === 'simple') return parseFloat(simpleTotalWeight) || 0;
-    if (!selectedAircraft) return 0;
-    return selectedAircraft.stations.reduce(
+    if (acStations.length === 0) return 0;
+    return acStations.reduce(
       (sum, s) => sum + (parseFloat(stationWeights[s.id] ?? '0') || 0),
       0,
     );
-  }, [weightMode, simpleTotalWeight, selectedAircraft, stationWeights]);
+  }, [weightMode, simpleTotalWeight, acStations, stationWeights]);
 
   // Visual ref expanded state — tracks which leg index is expanded
   const [expandedLegRef, setExpandedLegRef] = useState<number | null>(null);
@@ -657,19 +656,20 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     [routeLegs],
   );
 
-  // Fuel calculations (all in kg)
+  // Fuel calculations (all in kg) — null-safe: missing data stays null
   const consumptionKgH = parseFloat(consumptionPerHour) || 0;
   const fuelOnBoardKg = parseFloat(fuelCurrentTotal) || 0;
-  const cruiseKts = selectedAircraft?.cruiseSpeedKts ?? 0;
+  const cruiseKts = selectedAircraft?.cruiseSpeedKts ?? null;
+  const canComputeFuel = cruiseKts != null && cruiseKts > 0 && consumptionKgH > 0;
   // Trip: origin → destination
-  const tripHours = cruiseKts > 0 && totalDistanceNm > 0 ? totalDistanceNm / cruiseKts : 0;
-  const tripFuelKg = consumptionKgH > 0 && tripHours > 0 ? consumptionKgH * tripHours : 0;
+  const tripHours = canComputeFuel && totalDistanceNm > 0 ? totalDistanceNm / cruiseKts! : 0;
+  const tripFuelKg = canComputeFuel && tripHours > 0 ? consumptionKgH * tripHours : 0;
   // Alternate: destination → alternate
   const altDistNm = destination && alternate
     ? haversineDistanceNm(destination.latitude, destination.longitude, alternate.latitude, alternate.longitude)
     : 0;
-  const altHours = cruiseKts > 0 && altDistNm > 0 ? altDistNm / cruiseKts : 0;
-  const altFuelKg = consumptionKgH > 0 && altHours > 0 ? consumptionKgH * altHours : 0;
+  const altHours = canComputeFuel && altDistNm > 0 ? altDistNm / cruiseKts! : 0;
+  const altFuelKg = canComputeFuel && altHours > 0 ? consumptionKgH * altHours : 0;
   // Contingency: % over trip fuel
   const contingencyFactor = (parseFloat(contingencyPct) || 0) / 100;
   const contingencyFuelKg = tripFuelKg * contingencyFactor;
@@ -677,13 +677,16 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const reserveFuelKg = consumptionKgH > 0 ? consumptionKgH * (reserveMinutes / 60) : 0;
   // Min fuel = trip + alternate + contingency + reserve
   const minFuelKg = tripFuelKg + altFuelKg + contingencyFuelKg + reserveFuelKg;
-  const maxFuelKg = selectedAircraft ? selectedAircraft.fuelCapacityL * AVGAS_KG_PER_L : 0;
-  const takeoffWeightKg = selectedAircraft
-    ? selectedAircraft.emptyWeightKg + payloadKg + fuelOnBoardKg
-    : 0;
-  const mtowExcessKg = selectedAircraft
-    ? Math.max(0, takeoffWeightKg - selectedAircraft.mtowKg)
-    : 0;
+  const maxFuelKg = selectedAircraft?.fuelCapacityL != null ? selectedAircraft.fuelCapacityL * AVGAS_KG_PER_L : null;
+  const acEmptyWeightKg = selectedAircraft?.emptyWeightKg ?? null;
+  const acMtowKg = selectedAircraft?.mtowKg ?? null;
+  const canComputeWeight = acEmptyWeightKg != null && acMtowKg != null;
+  const takeoffWeightKg = canComputeWeight
+    ? acEmptyWeightKg + payloadKg + fuelOnBoardKg
+    : null;
+  const mtowExcessKg = canComputeWeight && takeoffWeightKg != null
+    ? Math.max(0, takeoffWeightKg - acMtowKg)
+    : null;
   const perWingKg = fuelOnBoardKg > 0 ? fuelOnBoardKg / 2 : 0;
   const enduranceMin = consumptionKgH > 0 ? Math.floor((fuelOnBoardKg / consumptionKgH) * 60) : 0;
   const enduranceHours = Math.floor(enduranceMin / 60);
@@ -691,14 +694,14 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const tripMinutes = Math.round(tripHours * 60);
 
   const aircraftPerf: AircraftPerformance | null = useMemo(() => {
-    if (!selectedAircraft || selectedAircraft.cruiseSpeedKts <= 0) return null;
+    if (!selectedAircraft || selectedAircraft.cruiseSpeedKts == null || selectedAircraft.cruiseSpeedKts <= 0) return null;
     const cs = selectedAircraft.cruiseSpeedKts;
     return {
-      climbSpeedKts: selectedAircraft.climbSpeedKts ?? Math.round(cs * 0.65),
+      climbSpeedKts: Math.round(cs * 0.65),
       cruiseSpeedKts: cs,
-      descentSpeedKts: selectedAircraft.descentSpeedKts ?? Math.round(cs * 0.8),
-      climbRateFpm: selectedAircraft.climbRateFpm ?? 700,
-      descentRateFpm: selectedAircraft.descentRateFpm ?? 500,
+      descentSpeedKts: Math.round(cs * 0.8),
+      climbRateFpm: 700,
+      descentRateFpm: 500,
     };
   }, [selectedAircraft]);
 
@@ -726,7 +729,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     [departureEpochSec, tripMinutes],
   );
   const alternateArrivalEpochSec = useMemo(() => {
-    if (!arrivalEpochSec || cruiseKts <= 0 || altDistNm <= 0) return null;
+    if (!arrivalEpochSec || cruiseKts == null || cruiseKts <= 0 || altDistNm <= 0) return null;
     return arrivalEpochSec + Math.round((altDistNm / cruiseKts) * 3600);
   }, [arrivalEpochSec, cruiseKts, altDistNm]);
 
@@ -771,7 +774,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       fuelOnBoardKg,
       minFuelKg,
       takeoffWeightKg,
-      mtowKg: selectedAircraft?.mtowKg ?? 0,
+      mtowKg: selectedAircraft?.mtowKg ?? null,
       flightCondition,
       enduranceMin,
       icaoPrefix: origin?.icao?.substring(0, 2) ?? '',
@@ -913,7 +916,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     const totalDistNm = routeLegs.reduce((s, l) => s + l.distanceNm, 0);
     const results: TocTodPosition[] = [];
 
-    const tocNm = calculateTocDistance(origin.elevation ?? 0, altFt, 700, selectedAircraft.cruiseSpeedKts);
+    const tocNm = selectedAircraft.cruiseSpeedKts != null ? calculateTocDistance(origin.elevation ?? 0, altFt, 700, selectedAircraft.cruiseSpeedKts) : 0;
     if (tocNm > 0 && tocNm < totalDistNm) {
       const pos = interpolatePositionOnRoute(routePoints, tocNm);
       if (pos) results.push({ ...pos, distanceFromOriginNm: tocNm, label: 'TOC' });
@@ -986,12 +989,16 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   }, [origin?.icao, destination?.icao, routeWaypoints, followedCorridorName]);
 
   // Aircraft selection handler
-  const handleSelectAircraft = useCallback((aircraft: AircraftSpec) => {
+  const handleSelectAircraft = useCallback((aircraft: AircraftCatalogEntry) => {
     setSelectedAircraft(aircraft);
-    setConsumptionPerHour(Math.round(aircraft.fuelBurnLph * AVGAS_KG_PER_L).toString());
+    if (aircraft.fuelBurnLph != null) {
+      setConsumptionPerHour(Math.round(aircraft.fuelBurnLph * AVGAS_KG_PER_L).toString());
+    }
     const defaults: Record<string, string> = {};
-    for (const s of aircraft.stations) {
-      defaults[s.id] = s.defaultKg.toString();
+    if (aircraft.stations) {
+      for (const s of aircraft.stations) {
+        defaults[s.id] = s.defaultKg.toString();
+      }
     }
     setStationWeights(defaults);
   }, []);
@@ -1004,7 +1011,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   // Remarks (Item 18)
   const [userRemarks, setUserRemarks] = useState('');
   const performanceCategory = useMemo(
-    () => selectedAircraft ? getPerformanceCategory(selectedAircraft.cruiseSpeedKts) : null,
+    () => selectedAircraft?.cruiseSpeedKts != null ? getPerformanceCategory(selectedAircraft.cruiseSpeedKts) : null,
     [selectedAircraft],
   );
 
@@ -1155,16 +1162,16 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       routeText: routeText || undefined,
       cruiseLevel: cruiseLevel || undefined,
       todDistanceNm: todDistanceNm ? parseFloat(todDistanceNm) : undefined,
-      aircraftType: selectedAircraft?.icaoType,
-      aircraftName: selectedAircraft ? `${selectedAircraft.manufacturer} ${selectedAircraft.model}` : undefined,
+      aircraftType: selectedAircraft?.icaoType ?? undefined,
+      aircraftName: selectedAircraft ? `${selectedAircraft.manufacturer ?? ''} ${selectedAircraft.model ?? selectedAircraft.name}`.trim() : undefined,
       fuelConsumptionPerHour: consumptionKgH ? consumptionKgH / AVGAS_KG_PER_L : undefined,
       fuelCurrentTotal: fuelOnBoardKg ? fuelOnBoardKg / AVGAS_KG_PER_L : undefined,
       fuelReserveMinutes: reserveMinutes,
       fuelRequiredTotal: minFuelKg ? minFuelKg / AVGAS_KG_PER_L : undefined,
       fuelPerWing: perWingKg ? perWingKg / AVGAS_KG_PER_L : undefined,
       enduranceMinutes: enduranceMin || undefined,
-      takeoffWeightKg: takeoffWeightKg || undefined,
-      mtowKg: selectedAircraft?.mtowKg,
+      takeoffWeightKg: takeoffWeightKg ?? undefined,
+      mtowKg: selectedAircraft?.mtowKg ?? undefined,
       callsign: callsign || undefined,
       registration: registration || undefined,
       simbriefOfpId: simbriefOfpId || undefined,
@@ -1181,7 +1188,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       })) : undefined,
       totalDistanceNm: totalDistanceNm || undefined,
       tripMinutes: tripMinutes || undefined,
-      cruiseSpeedKts: cruiseKts || undefined,
+      cruiseSpeedKts: cruiseKts ?? undefined,
       tripFuelKg: tripFuelKg || undefined,
       altFuelKg: altFuelKg || undefined,
       altDistanceNm: altDistNm || undefined,
@@ -1190,13 +1197,13 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       reserveFuelKg: reserveFuelKg || undefined,
       minFuelKg: minFuelKg || undefined,
       flightCondition,
-      emptyWeightKg: selectedAircraft?.emptyWeightKg,
+      emptyWeightKg: selectedAircraft?.emptyWeightKg ?? undefined,
       payloadKg: payloadKg || undefined,
-      fuelCapacityL: selectedAircraft?.fuelCapacityL,
-      fuelBurnLph: selectedAircraft?.fuelBurnLph || undefined,
-      aircraftStations: selectedAircraft?.stations?.length ? selectedAircraft.stations : undefined,
-      stations: selectedAircraft?.stations?.length
-        ? selectedAircraft.stations.map((s) => ({ id: s.id, labelKey: s.labelKey, maxKg: s.maxKg, arm: s.arm }))
+      fuelCapacityL: selectedAircraft?.fuelCapacityL ?? undefined,
+      fuelBurnLph: selectedAircraft?.fuelBurnLph ?? undefined,
+      aircraftStations: acStations.length > 0 ? acStations : undefined,
+      stations: acStations.length > 0
+        ? acStations.map((s) => ({ id: s.id, labelKey: s.labelKey, maxKg: s.maxKg, arm: s.arm }))
         : undefined,
       remarks: fullRemarks || undefined,
       performanceCategory: performanceCategory || undefined,
@@ -1272,7 +1279,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const [exportIncludeAiAnalysis, setExportIncludeAiAnalysis] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  const hasChecklists = !!selectedAircraft && getChecklistsForAircraft(selectedAircraft.icaoType).length > 0;
+  const hasChecklists = !!selectedAircraft?.icaoType && getChecklistsForAircraft(selectedAircraft.icaoType).length > 0;
 
   const handleExportPdf = () => {
     const data = buildPlanData();
@@ -1343,7 +1350,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       }
 
       let checklistUrl: string | undefined;
-      if (exportIncludeChecklist && selectedAircraft) {
+      if (exportIncludeChecklist && selectedAircraft?.icaoType) {
         const checklists = getChecklistsForAircraft(selectedAircraft.icaoType);
         if (checklists[0]) {
           checklistUrl = checklists[0].pdfUrl;
@@ -1677,19 +1684,29 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           onClear={handleClearAircraft}
           catalog={aircraftCatalog}
           loading={catalogLoading}
+          error={catalogError}
         />
 
         {selectedAircraft ? (
           <View className="mb-3 rounded-md border border-border bg-surface-muted px-3 py-2 gap-0.5">
-            <Row label={t('aircraft.emptyWeight')} value={formatWeight(selectedAircraft.emptyWeightKg, wu)} />
-            <Row label={t('aircraft.mtow')} value={formatWeight(selectedAircraft.mtowKg, wu)} bold />
-            <Row label={t('aircraft.usefulLoad')} value={formatWeight(selectedAircraft.mtowKg - selectedAircraft.emptyWeightKg, wu)} />
-            <Row label={t('aircraft.fuelCapacity')} value={formatVolume(selectedAircraft.fuelCapacityL, vu)} />
-            <Row label={t('aircraft.cruiseSpeed')} value={formatSpeed(selectedAircraft.cruiseSpeedKts, su)} />
+            {selectedAircraft.dataCompleteness !== 'complete' ? (
+              <View style={{ backgroundColor: '#fefce8', borderRadius: 6, padding: 8, marginBottom: 4 }}>
+                <Text style={{ fontSize: 11, color: '#a16207' }}>
+                  {selectedAircraft.dataCompleteness === 'skeleton'
+                    ? 'Dados básicos — apenas identificação disponível. Cálculos de peso e combustível indisponíveis.'
+                    : 'Dados parciais — alguns campos podem estar indisponíveis. Valores marcados como N/D não foram verificados.'}
+                </Text>
+              </View>
+            ) : null}
+            <Row label={t('aircraft.emptyWeight')} value={selectedAircraft.emptyWeightKg != null ? formatWeight(selectedAircraft.emptyWeightKg, wu) : 'N/D'} />
+            <Row label={t('aircraft.mtow')} value={selectedAircraft.mtowKg != null ? formatWeight(selectedAircraft.mtowKg, wu) : 'N/D'} bold />
+            <Row label={t('aircraft.usefulLoad')} value={canComputeWeight ? formatWeight(acMtowKg! - acEmptyWeightKg!, wu) : 'N/D'} />
+            <Row label={t('aircraft.fuelCapacity')} value={selectedAircraft.fuelCapacityL != null ? formatVolume(selectedAircraft.fuelCapacityL, vu) : 'N/D'} />
+            <Row label={t('aircraft.cruiseSpeed')} value={selectedAircraft.cruiseSpeedKts != null ? formatSpeed(selectedAircraft.cruiseSpeedKts, su) : 'N/D'} />
           </View>
         ) : null}
 
-        {selectedAircraft ? (
+        {selectedAircraft && canComputeWeight ? (
           <View className="mb-3">
             <Text className="mb-1 text-sm font-medium text-foreground">{t('aircraft.weightMode')}</Text>
             <View className="flex-row gap-2">
@@ -1713,10 +1730,10 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           </View>
         ) : null}
 
-        {selectedAircraft && weightMode === 'simple' ? (
+        {selectedAircraft && canComputeWeight && weightMode === 'simple' ? (
           <View className="mb-3">
             <Input
-              label={`${t('aircraft.payload')} (${t('aircraft.maxLabel')} ${formatWeight(Math.max(0, selectedAircraft.mtowKg - selectedAircraft.emptyWeightKg - fuelOnBoardKg), wu)})`}
+              label={`${t('aircraft.payload')} (${t('aircraft.maxLabel')} ${formatWeight(Math.max(0, acMtowKg! - acEmptyWeightKg! - fuelOnBoardKg), wu)})`}
               value={simpleTotalWeight}
               onChangeText={setSimpleTotalWeight}
               keyboardType="numeric"
@@ -1725,9 +1742,9 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           </View>
         ) : null}
 
-        {selectedAircraft && weightMode === 'advanced' ? (
+        {selectedAircraft && canComputeWeight && weightMode === 'advanced' && acStations.length > 0 ? (
           <View className="mb-3">
-            {selectedAircraft.stations.map((station) => (
+            {acStations.map((station) => (
               <View key={station.id} className="mb-2">
                 <Input
                   label={`${t(station.labelKey)} (${t('aircraft.maxLabel')} ${formatWeight(station.maxKg, wu)})`}
@@ -1741,17 +1758,17 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           </View>
         ) : null}
 
-        {selectedAircraft && (payloadKg > 0 || fuelOnBoardKg > 0) ? (
-          <View className={`rounded-sm border px-3 py-2 ${mtowExcessKg > 0 ? 'border-destructive bg-destructive/10' : 'border-border bg-surface-muted'}`}>
+        {selectedAircraft && canComputeWeight && (payloadKg > 0 || fuelOnBoardKg > 0) ? (
+          <View className={`rounded-sm border px-3 py-2 ${(mtowExcessKg ?? 0) > 0 ? 'border-destructive bg-destructive/10' : 'border-border bg-surface-muted'}`}>
             <Row label={t('aircraft.payload')} value={formatWeight(payloadKg, wu)} />
             <Row label={t('aircraft.fuelWeight')} value={formatWeight(fuelOnBoardKg, wu)} />
             <View className="my-1 border-t border-border/50" />
-            <Row label={t('aircraft.takeoffWeight')} value={`${formatWeight(takeoffWeightKg, wu)}  /  ${formatWeight(selectedAircraft.mtowKg, wu)}`} bold />
-            {mtowExcessKg > 0 ? (
+            <Row label={t('aircraft.takeoffWeight')} value={`${formatWeight(takeoffWeightKg!, wu)}  /  ${formatWeight(acMtowKg!, wu)}`} bold />
+            {(mtowExcessKg ?? 0) > 0 ? (
               <Text className="mt-1 text-xs font-semibold text-destructive">
-                {t('aircraft.overMtow', { excess: formatWeight(mtowExcessKg, wu) })}
+                {t('aircraft.overMtow', { excess: formatWeight(mtowExcessKg!, wu) })}
               </Text>
-            ) : takeoffWeightKg > 0 ? (
+            ) : (takeoffWeightKg ?? 0) > 0 ? (
               <Text className="mt-1 text-xs font-medium text-green-600">
                 {t('aircraft.withinLimits')}
               </Text>
@@ -2295,7 +2312,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           {tocTodPositions.length > 0 && selectedAircraft ? (
             <View className="mt-1.5 flex-row gap-3">
               {tocTodPositions.map((tp) => {
-                const timeMin = selectedAircraft.cruiseSpeedKts > 0
+                const timeMin = selectedAircraft.cruiseSpeedKts != null && selectedAircraft.cruiseSpeedKts > 0
                   ? Math.round(tp.distanceFromOriginNm / selectedAircraft.cruiseSpeedKts * 60)
                   : 0;
                 return (
@@ -2615,7 +2632,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
         {/* Fuel on board — auto-suggested, user can override */}
         <View className="mb-3">
           <Input
-            label={selectedAircraft
+            label={selectedAircraft?.fuelCapacityL != null
               ? `${t('vfr.fuelOnBoard')} (${t('aircraft.maxLabel')} ${formatVolume(selectedAircraft.fuelCapacityL, vu)})`
               : t('vfr.fuelOnBoard')}
             value={fuelCurrentTotal}
@@ -2626,7 +2643,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           {fuelOnBoardKg > 0 ? (
             <Text className="mt-0.5 text-[9px] text-muted-foreground">{formatFuelWeight(fuelOnBoardKg, vu)}</Text>
           ) : null}
-          {maxFuelKg > 0 && fuelOnBoardKg > maxFuelKg ? (
+          {maxFuelKg != null && maxFuelKg > 0 && fuelOnBoardKg > maxFuelKg ? (
             <Text className="mt-0.5 text-[10px] font-semibold text-destructive">
               {t('vfr.overCapacity', { excess: formatFuelWeight(fuelOnBoardKg - maxFuelKg, vu) })}
             </Text>
@@ -2636,7 +2653,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
               {t('vfr.fuelInsufficient', { deficit: formatFuelWeight(minFuelKg - fuelOnBoardKg, vu) })}
             </Text>
           ) : null}
-          {minFuelKg > 0 && fuelOnBoardKg >= minFuelKg && !(maxFuelKg > 0 && fuelOnBoardKg > maxFuelKg) ? (
+          {minFuelKg > 0 && fuelOnBoardKg >= minFuelKg && !(maxFuelKg != null && maxFuelKg > 0 && fuelOnBoardKg > maxFuelKg) ? (
             <Text className="mt-0.5 text-[10px] font-medium text-green-600">
               {t('vfr.fuelSufficient')}
             </Text>
@@ -2711,7 +2728,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
               </View>
               <View className="flex-row items-center gap-1">
                 <Text className="text-[10px] font-bold text-muted-foreground">TAS</Text>
-                <Text className="font-mono text-xs text-foreground">{cruiseKts > 0 ? `${cruiseKts} kt` : '—'}</Text>
+                <Text className="font-mono text-xs text-foreground">{cruiseKts != null && cruiseKts > 0 ? `${cruiseKts} kt` : '—'}</Text>
               </View>
               <View className="flex-row items-center gap-1">
                 <Text className="text-[10px] font-bold text-muted-foreground">DIST</Text>
@@ -2799,7 +2816,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       ) : null}
 
       {/* ====== CHECKLISTS ====== */}
-      {selectedAircraft && getChecklistsForAircraft(selectedAircraft.icaoType).length > 0 ? (
+      {selectedAircraft?.icaoType && getChecklistsForAircraft(selectedAircraft.icaoType).length > 0 ? (
         <Section title={t('vfr.checklists')}>
           <ChecklistPanel icaoType={selectedAircraft.icaoType} />
         </Section>

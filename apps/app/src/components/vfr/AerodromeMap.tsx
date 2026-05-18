@@ -183,6 +183,11 @@ export function AerodromeMap({
   const reaLayerRef = useRef<L.LayerGroup | null>(null);
   const openAipLayerRef = useRef<L.TileLayer | null>(null);
   const chartLayersRef = useRef<Record<string, L.TileLayer.WMS>>({});
+  const sigmetLayerRef = useRef<L.GeoJSON | null>(null);
+  const radarFrameLayersRef = useRef<L.TileLayer[]>([]);
+  const radarFrameTimesRef = useRef<number[]>([]);
+  const radarFrameIdxRef = useRef(0);
+  const radarPlayingRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [mapInitialized, setMapInitialized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -194,6 +199,10 @@ export function AerodromeMap({
   const fetchingRef = useRef(false);
   const routeBoundsRef = useRef<L.LatLngBounds | null>(null);
   const [hasRoute, setHasRoute] = useState(false);
+  const [showSigmets, setShowSigmets] = useState(false);
+  const [showRadar, setShowRadar] = useState(false);
+  const [radarPlaying, setRadarPlaying] = useState(false);
+  const [radarTimestamp, setRadarTimestamp] = useState('');
 
   // Stable refs for callbacks
   const onSelectOriginRef = useRef(onSelectOrigin);
@@ -395,6 +404,187 @@ export function AerodromeMap({
       }).addTo(map);
     }
   }, [activeChart]);
+
+  // SIGMET / AIRMET GeoJSON overlay
+  useEffect(() => {
+    if (!mapRef.current || Platform.OS !== 'web') return;
+    const Leaf = require('leaflet') as LeafletModule;
+    const map = mapRef.current;
+
+    if (!showSigmets) {
+      if (sigmetLayerRef.current) {
+        map.removeLayer(sigmetLayerRef.current);
+        sigmetLayerRef.current = null;
+      }
+      return;
+    }
+
+    const HAZARD_STYLES: Record<string, { fill: string; border: string }> = {
+      TS: { fill: '#ef4444', border: '#dc2626' },
+      TURB: { fill: '#f97316', border: '#c2410c' },
+      ICE: { fill: '#06b6d4', border: '#0891b2' },
+      IFR: { fill: '#3b82f6', border: '#1d4ed8' },
+      MTN_OBSC: { fill: '#6b7280', border: '#4b5563' },
+      OTHER: { fill: '#6b7280', border: '#4b5563' },
+    };
+
+    const HAZARD_I18N: Record<string, string> = {
+      TS: 'vfr.sigmetTs',
+      TURB: 'vfr.sigmetTurb',
+      ICE: 'vfr.sigmetIce',
+      IFR: 'vfr.sigmetIfr',
+      MTN_OBSC: 'vfr.sigmetMtnObsc',
+      OTHER: 'vfr.sigmetOther',
+    };
+
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval>;
+
+    const loadSigmets = async () => {
+      try {
+        const data = await apiClient.get<{
+          type: string;
+          features: Array<{
+            type: string;
+            geometry: object;
+            properties: {
+              hazardType?: string;
+              rawText?: string;
+              firId?: string | null;
+              sigmetType?: string;
+              validFrom?: string;
+              validTo?: string;
+            };
+          }>;
+        }>('/weather/sigmets');
+        if (cancelled) return;
+
+        if (sigmetLayerRef.current) {
+          map.removeLayer(sigmetLayerRef.current);
+        }
+
+        sigmetLayerRef.current = Leaf.geoJSON(data as never, {
+          style: (feature) => {
+            const hazard: string = feature?.properties?.hazardType ?? 'OTHER';
+            const s = HAZARD_STYLES[hazard] ?? HAZARD_STYLES.OTHER!;
+            return { color: s.border, weight: 2, fillColor: s.fill, fillOpacity: 0.4 };
+          },
+          onEachFeature: (feature, layer) => {
+            const p = feature.properties ?? {};
+            const hazardKey = HAZARD_I18N[p.hazardType as string] ?? 'vfr.sigmetOther';
+            const hazardLabel = tRef.current(hazardKey);
+            const validFrom = p.validFrom ? new Date(p.validFrom as string).toUTCString().slice(0, -4) : '';
+            const validTo = p.validTo ? new Date(p.validTo as string).toUTCString().slice(0, -4) : '';
+            layer.bindPopup(
+              `<div style="font-family:system-ui,sans-serif;max-width:320px">` +
+                `<div style="font-weight:700;font-size:12px;margin-bottom:4px">${(p.sigmetType as string) ?? 'SIGMET'} — ${escapeHtml(hazardLabel)}</div>` +
+                (p.firId ? `<div style="font-size:10px;color:#6b7280;margin-bottom:2px">FIR: ${escapeHtml(p.firId as string)}</div>` : '') +
+                `<div style="font-family:monospace;font-size:10px;color:#334155;margin:4px 0;word-break:break-all;line-height:1.4;white-space:pre-wrap">${escapeHtml((p.rawText as string) ?? '')}</div>` +
+                (validFrom || validTo ? `<div style="font-size:10px;color:#6b7280">${tRef.current('vfr.sigmetValid')}: ${validFrom} → ${validTo}</div>` : '') +
+              `</div>`,
+              { maxWidth: 360 },
+            );
+          },
+        }).addTo(map);
+      } catch { /* best-effort */ }
+    };
+
+    void loadSigmets();
+    interval = setInterval(() => void loadSigmets(), 600_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      if (sigmetLayerRef.current) {
+        map.removeLayer(sigmetLayerRef.current);
+        sigmetLayerRef.current = null;
+      }
+    };
+  }, [showSigmets]);
+
+  // RainViewer animated radar overlay
+  useEffect(() => {
+    if (!mapRef.current || Platform.OS !== 'web') return;
+    const Leaf = require('leaflet') as LeafletModule;
+    const map = mapRef.current;
+
+    if (!showRadar) {
+      for (const fl of radarFrameLayersRef.current) map.removeLayer(fl);
+      radarFrameLayersRef.current = [];
+      radarFrameTimesRef.current = [];
+      radarFrameIdxRef.current = 0;
+      radarPlayingRef.current = false;
+      setRadarPlaying(false);
+      setRadarTimestamp('');
+      return;
+    }
+
+    let cancelled = false;
+
+    const formatUtc = (ms: number) => {
+      const d = new Date(ms);
+      return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`;
+    };
+
+    const updateTimestamp = (idx: number) => {
+      const ts = radarFrameTimesRef.current[idx];
+      if (ts != null) setRadarTimestamp(formatUtc(ts));
+    };
+
+    const loadFrames = async () => {
+      try {
+        const resp = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+        if (!resp.ok || cancelled) return;
+        const data = await resp.json();
+        if (cancelled) return;
+        const frames: { time: number; path: string }[] = data?.radar?.past ?? [];
+        if (frames.length === 0) return;
+
+        for (const fl of radarFrameLayersRef.current) map.removeLayer(fl);
+
+        const newLayers: L.TileLayer[] = [];
+        for (const frame of frames) {
+          const url = `https://tilecache.rainviewer.com${frame.path}/256/{z}/{x}/{y}/6/1_1.png`;
+          newLayers.push(Leaf.tileLayer(url, { opacity: 0, zIndex: 400, crossOrigin: 'anonymous' }).addTo(map));
+        }
+
+        radarFrameLayersRef.current = newLayers;
+        radarFrameTimesRef.current = frames.map((f) => f.time * 1000);
+
+        const lastIdx = newLayers.length - 1;
+        newLayers[lastIdx]!.setOpacity(0.6);
+        radarFrameIdxRef.current = lastIdx;
+        updateTimestamp(lastIdx);
+      } catch { /* best-effort */ }
+    };
+
+    const animInterval = setInterval(() => {
+      if (!radarPlayingRef.current) return;
+      const layers = radarFrameLayersRef.current;
+      if (layers.length === 0) return;
+      const prev = radarFrameIdxRef.current;
+      layers[prev]?.setOpacity(0);
+      const next = (prev + 1) % layers.length;
+      layers[next]?.setOpacity(0.6);
+      radarFrameIdxRef.current = next;
+      updateTimestamp(next);
+    }, 500);
+
+    void loadFrames();
+    const refreshInterval = setInterval(() => void loadFrames(), 300_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(animInterval);
+      clearInterval(refreshInterval);
+      for (const fl of radarFrameLayersRef.current) map.removeLayer(fl);
+      radarFrameLayersRef.current = [];
+      radarFrameTimesRef.current = [];
+      radarPlayingRef.current = false;
+      setRadarPlaying(false);
+      setRadarTimestamp('');
+    };
+  }, [showRadar]);
 
   // ResizeObserver — invalidate map size when container resizes (sidebar collapse, etc.)
   useEffect(() => {
@@ -1047,6 +1237,65 @@ export function AerodromeMap({
               </Pressable>
             );
           })}
+        </View>
+
+        {/* Weather overlay toggles */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3, justifyContent: 'flex-end' }}>
+          <Pressable
+            onPress={() => setShowSigmets((v) => !v)}
+            style={{
+              backgroundColor: showSigmets ? '#059669' : 'rgba(255,255,255,0.92)',
+              borderRadius: 4, borderWidth: 1, borderColor: '#dfe2e8',
+              paddingHorizontal: 7, paddingVertical: 4,
+            }}
+          >
+            <Text style={{ fontSize: 9, fontWeight: '600', color: showSigmets ? '#fff' : '#374151' }}>
+              {t('vfr.layerSigmet')}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setShowRadar((v) => !v)}
+            style={{
+              backgroundColor: showRadar ? '#059669' : 'rgba(255,255,255,0.92)',
+              borderRadius: 4, borderWidth: 1, borderColor: '#dfe2e8',
+              paddingHorizontal: 7, paddingVertical: 4,
+            }}
+          >
+            <Text style={{ fontSize: 9, fontWeight: '600', color: showRadar ? '#fff' : '#374151' }}>
+              {t('vfr.layerRadar')}
+            </Text>
+          </Pressable>
+          {showRadar ? (
+            <>
+              <Pressable
+                onPress={() => {
+                  const next = !radarPlaying;
+                  radarPlayingRef.current = next;
+                  setRadarPlaying(next);
+                }}
+                style={{
+                  backgroundColor: radarPlaying ? '#059669' : 'rgba(255,255,255,0.92)',
+                  borderRadius: 4, borderWidth: 1, borderColor: '#dfe2e8',
+                  width: 26, alignItems: 'center', justifyContent: 'center',
+                  paddingVertical: 4,
+                }}
+              >
+                <Text style={{ fontSize: 10, color: radarPlaying ? '#fff' : '#374151' }}>
+                  {radarPlaying ? '⏸' : '▶'}
+                </Text>
+              </Pressable>
+              {radarTimestamp ? (
+                <View style={{
+                  backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 4,
+                  paddingHorizontal: 6, paddingVertical: 4,
+                }}>
+                  <Text style={{ fontSize: 9, fontWeight: '700', color: '#fff', fontFamily: 'monospace' }}>
+                    {radarTimestamp}
+                  </Text>
+                </View>
+              ) : null}
+            </>
+          ) : null}
         </View>
       </View>
 

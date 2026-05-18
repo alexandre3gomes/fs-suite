@@ -62,28 +62,44 @@ model Session {
 }
 
 model AircraftProfile {
-  id             String   @id @default(cuid())
-  name           String
-  icaoType       String?  @map("icao_type")
-  manufacturer   String?
-  model          String?
-  emptyWeightKg  Float?   @map("empty_weight_kg")
-  mtowKg         Float?   @map("mtow_kg")
-  fuelCapacityL  Float?   @map("fuel_capacity_l")
-  fuelBurnLph    Float?   @map("fuel_burn_lph")
-  cruiseSpeedKts Int?     @map("cruise_speed_kts")
-  stations       Json?
-  source         String?
-  isTemplate     Boolean  @default(false) @map("is_template")
-  clonedFromId   String?  @map("cloned_from_id")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(cuid())
+  name             String
+  icaoType         String?  @map("icao_type")
+  manufacturer     String?
+  model            String?
+  emptyWeightKg    Float?   @map("empty_weight_kg")
+  mtowKg           Float?   @map("mtow_kg")
+  fuelCapacityL    Float?   @map("fuel_capacity_l")
+  fuelBurnLph      Float?   @map("fuel_burn_lph")
+  cruiseSpeedKts   Int?     @map("cruise_speed_kts")
+  source           String?
+  dataCompleteness String   @default("skeleton") @map("data_completeness")
+  isTemplate       Boolean  @default(false) @map("is_template")
+  clonedFromId     String?  @map("cloned_from_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
-  userId String? @map("user_id")
-  user   User?   @relation(fields: [userId], references: [id])
+  userId   String?                  @map("user_id")
+  user     User?                    @relation(fields: [userId], references: [id])
+  stations AircraftProfileStation[]
 
   @@index([icaoType, isTemplate])
   @@map("aircraft_profiles")
+}
+
+model AircraftProfileStation {
+  id        String @id @default(cuid())
+  profileId String @map("profile_id")
+  stationId String @map("station_id")
+  labelKey  String @map("label_key")
+  defaultKg Float  @map("default_kg")
+  maxKg     Float  @map("max_kg")
+  arm       Float
+
+  profile AircraftProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("aircraft_profile_stations")
 }
 
 model Airport {

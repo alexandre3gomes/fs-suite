@@ -1,6 +1,13 @@
 import type { ParsedMetar } from './MetarDisplay';
 import type { ParsedTaf, TafForecastPeriod } from './TafDisplay';
 
+// --------------- Formatting ---------------
+
+export function formatOptionalMetric(value: number | null | undefined, unit: string): string {
+  if (value == null) return 'N/D';
+  return `${value} ${unit}`;
+}
+
 // --------------- Constants ---------------
 
 const METAR_VALIDITY_SEC = 5400; // 90 minutes
@@ -243,7 +250,7 @@ export interface ValidateVfrPlanParams {
   origin: { icao: string } | null;
   destination: { icao: string } | null;
   alternate: { icao: string } | null;
-  aircraft: { cruiseSpeedKts: number; mtowKg: number } | null;
+  aircraft: { cruiseSpeedKts: number | null; mtowKg: number | null } | null;
   metars: Record<string, ParsedMetar>;
   tafs: Record<string, ParsedTaf>;
   departureEpochSec: number;
@@ -253,8 +260,8 @@ export interface ValidateVfrPlanParams {
   totalDistanceNm: number;
   fuelOnBoardKg: number;
   minFuelKg: number;
-  takeoffWeightKg: number;
-  mtowKg: number;
+  takeoffWeightKg: number | null;
+  mtowKg: number | null;
   flightCondition: 'day' | 'night';
   enduranceMin: number;
   icaoPrefix: string;
@@ -458,7 +465,7 @@ export function validateVfrPlan(params: ValidateVfrPlanParams): PlanViability {
     }
 
     if (params.flightCondition === 'night' && params.enduranceMin > 0) {
-      const tripMin = params.aircraft.cruiseSpeedKts > 0 && params.totalDistanceNm > 0
+      const tripMin = params.aircraft.cruiseSpeedKts != null && params.aircraft.cruiseSpeedKts > 0 && params.totalDistanceNm > 0
         ? Math.round((params.totalDistanceNm / params.aircraft.cruiseSpeedKts) * 60)
         : 0;
       const reserveAvail = params.enduranceMin - tripMin;
@@ -475,7 +482,14 @@ export function validateVfrPlan(params: ValidateVfrPlanParams): PlanViability {
   }
 
   // --- Weight check ---
-  if (params.takeoffWeightKg > 0 && params.mtowKg > 0 && params.takeoffWeightKg > params.mtowKg) {
+  if (params.takeoffWeightKg == null || params.mtowKg == null) {
+    items.push({
+      id: 'weight-unverifiable',
+      severity: 'unverifiable',
+      message: 'Dados de peso insuficientes — não é possível verificar peso de decolagem vs. MTOW.',
+      action: 'Selecione uma aeronave com dados de peso completos.',
+    });
+  } else if (params.takeoffWeightKg > params.mtowKg) {
     const excess = Math.round(params.takeoffWeightKg - params.mtowKg);
     items.push({
       id: 'weight-over-mtow',

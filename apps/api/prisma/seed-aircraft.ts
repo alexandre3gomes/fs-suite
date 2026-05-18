@@ -3,6 +3,16 @@ import * as fs from 'fs';
 import * as https from 'https';
 import * as path from 'path';
 
+import { computeDataCompleteness } from '@fs-suite/types';
+
+interface SeedStation {
+  id: string;
+  labelKey: string;
+  defaultKg: number;
+  maxKg: number;
+  arm: number;
+}
+
 interface SeedEntry {
   icaoType: string;
   name: string;
@@ -14,7 +24,7 @@ interface SeedEntry {
   fuelCapacityL: number | null;
   fuelBurnLph: number | null;
   cruiseSpeedKts: number | null;
-  stations: unknown[] | null;
+  stations: SeedStation[] | null;
 }
 
 interface SimBriefAirframe {
@@ -58,6 +68,10 @@ async function fetchSimBriefAirframes(): Promise<SimBriefAirframe[]> {
   return airframes;
 }
 
+function toStationCreate(s: SeedStation) {
+  return { stationId: s.id, labelKey: s.labelKey, defaultKg: s.defaultKg, maxKg: s.maxKg, arm: s.arm };
+}
+
 export async function seedAircraft(prisma: PrismaClient): Promise<void> {
   const seedPath = path.join(__dirname, 'data', 'aircraft-seed-data.json');
   const preExtracted: SeedEntry[] = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
@@ -82,7 +96,16 @@ export async function seedAircraft(prisma: PrismaClient): Promise<void> {
       where: { icaoType: entry.icaoType, isTemplate: true, userId: null },
     });
 
-    const data = {
+    const completeness = computeDataCompleteness({
+      emptyWeightKg: entry.emptyWeightKg,
+      mtowKg: entry.mtowKg,
+      fuelCapacityL: entry.fuelCapacityL,
+      fuelBurnLph: entry.fuelBurnLph,
+      cruiseSpeedKts: entry.cruiseSpeedKts,
+      stations: entry.stations,
+    });
+
+    const baseData = {
       name: entry.name,
       icaoType: entry.icaoType,
       manufacturer: entry.manufacturer,
@@ -92,16 +115,32 @@ export async function seedAircraft(prisma: PrismaClient): Promise<void> {
       fuelCapacityL: entry.fuelCapacityL,
       fuelBurnLph: entry.fuelBurnLph,
       cruiseSpeedKts: entry.cruiseSpeedKts,
-      stations: entry.stations ? JSON.parse(JSON.stringify(entry.stations)) : undefined,
       source: entry.source,
+      dataCompleteness: completeness,
       isTemplate: true,
       userId: null,
     };
 
+    const stationEntries = entry.stations?.map(toStationCreate) ?? [];
+
     if (existing) {
-      await prisma.aircraftProfile.update({ where: { id: existing.id }, data });
+      await prisma.aircraftProfile.update({
+        where: { id: existing.id },
+        data: {
+          ...baseData,
+          stations: {
+            deleteMany: {},
+            ...(stationEntries.length > 0 ? { create: stationEntries } : {}),
+          },
+        },
+      });
     } else {
-      await prisma.aircraftProfile.create({ data });
+      await prisma.aircraftProfile.create({
+        data: {
+          ...baseData,
+          ...(stationEntries.length > 0 ? { stations: { create: stationEntries } } : {}),
+        },
+      });
     }
     upserted++;
   }
@@ -121,6 +160,7 @@ export async function seedAircraft(prisma: PrismaClient): Promise<void> {
         name: sb.name,
         icaoType: sb.icao,
         source: 'simbrief',
+        dataCompleteness: 'skeleton',
         isTemplate: true,
         userId: null,
       },
