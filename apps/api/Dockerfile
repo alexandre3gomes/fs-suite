@@ -73,5 +73,5 @@ EXPOSE 3001
 
 WORKDIR /app/apps/api
 
-# Start the application (migrations handled by K8s init container)
-CMD ["node", "dist/main"]
+# Start the application with migrations
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/main"]
