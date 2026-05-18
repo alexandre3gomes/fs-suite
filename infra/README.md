@@ -1,30 +1,19 @@
 # Infrastructure — FS Suite
 
-Kubernetes manifests for production deployment, organized with [Kustomize](https://kustomize.io/).
-
-> Cluster bootstrap (K3s install, node setup, firewall rules) is in the separate [`infra-k8s`](https://github.com/alexandre3gomes/infra-k8s) repository.
+Google Cloud Run deployment for the API, with Cloudflare Worker reverse proxy for custom domain routing.
 
 ## Structure
 
 ```
 infra/
-├── base/                          # Base manifests
-│   ├── kustomization.yaml
-│   ├── namespace.yaml
-│   ├── api/                       # Deployment, Service, ConfigMap, Secret
-│   └── ingress/                   # Ingress (nginx, Cloudflare-terminated SSL)
-├── overlays/
-│   └── production/                # Production overlay (external DBs)
-│       ├── kustomization.yaml
-│       └── setup.sh              # Interactive initial setup script
-└── scripts/
-    ├── kube-aliases.sh            # Shell alias: kprod → kubectl on production
-    └── setup-prod-kubeconfig.sh   # Configure local kubectl → production VM
+├── cloudrun/
+│   └── setup.sh          # Interactive GCP setup (APIs, Artifact Registry, service accounts, secrets)
+└── README.md
 ```
 
 ## Local Development
 
-Local development does **not** use Kubernetes. Services run directly:
+Local development does **not** use Cloud Run. Services run directly:
 
 | Component | How | Port |
 |-----------|-----|------|
@@ -34,10 +23,7 @@ Local development does **not** use Kubernetes. Services run directly:
 | Redis | Docker container | `localhost:6379` |
 
 ```bash
-# Start databases
 docker compose up -d
-
-# Start all services
 pnpm dev
 ```
 
@@ -48,22 +34,23 @@ pnpm dev
 | Component | Service | Details |
 |-----------|---------|---------|
 | Frontend | Cloudflare Pages | Project `fs-suite-app` |
-| API | K3s Deployment | OCI VM (`158.179.221.244`), ARM64 |
-| Database | Neon | Serverless PostgreSQL, TLS |
+| API | Google Cloud Run | `europe-west2` (London), colocated with DB |
+| Database | Neon | Serverless PostgreSQL, London region |
 | Cache | Upstash | Serverless Redis, TLS |
-| DNS/SSL | Cloudflare | Automatic TLS, auto-renew |
-| Container Registry | GHCR | `ghcr.io/alexandre3gomes/fs-suite/api` |
+| DNS/SSL | Cloudflare | Automatic TLS + Worker reverse proxy |
+| Container Registry | Google Artifact Registry | `europe-west2-docker.pkg.dev` |
+| Secrets | Google Secret Manager | Runtime secrets injected via `--set-secrets` |
 
 ### Domain and DNS
 
-Domain `fs-suite.com` is managed via Cloudflare (nameservers migrated from IONOS).
+Domain `fs-suite.com` is managed via Cloudflare.
 
 | Record | Type | Target | Proxy |
 |--------|------|--------|-------|
 | `fs-suite.com` | CNAME | `fs-suite-app.pages.dev` | Proxied |
-| `api.fs-suite.com` | A | `158.179.221.244` | Proxied |
+| `api.fs-suite.com` | — | Cloudflare Worker (`winter-pine-bca5`) | — |
 
-SSL is handled entirely by Cloudflare (mode: **Full**). No cert-manager or Let's Encrypt needed on the cluster.
+The API uses a **Cloudflare Worker** as reverse proxy because Cloud Run's auto-generated hostname doesn't match `api.fs-suite.com`. The Worker rewrites the `Host` header and forwards requests to the Cloud Run service URL.
 
 ### Network Diagram
 
@@ -74,9 +61,11 @@ Internet → Cloudflare (SSL/CDN)
         │                │
   fs-suite.com    api.fs-suite.com
         │                │
-  Cloudflare Pages   OCI VM → ingress-nginx
-  (static files)         │
-                  namespace: fs-suite
+  Cloudflare Pages   Cloudflare Worker
+  (static files)     (reverse proxy)
+                         │
+                  Google Cloud Run
+                  europe-west2 (London)
                   ┌─────────┐
                   │   API   │
                   │  :3001  │
@@ -85,45 +74,36 @@ Internet → Cloudflare (SSL/CDN)
         ┌──────────────┼──────────────┐
         │              │              │
   Neon (Postgres) Upstash (Redis) Google
-  (external TLS) (external TLS)  (OAuth)
+  (London, TLS)  (external TLS)  (OAuth)
 ```
+
+### Cloud Run Configuration
+
+| Setting | Value |
+|---------|-------|
+| Region | `europe-west2` (London) |
+| CPU | 1 |
+| Memory | 512Mi |
+| Min instances | 0 (free tier) |
+| Max instances | 2 |
+| Concurrency | 80 |
+| Timeout | 300s |
+| CPU boost | Enabled (reduces cold start) |
+| Port | 3001 |
+| Runtime SA | `fs-suite-runtime@fs-suite.iam.gserviceaccount.com` |
 
 ### Initial Setup
 
 ```bash
-# 1. Configure local kubectl → production cluster
-./infra/scripts/setup-prod-kubeconfig.sh ubuntu@158.179.221.244
+# 1. Install gcloud CLI and authenticate
+gcloud auth login
+gcloud config set project fs-suite
 
-# 2. Load shell aliases
-source infra/scripts/kube-aliases.sh
+# 2. Run interactive setup (creates APIs, registry, service accounts, secrets)
+./infra/cloudrun/setup.sh
 
-# 3. Run interactive setup (creates namespace, secrets, applies manifests)
-./infra/overlays/production/setup.sh
-
-# 4. Verify
-kprod get pods
+# 3. Configure GitHub Secrets (see CI/CD section)
 ```
-
-### Adding Nodes to the Cluster
-
-To add a new worker node to the K3s cluster:
-
-1. **On the control plane node**, get the join token:
-   ```bash
-   sudo cat /var/lib/rancher/k3s/server/node-token
-   ```
-
-2. **On the new node**, install K3s as agent:
-   ```bash
-   curl -sfL https://get.k3s.io | K3S_URL=https://158.179.221.244:6443 K3S_TOKEN=<token> sh -
-   ```
-
-3. **Verify** the node joined:
-   ```bash
-   kprod get nodes
-   ```
-
-4. If the new node is a different architecture, ensure the Docker image supports it (currently builds ARM64 only via `deploy.yml`).
 
 ## CI/CD
 
@@ -132,24 +112,33 @@ Branching model: **feature branches → PR → merge to main**.
 | Workflow | Trigger | Action |
 |----------|---------|--------|
 | `ci.yml` | Push to `main` + PRs | Install, lint, typecheck, build, test |
-| `deploy.yml` | Push to `main` (API/infra paths) | Build Docker (ARM64) → GHCR, apply K8s manifests, rollout |
+| `deploy.yml` | Push to `main` (API/packages paths) | Build Docker → Artifact Registry → Cloud Run deploy |
 | `deploy-app.yml` | Push to `main` (app/UI paths) | Expo web export → Cloudflare Pages |
 
 ### GitHub Secrets
 
-| Secret | Scope | Used by |
-|--------|-------|---------|
-| `KUBECONFIG` | Environment: `production` | `deploy.yml` — kubectl access to K8s cluster |
-| `CLOUDFLARE_API_TOKEN` | Repository | `deploy-app.yml` — Cloudflare Pages deploy (needs Pages:Edit permission) |
-| `CLOUDFLARE_ACCOUNT_ID` | Repository | `deploy-app.yml` — Cloudflare account identification |
+| Secret | Used by |
+|--------|---------|
+| `GCP_PROJECT_ID` | `deploy.yml` — GCP project ID (`fs-suite`) |
+| `GCP_REGION` | `deploy.yml` — Cloud Run region (`europe-west2`) |
+| `GCP_SA_KEY` | `deploy.yml` — CI/CD service account JSON key |
+| `CLOUDFLARE_API_TOKEN` | `deploy-app.yml` — Cloudflare Pages deploy |
+| `CLOUDFLARE_ACCOUNT_ID` | `deploy-app.yml` — Cloudflare account ID |
 
-### Deploy API (K8s)
+### GCP Service Accounts
+
+| Account | Role |
+|---------|------|
+| `fs-suite-cicd` | CI/CD — pushes images, deploys Cloud Run, manages secrets |
+| `fs-suite-runtime` | Runtime — Cloud Run service account with `secretAccessor` role |
+
+### Deploy API (Cloud Run)
 
 On each merge to `main` that changes API code:
 
-1. Builds ARM64 Docker image and pushes to GHCR (tagged with git SHA + `latest`)
-2. Applies Kustomize manifests with the new image tag
-3. Waits for rollout and verifies pod health
+1. Builds amd64 Docker image and pushes to Artifact Registry (tagged with git SHA + `latest`)
+2. Deploys to Cloud Run with `gcloud run deploy`, injecting env vars and secrets
+3. Verifies deployment via health check (`/v1/health`)
 
 ### Deploy App (Cloudflare Pages)
 
@@ -159,17 +148,29 @@ On each merge to `main` that changes frontend code:
 2. Deploys static files to Cloudflare Pages via `wrangler`
 3. Global CDN distributes automatically
 
-## Secrets
+## Secrets (Google Secret Manager)
 
-`base/api/secret.yaml` contains placeholders. In production, `setup.sh` creates the secret interactively:
+All production secrets are stored in Google Secret Manager and injected at runtime via Cloud Run's `--set-secrets` flag.
 
 | Secret | Description |
 |--------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string (Neon) |
-| `REDIS_URL` | Redis connection string (Upstash, `rediss://` for TLS) |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials |
-| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | RS256 keypair |
-| `ENCRYPTION_KEY` | AES-256-GCM key (32-byte hex) |
-| `SENTRY_DSN` / `SENTRY_AUTH_TOKEN` | Sentry error tracking (optional) |
+| `database-url` | PostgreSQL connection string (Neon) |
+| `redis-url` | Redis connection string (Upstash, `rediss://` for TLS) |
+| `google-client-id` / `google-client-secret` | Google OAuth credentials |
+| `jwt-private-key` / `jwt-public-key` | RS256 keypair |
+| `encryption-key` | AES-256-GCM key (32-byte hex) |
+| `sentry-dsn` | Sentry error tracking |
+| `gemini-api-key` / `groq-api-key` | AI model API keys |
+| `r2-account-id` / `r2-access-key-id` / `r2-secret-access-key` | Cloudflare R2 storage |
 
 **Never commit real secrets.**
+
+## Database Migrations
+
+Prisma migrations are **not** run automatically on container startup. Run them ad-hoc:
+
+```bash
+# From a machine with DATABASE_URL set
+cd apps/api
+npx prisma migrate deploy
+```

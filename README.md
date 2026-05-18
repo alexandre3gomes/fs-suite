@@ -27,7 +27,7 @@ fs-suite/
 │   ├── ui/            # Shared design system (NativeWind)
 │   ├── types/         # Shared Zod schemas and TypeScript types
 │   └── config/        # Shared ESLint, TypeScript, and Tailwind configs
-├── infra/             # Kubernetes manifests (Kustomize)
+├── infra/             # Cloud Run setup scripts and deployment config
 └── docs/              # Product and technical specifications
 ```
 
@@ -164,7 +164,7 @@ GitHub Actions workflows on push to `main`:
 | Workflow | Trigger paths | Action |
 |----------|--------------|--------|
 | `ci.yml` | All code | Lint, typecheck, build, test |
-| `deploy.yml` | `apps/api/`, `infra/`, `packages/` | Build Docker (ARM64) → GHCR → K8s rollout |
+| `deploy.yml` | `apps/api/`, `packages/` | Build Docker → Artifact Registry → Cloud Run deploy |
 | `deploy-app.yml` | `apps/app/`, `packages/ui/`, `packages/types/` | Expo web export → Cloudflare Pages |
 
 ## Production Infrastructure
@@ -172,11 +172,12 @@ GitHub Actions workflows on push to `main`:
 | Component | Service |
 |-----------|---------|
 | Frontend | Cloudflare Pages (`fs-suite.com`) |
-| API | K3s on OCI VM (`api.fs-suite.com`) |
-| Database | Neon (serverless PostgreSQL) |
+| API | Google Cloud Run (`api.fs-suite.com`) |
+| Database | Neon (serverless PostgreSQL, London) |
 | Cache | Upstash (serverless Redis, TLS) |
-| DNS/SSL | Cloudflare (automatic TLS, auto-renew) |
-| Container Registry | GitHub Container Registry (GHCR) |
+| DNS/SSL | Cloudflare (automatic TLS + Worker reverse proxy) |
+| Container Registry | Google Artifact Registry |
+| Secrets | Google Secret Manager |
 
 See [`infra/README.md`](infra/README.md) for detailed infrastructure documentation.
 
