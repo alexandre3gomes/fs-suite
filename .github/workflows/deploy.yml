@@ -75,7 +75,6 @@ jobs:
             --cpu-boost \
             --set-env-vars "\
           NODE_ENV=production,\
-          PORT=3001,\
           GOOGLE_CALLBACK_URL=https://api.fs-suite.com/v1/auth/google/callback,\
           WEB_ORIGIN=https://fs-suite.com,\
           JWT_ACCESS_EXPIRES_IN=15m,\
