@@ -47,7 +47,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 
 # Copy only the packages needed by the API
 COPY apps/api/package.json apps/api/
-COPY packages/types/package.json packages/types/
+COPY packages/types/ packages/types/
 COPY packages/config/package.json packages/config/
 
 # Install production dependencies only
