@@ -26,9 +26,9 @@ COPY apps/api/ apps/api/
 WORKDIR /app/apps/api
 RUN npx prisma generate
 
-# Build the API
+# Build types package (dependency) then API
 WORKDIR /app
-RUN pnpm --filter @fs-suite/api build
+RUN pnpm --filter @fs-suite/types build && pnpm --filter @fs-suite/api build
 
 # ── Stage 2: Production ────────────────────────────────────────
 FROM node:20-alpine AS production
@@ -47,11 +47,14 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 
 # Copy only the packages needed by the API
 COPY apps/api/package.json apps/api/
-COPY packages/types/ packages/types/
+COPY packages/types/package.json packages/types/
 COPY packages/config/package.json packages/config/
 
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod
+
+# Copy compiled types package from builder
+COPY --from=builder /app/packages/types/dist/ packages/types/dist/
 
 # Copy Prisma schema and CLI, then regenerate client for target platform
 COPY apps/api/prisma/ apps/api/prisma/
