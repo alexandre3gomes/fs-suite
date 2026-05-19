@@ -32,8 +32,8 @@ fs-suite/
 | Auth        | Google OAuth 2.0 (Passport.js)       |
 | Monorepo    | Turborepo + pnpm                     |
 | CI/CD       | GitHub Actions                       |
-| Hosting     | Cloudflare Pages (frontend), EC2 on AWS + Cloud Run fallback (API) |
-| DNS/SSL     | Cloudflare (automatic TLS)           |
+| Hosting     | Cloudflare Pages (frontend), EC2 primary + Cloud Run standby (API) |
+| DNS/TLS     | Cloudflare (proxied, Full Strict)    |
 
 ## Development Commands
 

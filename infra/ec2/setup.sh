@@ -5,33 +5,69 @@ set -euo pipefail
 # FS Suite — EC2 Setup
 #
 # Provisions a fresh Amazon Linux 2023 instance with everything
-# needed to run the API: Docker, nginx reverse proxy, .env secrets.
+# needed to run the API: Docker, nginx reverse proxy, TLS, secrets.
 #
 # Prerequisites:
 #   - Amazon Linux 2023 EC2 instance (t3.small recommended)
 #   - SSH access as ec2-user
-#   - All secret values ready (DB URL, Redis, OAuth, JWT keys, etc.)
-#   - GitHub PAT with read:packages scope (for GHCR image pull)
+#   - A .env file with all secrets (see .env.example)
+#   - Cloudflare Origin Certificate files (origin.pem + origin-key.pem)
+#   - GitHub PAT with read:packages scope (for initial GHCR pull)
 #
 # Usage:
-#   ssh ec2-user@<elastic-ip>
+#   # 1. Copy files to EC2
+#   scp .env origin.pem origin-key.pem fs-suite:~/
+#
+#   # 2. SSH in and run
+#   ssh fs-suite
 #   curl -sO https://raw.githubusercontent.com/alexandre3gomes/fs-suite/main/infra/ec2/setup.sh
 #   chmod +x setup.sh && ./setup.sh
 # ──────────────────────────────────────────────────────────────
 
 APP_DIR="/opt/fs-suite"
-IMAGE="ghcr.io/alexandre3gomes/fs-suite-api:latest"
 
 echo "╔══════════════════════════════════════════════╗"
 echo "║     FS Suite — EC2 Setup                     ║"
 echo "╚══════════════════════════════════════════════╝"
 echo ""
 
+# ── Validate input files ──────────────────────────────────
+
+ENV_FILE="${1:-$HOME/.env}"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Error: .env file not found at $ENV_FILE"
+  echo "Usage: ./setup.sh [path/to/.env]"
+  echo ""
+  echo "The .env must contain all required variables. See infra/ec2/.env.example"
+  exit 1
+fi
+
+ORIGIN_CERT="${HOME}/origin.pem"
+ORIGIN_KEY="${HOME}/origin-key.pem"
+
+if [[ ! -f "$ORIGIN_CERT" || ! -f "$ORIGIN_KEY" ]]; then
+  echo "Error: TLS certificate files not found"
+  echo "Expected: ~/origin.pem and ~/origin-key.pem"
+  echo ""
+  echo "Generate at: Cloudflare > SSL/TLS > Origin Server > Create Certificate"
+  echo "  - Hostnames: api.fs-suite.com"
+  echo "  - Validity: 15 years"
+  echo "  - Key format: PEM"
+  exit 1
+fi
+
+echo "Input files:"
+echo "  .env:       $ENV_FILE"
+echo "  TLS cert:   $ORIGIN_CERT"
+echo "  TLS key:    $ORIGIN_KEY"
+echo ""
+
 # ── Install Docker ─────────────────────────────────────────
 
 echo "Installing Docker..."
 sudo dnf update -y -q
-sudo dnf install -y -q docker curl
+sudo dnf install -y -q docker
 
 sudo systemctl enable docker
 sudo systemctl start docker
@@ -56,7 +92,10 @@ sudo chown ec2-user:ec2-user "$APP_DIR"
 # ── Authenticate to GHCR ──────────────────────────────────
 
 echo "── GitHub Container Registry ──"
-echo "Create a PAT at https://github.com/settings/tokens"
+echo "This PAT is only for the initial image pull."
+echo "Automated deploys use short-lived GITHUB_TOKEN from Actions."
+echo ""
+echo "Create a PAT at: https://github.com/settings/tokens"
 echo "Required scope: read:packages"
 echo ""
 read -rp "GitHub username: " GH_USER
@@ -66,12 +105,32 @@ echo ""
 echo "$GH_PAT" | docker login ghcr.io -u "$GH_USER" --password-stdin
 echo ""
 
+# ── TLS certificates ─────────────────────────────────────
+
+CERTS_DIR="$APP_DIR/certs"
+mkdir -p "$CERTS_DIR"
+cp "$ORIGIN_CERT" "$CERTS_DIR/origin.pem"
+cp "$ORIGIN_KEY" "$CERTS_DIR/origin-key.pem"
+chmod 644 "$CERTS_DIR/origin.pem"
+chmod 600 "$CERTS_DIR/origin-key.pem"
+echo "TLS certificates installed."
+
 # ── Write nginx config ────────────────────────────────────
 
 cat > "$APP_DIR/nginx.conf" << 'NGINX'
 server {
     listen 80;
     server_name api.fs-suite.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name api.fs-suite.com;
+
+    ssl_certificate     /etc/nginx/certs/origin.pem;
+    ssl_certificate_key /etc/nginx/certs/origin-key.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
 
     location / {
         proxy_pass http://api:3001;
@@ -95,8 +154,10 @@ services:
     image: nginx:alpine
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       api:
         condition: service_healthy
@@ -108,7 +169,7 @@ services:
     expose:
       - "3001"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:3001/v1/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/v1/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -119,68 +180,15 @@ COMPOSE
 echo "Docker Compose config written."
 echo ""
 
-# ── Collect secrets ────────────────────────────────────────
+# ── Process .env ──────────────────────────────────────────
+# Reads the provided .env, converts JWT PEM keys (multiline)
+# to escaped single-line format, and adds non-secret defaults.
 
-read_secret() {
-  local prompt="$1"
-  local default="${2:-}"
-  if [[ -n "$default" ]]; then
-    prompt="$prompt [$default]"
-  fi
-  read -rp "$prompt: " value
-  [[ -z "$value" && -n "$default" ]] && value="$default"
-  echo "$value"
-}
+process_env() {
+  local src="$1"
+  local dst="$2"
 
-read_multiline() {
-  local prompt="$1"
-  echo "$prompt (paste content, then press Ctrl+D on a new line):"
-  local content
-  content=$(cat)
-  echo "$content"
-}
-
-echo "── Secrets ──"
-echo "Enter values for each secret."
-echo ""
-
-echo "── External databases ──"
-DB_URL=$(read_secret "DATABASE_URL (Neon connection string)")
-REDIS=$(read_secret "REDIS_URL (Upstash connection string)")
-echo ""
-
-echo "── Google OAuth ──"
-G_CLIENT_ID=$(read_secret "GOOGLE_CLIENT_ID")
-G_CLIENT_SECRET=$(read_secret "GOOGLE_CLIENT_SECRET")
-echo ""
-
-echo "── JWT RS256 keypair ──"
-JWT_PRIV=$(read_multiline "JWT_PRIVATE_KEY")
-JWT_PUB=$(read_multiline "JWT_PUBLIC_KEY")
-echo ""
-
-echo "── Encryption ──"
-ENC_KEY=$(read_secret "ENCRYPTION_KEY (32-byte hex)")
-echo ""
-
-echo "── Sentry (press Enter to skip) ──"
-SENTRY=$(read_secret "SENTRY_DSN" "")
-echo ""
-
-echo "── AI providers (press Enter to skip) ──"
-GEMINI=$(read_secret "GEMINI_API_KEY" "")
-GROQ=$(read_secret "GROQ_API_KEY" "")
-echo ""
-
-echo "── Cloudflare R2 (press Enter to skip) ──"
-R2_ACCT=$(read_secret "R2_ACCOUNT_ID" "")
-R2_KEY=$(read_secret "R2_ACCESS_KEY_ID" "")
-R2_SECRET=$(read_secret "R2_SECRET_ACCESS_KEY" "")
-echo ""
-
-# ── Write .env ─────────────────────────────────────────────
-
-cat > "$APP_DIR/.env" << ENV
+  cat > "$dst" << 'DEFAULTS'
 NODE_ENV=production
 PORT=3001
 GOOGLE_CALLBACK_URL=https://api.fs-suite.com/v1/auth/google/callback
@@ -189,21 +197,39 @@ JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=30d
 R2_BUCKET_NAME=fs-suite-charts
 SENTRY_RELEASE=initial
-DATABASE_URL=${DB_URL}
-REDIS_URL=${REDIS}
-GOOGLE_CLIENT_ID=${G_CLIENT_ID}
-GOOGLE_CLIENT_SECRET=${G_CLIENT_SECRET}
-JWT_PRIVATE_KEY=${JWT_PRIV}
-JWT_PUBLIC_KEY=${JWT_PUB}
-ENCRYPTION_KEY=${ENC_KEY}
-SENTRY_DSN=${SENTRY}
-GEMINI_API_KEY=${GEMINI}
-GROQ_API_KEY=${GROQ}
-R2_ACCOUNT_ID=${R2_ACCT}
-R2_ACCESS_KEY_ID=${R2_KEY}
-R2_SECRET_ACCESS_KEY=${R2_SECRET}
-ENV
+DEFAULTS
 
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+
+    case "$line" in
+      NODE_ENV=*|PORT=*|GOOGLE_CALLBACK_URL=*|WEB_ORIGIN=*) continue ;;
+      JWT_ACCESS_EXPIRES_IN=*|JWT_REFRESH_EXPIRES_IN=*) continue ;;
+      R2_BUCKET_NAME=*|SENTRY_RELEASE=*) continue ;;
+      JWT_PRIVATE_KEY=*|JWT_PUBLIC_KEY=*) continue ;;
+    esac
+
+    echo "$line" >> "$dst"
+  done < "$src"
+}
+
+process_env "$ENV_FILE" "$APP_DIR/.env"
+
+# ── Generate JWT RS256 keypair ────────────────────────────
+
+echo "Generating JWT RS256 keypair..."
+JWT_TMP=$(mktemp -d)
+openssl genrsa -out "$JWT_TMP/private.pem" 2048 2>/dev/null
+openssl rsa -in "$JWT_TMP/private.pem" -pubout -out "$JWT_TMP/public.pem" 2>/dev/null
+
+JWT_PRIV=$(awk '{printf "%s\\n", $0}' "$JWT_TMP/private.pem")
+JWT_PUB=$(awk '{printf "%s\\n", $0}' "$JWT_TMP/public.pem")
+
+echo "JWT_PRIVATE_KEY=\"${JWT_PRIV}\"" >> "$APP_DIR/.env"
+echo "JWT_PUBLIC_KEY=\"${JWT_PUB}\"" >> "$APP_DIR/.env"
+
+rm -rf "$JWT_TMP"
+echo "JWT keypair generated and written to .env."
 chmod 600 "$APP_DIR/.env"
 echo ".env written (chmod 600)."
 echo ""
@@ -217,15 +243,21 @@ docker compose up -d
 
 echo ""
 echo "Waiting for health check..."
-sleep 10
+for i in 1 2 3 4 5 6; do
+  if curl -sf http://localhost/v1/health > /dev/null 2>&1; then
+    echo "Health check passed!"
+    curl -s http://localhost/v1/health
+    echo ""
+    break
+  fi
+  echo "Attempt $i — waiting 5s..."
+  sleep 5
+done
 
-if curl -sf http://localhost/v1/health > /dev/null 2>&1; then
-  echo "Health check passed!"
-  curl -s http://localhost/v1/health
-  echo ""
-else
-  echo "Warning: health check failed. Check logs with: docker compose logs -f api"
-fi
+# ── Cleanup ───────────────────────────────────────────────
+
+rm -f "$HOME/origin.pem" "$HOME/origin-key.pem"
+echo "Cleaned up certificate files from home directory."
 
 # ── Summary ────────────────────────────────────────────────
 
@@ -234,21 +266,22 @@ echo "╔═══════════════════════�
 echo "║     Setup complete!                          ║"
 echo "╚══════════════════════════════════════════════╝"
 echo ""
-echo "Next steps:"
+echo "Checklist:"
 echo ""
-echo "  1. Allocate an Elastic IP and associate with this instance"
-echo "  2. Configure Security Group:"
-echo "     - Port 80 (HTTP): 0.0.0.0/0"
-echo "     - Port 22 (SSH): your IP only"
+echo "  1. Elastic IP allocated and associated"
+echo "  2. Security Group:"
+echo "     - Port 443 (HTTPS): 0.0.0.0/0"
+echo "     - Port 80 (HTTP): 0.0.0.0/0 (redirects to HTTPS)"
+echo "     - Port 22 (SSH): 0.0.0.0/0 (key-only auth)"
 echo "  3. Cloudflare DNS:"
 echo "     - A record: api.fs-suite.com → <Elastic IP> (Proxied)"
-echo "     - Delete the Cloudflare Worker (winter-pine-bca5)"
-echo "  4. GitHub Secrets (Settings > Secrets > Actions):"
+echo "     - SSL/TLS mode: Full (Strict)"
+echo "  4. GitHub Secrets:"
 echo "     - EC2_HOST = <Elastic IP>"
 echo "     - EC2_SSH_KEY = <private SSH key>"
 echo "     - EC2_USER = ec2-user"
 echo ""
-echo "Useful commands:"
+echo "Commands:"
 echo "  docker compose logs -f api     # API logs"
 echo "  docker compose restart api     # Restart API"
 echo "  docker compose pull && docker compose up -d  # Manual deploy"

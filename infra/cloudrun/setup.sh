@@ -27,8 +27,8 @@ echo ""
 # ── Project configuration ──────────────────────────────────
 
 read -rp "GCP Project ID: " PROJECT_ID
-read -rp "GCP Region [southamerica-east1]: " REGION
-REGION="${REGION:-southamerica-east1}"
+read -rp "GCP Region [europe-west2]: " REGION
+REGION="${REGION:-europe-west2}"
 
 gcloud config set project "$PROJECT_ID"
 
@@ -108,11 +108,17 @@ echo ""
 read_secret() {
   local prompt="$1"
   local default="${2:-}"
+  local silent="${3:-false}"
   if [[ -n "$default" ]]; then
     prompt="$prompt [$default]"
   fi
-  echo -n "$prompt: "
-  read -r value
+  if [[ "$silent" == "true" ]]; then
+    read -rsp "$prompt: " value
+    echo "" >&2
+  else
+    echo -n "$prompt: "
+    read -r value
+  fi
   [[ -z "$value" && -n "$default" ]] && value="$default"
   echo "$value"
 }
@@ -142,13 +148,13 @@ echo "Enter values for each secret. These are stored in GCP Secret Manager."
 echo ""
 
 echo "── External databases ──"
-DB_URL=$(read_secret "DATABASE_URL (Neon connection string)")
-REDIS=$(read_secret "REDIS_URL (Upstash connection string)")
+DB_URL=$(read_secret "DATABASE_URL (Neon connection string)" "" true)
+REDIS=$(read_secret "REDIS_URL (Upstash connection string)" "" true)
 echo ""
 
 echo "── Google OAuth ──"
 G_CLIENT_ID=$(read_secret "GOOGLE_CLIENT_ID")
-G_CLIENT_SECRET=$(read_secret "GOOGLE_CLIENT_SECRET")
+G_CLIENT_SECRET=$(read_secret "GOOGLE_CLIENT_SECRET" "" true)
 echo ""
 
 echo "── JWT RS256 keypair ──"
@@ -157,7 +163,7 @@ JWT_PUB=$(read_multiline "JWT_PUBLIC_KEY")
 echo ""
 
 echo "── Encryption ──"
-ENC_KEY=$(read_secret "ENCRYPTION_KEY (32-byte hex)")
+ENC_KEY=$(read_secret "ENCRYPTION_KEY (32-byte hex)" "" true)
 echo ""
 
 echo "── Sentry (press Enter to skip) ──"
@@ -212,10 +218,12 @@ echo "  Settings > Secrets and variables > Actions"
 echo ""
 echo "  GCP_PROJECT_ID = $PROJECT_ID"
 echo "  GCP_REGION     = $REGION"
-echo "  GCP_SA_KEY     = $(cat "$KEY_FILE")"
+echo "  GCP_SA_KEY     = (contents of $KEY_FILE)"
 echo ""
-echo "The SA key is also saved at: $KEY_FILE"
-echo "Delete it after copying to GitHub: rm $KEY_FILE"
+echo "The SA key is saved at: $KEY_FILE"
+echo "Copy its contents to the GitHub Secret, then delete it:"
+echo "  cat $KEY_FILE    # copy output to GitHub"
+echo "  rm $KEY_FILE     # delete after copying"
 echo ""
 echo "DNS: Point api.fs-suite.com to the Cloud Run URL"
 echo "  gcloud run services describe fs-suite-api --region $REGION --format 'value(status.url)'"
