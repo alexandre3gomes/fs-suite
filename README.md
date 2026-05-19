@@ -164,7 +164,7 @@ GitHub Actions workflows on push to `main`:
 | Workflow | Trigger paths | Action |
 |----------|--------------|--------|
 | `ci.yml` | All code | Lint, typecheck, build, test |
-| `deploy.yml` | `apps/api/`, `packages/` | Build Docker → GHCR → EC2 deploy via SSH |
+| `deploy.yml` | `apps/api/`, `packages/` | Build Docker → GHCR + Artifact Registry → EC2 + Cloud Run parallel deploy |
 | `deploy-app.yml` | `apps/app/`, `packages/ui/`, `packages/types/` | Expo web export → Cloudflare Pages |
 
 ## Production Infrastructure
@@ -172,12 +172,13 @@ GitHub Actions workflows on push to `main`:
 | Component | Service |
 |-----------|---------|
 | Frontend | Cloudflare Pages (`fs-suite.com`) |
-| API | EC2 t3.small, Amazon Linux 2023 (`api.fs-suite.com`) |
+| API (primary) | EC2 t3.small, Amazon Linux 2023 (`api.fs-suite.com`) |
+| API (fallback) | Google Cloud Run (`api-candidate.fs-suite.com`) |
 | Database | Neon (serverless PostgreSQL, London) |
 | Cache | Upstash (serverless Redis, TLS) |
-| DNS/SSL | Cloudflare (automatic TLS, proxied A record) |
-| Container Registry | GitHub Container Registry (GHCR) |
-| Secrets | `.env` file on EC2 |
+| DNS/SSL | Cloudflare (automatic TLS, proxied) |
+| Container Registry | GHCR (EC2) + Artifact Registry (Cloud Run) |
+| Secrets | `.env` on EC2 / Secret Manager on GCP |
 
 See [`infra/README.md`](infra/README.md) for detailed infrastructure documentation.
 

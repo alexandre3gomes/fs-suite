@@ -12,15 +12,18 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/fs-suite-api
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/fs-suite-api
+  GCP_IMAGE: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/fs-suite/api
 
 jobs:
-  build-and-deploy:
-    name: Build & Deploy
+  build:
+    name: Build
     runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
+    outputs:
+      short_sha: ${{ steps.sha.outputs.short }}
 
     steps:
       - name: Checkout
@@ -37,6 +40,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -47,12 +58,20 @@ jobs:
           file: apps/api/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE }}:${{ steps.sha.outputs.short }}
-            ${{ env.IMAGE }}:latest
+            ${{ env.GHCR_IMAGE }}:${{ steps.sha.outputs.short }}
+            ${{ env.GHCR_IMAGE }}:latest
+            ${{ env.GCP_IMAGE }}:${{ steps.sha.outputs.short }}
+            ${{ env.GCP_IMAGE }}:latest
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  deploy-ec2:
+    name: Deploy EC2
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
         with:
@@ -61,21 +80,83 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd /opt/fs-suite
-            sed -i "s/^SENTRY_RELEASE=.*/SENTRY_RELEASE=${{ steps.sha.outputs.short }}/" .env
+            sed -i "s/^SENTRY_RELEASE=.*/SENTRY_RELEASE=${{ needs.build.outputs.short_sha }}/" .env
             docker compose pull api
             docker compose up -d api
             sleep 5
             curl -sf http://localhost/v1/health || echo "Warning: health check failed"
 
-      - name: Verify deployment
+      - name: Verify
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            echo "Container status:"
             docker compose -f /opt/fs-suite/docker-compose.yml ps
-            echo ""
-            echo "Health check:"
             curl -s http://localhost/v1/health
+
+  deploy-cloudrun:
+    name: Deploy Cloud Run
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy fs-suite-api \
+            --image ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/fs-suite/api:${{ needs.build.outputs.short_sha }} \
+            --region ${{ secrets.GCP_REGION }} \
+            --platform managed \
+            --service-account fs-suite-runtime@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --port 3001 \
+            --memory 512Mi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 2 \
+            --timeout 300 \
+            --concurrency 80 \
+            --cpu-boost \
+            --set-env-vars "\
+          NODE_ENV=production,\
+          GOOGLE_CALLBACK_URL=https://api.fs-suite.com/v1/auth/google/callback,\
+          WEB_ORIGIN=https://fs-suite.com,\
+          JWT_ACCESS_EXPIRES_IN=15m,\
+          JWT_REFRESH_EXPIRES_IN=30d,\
+          SENTRY_RELEASE=${{ needs.build.outputs.short_sha }},\
+          R2_BUCKET_NAME=fs-suite-charts" \
+            --set-secrets "\
+          DATABASE_URL=database-url:latest,\
+          REDIS_URL=redis-url:latest,\
+          GOOGLE_CLIENT_ID=google-client-id:latest,\
+          GOOGLE_CLIENT_SECRET=google-client-secret:latest,\
+          JWT_PRIVATE_KEY=jwt-private-key:latest,\
+          JWT_PUBLIC_KEY=jwt-public-key:latest,\
+          ENCRYPTION_KEY=encryption-key:latest,\
+          SENTRY_DSN=sentry-dsn:latest,\
+          GEMINI_API_KEY=gemini-api-key:latest,\
+          GROQ_API_KEY=groq-api-key:latest,\
+          R2_ACCOUNT_ID=r2-account-id:latest,\
+          R2_ACCESS_KEY_ID=r2-access-key-id:latest,\
+          R2_SECRET_ACCESS_KEY=r2-secret-access-key:latest" \
+            --allow-unauthenticated
+
+      - name: Verify
+        run: |
+          URL=$(gcloud run services describe fs-suite-api \
+            --region ${{ secrets.GCP_REGION }} \
+            --format 'value(status.url)')
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${URL}/v1/health" --max-time 30 || true)
+          if [ "$STATUS" = "200" ]; then
+            echo "Health check passed"
+          else
+            echo "Warning: health check returned ${STATUS} (may still be starting)"
+          fi
