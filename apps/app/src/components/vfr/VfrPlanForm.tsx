@@ -208,18 +208,6 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const AVGAS_KG_PER_L = 0.72;
 
-// Runway-dependent gate selection per AIC N32/25 (SBMT/SBJD sector operations)
-// Key: ICAO code; Value: map of runway designator to { entry gate, exit gate }
-const RWY_GATE_MAP: Record<string, Record<string, { entry: string; exit: string }>> = {
-  SBMT: {
-    '30': { entry: 'Abril', exit: 'Penteado' },
-    '12': { entry: 'Penteado', exit: 'Abril' },
-  },
-  SBJD: {
-    '18': { entry: 'Lagoa', exit: 'Estádio' },
-    '36': { entry: 'Estádio', exit: 'Lagoa' },
-  },
-};
 
 interface Props {
   initialData?: VfrPlanData;
@@ -975,6 +963,24 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       .catch(() => setReaRegions([]))
       .finally(() => setReaLoading(false));
   }, [origin, destination, routeWaypoints]);
+
+  const [reaViolations, setReaViolations] = useState<{ from: string; to: string; message: string; severity: 'error' | 'warning' }[]>([]);
+
+  useEffect(() => {
+    if (!followedCorridorName || routeWaypoints.length < 2) {
+      setReaViolations([]);
+      return;
+    }
+    const wpStr = routeWaypoints.map((w) => `${w.lat}:${w.lng}`).join(',');
+    const altFt = cruiseLevel ? parseCruiseLevelFt(cruiseLevel) : undefined;
+    const altParam = altFt ? `&altitude=${altFt}` : '';
+    apiClient
+      .get<{ valid: boolean; violations: { from: string; to: string; message: string; severity: 'error' | 'warning' }[] }>(
+        `/rea/navigate/validate?waypoints=${wpStr}${altParam}`,
+      )
+      .then((r) => setReaViolations(r.violations))
+      .catch(() => setReaViolations([]));
+  }, [routeWaypoints, cruiseLevel, followedCorridorName]);
 
   // Flatten all REA segments for map overlay
   const reaMapSegments = useMemo(() => {
@@ -1811,6 +1817,21 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
                   <Text className="text-xs text-amber-600 mb-2">{t('vfr.reaGateWarning')}</Text>
                 ) : null}
 
+                {reaViolations.length > 0 ? (
+                  <View className="mb-2">
+                    {reaViolations.map((v, vi) => (
+                      <View key={vi} className={`flex-row items-start gap-1.5 mb-1 px-2 py-1 rounded ${v.severity === 'error' ? 'bg-red-50' : 'bg-amber-50'}`}>
+                        <Text className={`text-xs font-semibold ${v.severity === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
+                          {v.severity === 'error' ? '✕' : '⚠'}
+                        </Text>
+                        <Text className={`text-xs flex-1 ${v.severity === 'error' ? 'text-red-700' : 'text-amber-700'}`}>
+                          {v.message}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
                 <View className="rounded border border-border overflow-hidden mb-2">
                   {region.corridors
                     .map((corridor) => {
@@ -1940,231 +1961,56 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
                         <Pressable
                           key={corridor.name}
                           onPress={() => {
-                            if (wps.length === 0) return;
-                            const entry = wps[0]!;
-                            let combinedWps = wps;
-                            let combinedAltRange = altRange;
-                            let combinedName = corridor.name;
-
-                            // Find the correct connecting corridor (portão) based on direction of travel.
-                            // REA corridors have defined headings (rumoAtoB/rumoBtoA). The correct
-                            // portão is the one whose flow direction aligns with our approach bearing
-                            // from origin to the main corridor's entry point.
-                            const angDiff = (a: number, b: number) => { const d = ((a - b) % 360 + 360) % 360; return d > 180 ? 360 - d : d; };
-                            const approachBearing = origin
-                              ? initialBearing(origin.latitude, origin.longitude, entry.lat, entry.lng)
-                              : 0;
-                            const CONNECT_THRESHOLD_NM = 1.5;
-
-                            interface ConnectorCandidate {
-                              wps: RouteWaypoint[];
-                              segments: typeof corridor.segments;
-                              name: string;
-                              bearingDiff: number;
+                            if (!origin || !destination) {
+                              if (wps.length === 0) return;
+                              setRouteWaypoints(wps);
+                              setFollowedCorridorName(corridor.name);
+                              setCorridorAltRange(altRange);
+                              setCorridorCompAlt(compAlt);
+                              return;
                             }
-                            const candidates: ConnectorCandidate[] = [];
-
-                            for (const other of region.corridors) {
-                              if (other.name === corridor.name) continue;
-                              const otherSegs = [...other.segments].sort((a, b) => a.trecho - b.trecho);
-                              const uniqueWps: RouteWaypoint[] = [];
-                              const seen2 = new Set<string>();
-                              for (const seg of otherSegs) {
-                                for (const fix of [seg.fixoA, seg.fixoB]) {
-                                  const k = `${fix.lat.toFixed(4)},${fix.lon.toFixed(4)}`;
-                                  if (!seen2.has(k) && fix.nome) {
-                                    seen2.add(k);
-                                    uniqueWps.push({ lat: fix.lat, lng: fix.lon, name: fix.nome });
-                                  }
+                            const altFt = cruiseLevel ? parseCruiseLevelFt(cruiseLevel) : undefined;
+                            const altParam = altFt ? `&altitude=${altFt}` : '';
+                            // Use corridor's far-end waypoint as origin so Dijkstra starts from
+                            // the corridor's graph-connecting node, not the airport
+                            const graphOrigin = wps.length >= 2
+                              ? wps[wps.length - 1]!
+                              : { lat: origin.latitude, lng: origin.longitude };
+                            apiClient
+                              .get<{
+                                found: boolean;
+                                legs: { from: { lat: number; lon: number; nome: string }; to: { lat: number; lon: number; nome: string }; corridorName: string; altMin: number; altMax: number; altComp: number | null }[];
+                                waypoints: { lat: number; lon: number; nome: string }[];
+                                corridorNames: string[];
+                                altitudeRange: { min: number; max: number } | null;
+                                compulsoryAltitude: number | null;
+                              }>(
+                                `/rea/navigate/suggest?origin=${graphOrigin.lat}:${graphOrigin.lng}` +
+                                `&destination=${destination.latitude}:${destination.longitude}${altParam}`,
+                              )
+                              .then((result) => {
+                                if (!result.found || result.waypoints.length === 0) {
+                                  setRouteWaypoints(wps);
+                                  setFollowedCorridorName(corridor.name);
+                                  setCorridorAltRange(altRange);
+                                  setCorridorCompAlt(compAlt);
+                                  return;
                                 }
-                              }
-                              if (uniqueWps.length < 2 || !origin) continue;
-
-                              // Find junction (closest wp to main corridor entry)
-                              let junctionIdx = 0;
-                              let junctionDist = Infinity;
-                              for (let i = 0; i < uniqueWps.length; i++) {
-                                const d = haversineDistanceNm(uniqueWps[i]!.lat, uniqueWps[i]!.lng, entry.lat, entry.lng);
-                                if (d < junctionDist) { junctionDist = d; junctionIdx = i; }
-                              }
-                              if (junctionDist >= CONNECT_THRESHOLD_NM) continue;
-
-                              // Find origin-nearest wp in the connector corridor
-                              let originNearestIdx = 0;
-                              let originNearestDist = Infinity;
-                              for (let i = 0; i < uniqueWps.length; i++) {
-                                const d = haversineDistanceNm(uniqueWps[i]!.lat, uniqueWps[i]!.lng, origin.latitude, origin.longitude);
-                                if (d < originNearestDist) { originNearestDist = d; originNearestIdx = i; }
-                              }
-
-                              // Trim to sub-path from origin-nearest wp to junction (handles both long corridors and portões)
-                              const subStart = Math.min(originNearestIdx, junctionIdx);
-                              const subEnd = Math.max(originNearestIdx, junctionIdx);
-                              const subWps = uniqueWps.slice(subStart, subEnd + 1);
-                              if (subWps.length < 1) continue;
-
-                              // Order: origin side first, junction last
-                              const connWps = originNearestIdx <= junctionIdx ? subWps : [...subWps].reverse();
-
-                              // Heading from connector origin toward junction
-                              const connHeading = connWps.length >= 2
-                                ? initialBearing(connWps[0]!.lat, connWps[0]!.lng, connWps[connWps.length - 1]!.lat, connWps[connWps.length - 1]!.lng)
-                                : approachBearing;
-                              const diff = angDiff(connHeading, approachBearing);
-                              if (diff <= 90) {
-                                candidates.push({ wps: connWps, segments: otherSegs, name: other.name, bearingDiff: diff });
-                              }
-                            }
-
-                            // Filter connector candidates by one-way rules and runway-dependent gates
-                            const originGateMap = origin ? RWY_GATE_MAP[origin.icao] : undefined;
-                            const destGateMap = destination ? RWY_GATE_MAP[destination.icao] : undefined;
-                            const requiredEntry = originGateMap?.[originRunway]?.entry;
-                            const requiredExit = destGateMap?.[destRunway]?.exit;
-                            const validCandidates = candidates.filter((c) => {
-                              // Runway-dependent gate: if a required entry gate is set, only allow that portão
-                              if (requiredEntry && c.name.toLowerCase().includes(requiredEntry.toLowerCase()) === false) {
-                                // Check if this is one of the gated aerodromes' portões
-                                const gateNames = originGateMap ? Object.values(originGateMap).flatMap((g) => [g.entry, g.exit]) : [];
-                                if (gateNames.some((gn) => c.name.toLowerCase().includes(gn.toLowerCase()))) return false;
-                              }
-                              if (requiredExit && c.name.toLowerCase().includes(requiredExit.toLowerCase()) === false) {
-                                const gateNames = destGateMap ? Object.values(destGateMap).flatMap((g) => [g.entry, g.exit]) : [];
-                                if (gateNames.some((gn) => c.name.toLowerCase().includes(gn.toLowerCase()))) return false;
-                              }
-                              for (const seg of c.segments) {
-                                const farWp = c.wps[0]!;
-                                const dToA = haversineDistanceNm(farWp.lat, farWp.lng, seg.fixoA.lat, seg.fixoA.lon);
-                                const dToB = haversineDistanceNm(farWp.lat, farWp.lng, seg.fixoB.lat, seg.fixoB.lon);
-                                if (dToA < dToB && seg.rumoAtoB === null) return false;
-                                if (dToB < dToA && seg.rumoBtoA === null) return false;
-                              }
-                              return true;
-                            });
-
-                            let combinedCompAlt = compAlt;
-                            if (validCandidates.length > 0) {
-                              validCandidates.sort((a, b) => a.bearingDiff - b.bearingDiff);
-                              const best = validCandidates[0]!;
-                              const connWithoutJunction = best.wps.slice(0, -1);
-                              combinedWps = [...connWithoutJunction, ...wps];
-                              combinedName = `${best.name} + ${corridor.name}`;
-
-                              // Merge connector altitude constraints
-                              let cAltMin = altRange?.min ?? 0;
-                              let cAltMax = altRange?.max ?? Infinity;
-                              for (const seg of best.segments) {
-                                // Compulsory from connector overrides
-                                const dirComp = seg.altCompAtoB ?? seg.altCompBtoA;
-                                if (dirComp != null) combinedCompAlt = dirComp;
-                                else if (seg.altComp != null) combinedCompAlt = seg.altComp;
-
-                                const sMin = seg.altMinAtoB || seg.altMinBtoA;
-                                const sMax = seg.altMaxAtoB || seg.altMaxBtoA;
-                                if (sMin > 0) cAltMin = Math.max(cAltMin, sMin);
-                                if (sMax > 0) cAltMax = Math.min(cAltMax, sMax);
-                              }
-                              combinedAltRange = cAltMin > 0 && cAltMax < Infinity ? { min: cAltMin, max: cAltMax } : altRange;
-                            }
-
-                            // Exit-side connector: find a corridor that bridges the exit toward destination
-                            if (destination && combinedWps.length >= 2) {
-                              const exitWp = combinedWps[combinedWps.length - 1]!;
-                              const currentExitDist = haversineDistanceNm(exitWp.lat, exitWp.lng, destination.latitude, destination.longitude);
-
-                              interface ExitCandidate {
-                                appendWps: RouteWaypoint[];
-                                junctionIdx: number;
-                                destDist: number;
-                                name: string;
-                                segments: typeof corridor.segments;
-                              }
-                              const exitCandidates: ExitCandidate[] = [];
-
-                              for (const other of region.corridors) {
-                                if (other.name === corridor.name) continue;
-                                if (combinedName.includes(other.name)) continue;
-                                if (requiredExit) {
-                                  if (!other.name.toLowerCase().includes(requiredExit.toLowerCase())) {
-                                    const gateNames = destGateMap ? Object.values(destGateMap).flatMap((g) => [g.entry, g.exit]) : [];
-                                    if (gateNames.some((gn) => other.name.toLowerCase().includes(gn.toLowerCase()))) continue;
-                                  }
-                                }
-                                const otherSegs = [...other.segments].sort((a, b) => a.trecho - b.trecho);
-                                const otherWps: RouteWaypoint[] = [];
-                                const seenE = new Set<string>();
-                                for (const seg of otherSegs) {
-                                  for (const fix of [seg.fixoA, seg.fixoB]) {
-                                    const k = `${fix.lat.toFixed(4)},${fix.lon.toFixed(4)}`;
-                                    if (!seenE.has(k) && fix.nome) {
-                                      seenE.add(k);
-                                      otherWps.push({ lat: fix.lat, lng: fix.lon, name: fix.nome });
-                                    }
-                                  }
-                                }
-                                if (otherWps.length < 2) continue;
-
-                                // Find shared waypoint between combinedWps and this corridor
-                                for (let ci = 0; ci < combinedWps.length; ci++) {
-                                  const cw = combinedWps[ci]!;
-                                  const cwKey = `${cw.lat.toFixed(4)},${cw.lng.toFixed(4)}`;
-                                  const otherIdx = otherWps.findIndex((ow) => `${ow.lat.toFixed(4)},${ow.lng.toFixed(4)}` === cwKey);
-                                  if (otherIdx < 0) continue;
-
-                                  // Find destination-nearest wp in other corridor
-                                  let destNearestIdx = 0;
-                                  let destNearestDist = Infinity;
-                                  for (let i = 0; i < otherWps.length; i++) {
-                                    const d = haversineDistanceNm(otherWps[i]!.lat, otherWps[i]!.lng, destination.latitude, destination.longitude);
-                                    if (d < destNearestDist) { destNearestDist = d; destNearestIdx = i; }
-                                  }
-
-                                  // Only useful if the other corridor gets closer to destination
-                                  if (destNearestDist >= currentExitDist) continue;
-
-                                  // Extract sub-path from junction to dest-nearest
-                                  const eStart = Math.min(otherIdx, destNearestIdx);
-                                  const eEnd = Math.max(otherIdx, destNearestIdx);
-                                  const eSub = otherWps.slice(eStart, eEnd + 1);
-                                  // Order: junction first, dest-nearest last
-                                  const ordered = otherIdx <= destNearestIdx ? eSub : [...eSub].reverse();
-                                  // Remove junction (already in combinedWps)
-                                  const appendWps = ordered.slice(1);
-                                  if (appendWps.length === 0) continue;
-
-                                  const exitStart = ordered[0]!;
-                                  const exitDirBlocked = otherSegs.some((seg) => {
-                                    const dA = haversineDistanceNm(exitStart.lat, exitStart.lng, seg.fixoA.lat, seg.fixoA.lon);
-                                    const dB = haversineDistanceNm(exitStart.lat, exitStart.lng, seg.fixoB.lat, seg.fixoB.lon);
-                                    if (dA < dB && seg.rumoAtoB === null) return true;
-                                    if (dB < dA && seg.rumoBtoA === null) return true;
-                                    return false;
-                                  });
-                                  if (exitDirBlocked) continue;
-
-                                  exitCandidates.push({
-                                    appendWps,
-                                    junctionIdx: ci,
-                                    destDist: destNearestDist,
-                                    name: other.name,
-                                    segments: otherSegs,
-                                  });
-                                }
-                              }
-
-                              if (exitCandidates.length > 0) {
-                                exitCandidates.sort((a, b) => a.destDist - b.destDist);
-                                const bestExit = exitCandidates[0]!;
-                                // Trim main corridor at junction and append exit corridor
-                                combinedWps = [...combinedWps.slice(0, bestExit.junctionIdx + 1), ...bestExit.appendWps];
-                                combinedName = `${combinedName} + ${bestExit.name}`;
-                              }
-                            }
-
-                            setRouteWaypoints(combinedWps);
-                            setFollowedCorridorName(combinedName);
-                            setCorridorAltRange(combinedAltRange);
-                            setCorridorCompAlt(combinedCompAlt);
+                                // Merge corridor waypoints with graph route, deduplicating the shared node
+                                const corridorWps = wps.length >= 2 ? wps.slice(0, -1) : [];
+                                const graphWps = result.waypoints.map((w) => ({ lat: w.lat, lng: w.lon, name: w.nome }));
+                                setRouteWaypoints([...corridorWps, ...graphWps]);
+                                const allCorridors = [corridor.name, ...result.corridorNames.filter((c) => c !== corridor.name)];
+                                setFollowedCorridorName(allCorridors.join(' + '));
+                                setCorridorAltRange(result.altitudeRange ?? altRange);
+                                setCorridorCompAlt(result.compulsoryAltitude ?? compAlt);
+                              })
+                              .catch(() => {
+                                setRouteWaypoints(wps);
+                                setFollowedCorridorName(corridor.name);
+                                setCorridorAltRange(altRange);
+                                setCorridorCompAlt(compAlt);
+                              });
                           }}
                           className={`px-2 py-1.5 ${cIdx < arr.length - 1 ? 'border-b border-border' : ''} ${isFollowed ? 'bg-green-50' : ''}`}
                         >

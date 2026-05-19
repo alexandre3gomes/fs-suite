@@ -99,6 +99,98 @@ Sources:
 
 Code: `vfrNavigation.ts` — `buildVfrRouteText()`, `buildItem18()`.
 
+### 1.5 REA Navigation Engine
+
+The REA Navigation Engine computes optimal routes through Brazil's REA corridor network
+using a directed graph built from DECEA's authoritative WFS data.
+
+#### 1.5.1 Data source
+
+All corridor data is fetched from DECEA GeoAISWEB:
+
+| Parameter | Value |
+|-----------|-------|
+| Service | WFS |
+| Layer | `ICA:CV_REA_BR_COMPLETO` |
+| Format | GeoJSON |
+| Cache TTL | 7 days (Redis) |
+| URL | `https://geoaisweb.decea.mil.br/geoserver/ICA/wfs` |
+
+Each feature represents a corridor **segment** (trecho) with two fixes (A and B),
+directional headings, altitude constraints, and a corridor polygon geometry.
+
+#### 1.5.2 Directed graph construction
+
+The graph is built from the WFS segments as follows:
+
+1. **Nodes**: Each unique fix coordinate becomes a node. Key format: `lat.toFixed(4),lon.toFixed(4)` (~11m precision).
+2. **Edges**: Directionality is determined by the `rumoa_to_b` and `rumob_to_a` fields:
+   - `rumoa_to_b ≠ null` → create edge A→B with that heading
+   - `rumob_to_a ≠ null` → create edge B→A with that heading
+   - `rumoa_to_b = null` → direction A→B is **forbidden**
+   - Both null → **bidirectional** (gate/transition segment, heading computed from coordinates)
+
+The "both null = bidirectional" rule handles gate corridors (Portão) where DECEA does
+not specify a direction restriction. These segments connect the corridor network to
+aerodrome traffic patterns.
+
+Each edge carries: corridor name, tipo (Obrig/Recom), heading, distance (NM),
+altitude range (min/max per direction), compulsory altitude, trecho number, region ID.
+
+Graph size for São Paulo (XP1): ~100 nodes, ~210 edges. Build time from cached WFS: <50ms.
+
+#### 1.5.3 Route suggestion (Dijkstra)
+
+`GET /v1/rea/navigate/suggest?origin=lat:lon&destination=lat:lon&altitude=ft`
+
+1. **Snap origin** to nearest graph node within 10 NM
+2. **Snap destination** to multiple candidates (top 6 nearest nodes within 10 NM)
+3. **Dijkstra** from origin node to each destination candidate:
+   - Weight = `distanceNm × tipoFactor + headingChangePenalty`
+   - `tipoFactor`: 0.8 for Obrig (prefer mandatory corridors), 1.0 for Recom
+   - Heading change >60°: +2 NM penalty; >120°: +5 NM (avoids zigzag routes)
+   - Edges where altitude is outside `[altMin, altMax]` or mismatches `altComp` are excluded
+4. **Best path** = candidate with lowest `graphDistance + snapDistance`
+
+Multi-candidate snapping is critical: the nearest node by distance may require a long
+detour through the graph (e.g., an orphan gate endpoint at 0.6 NM that needs a 37 NM
+graph path), while a farther node (5 NM) may have a much shorter graph path (24 NM).
+
+#### 1.5.4 Route validation
+
+`GET /v1/rea/navigate/validate?waypoints=lat:lon,lat:lon,...&altitude=ft`
+
+For each consecutive waypoint pair:
+- Snap both to graph nodes
+- Check if a forward edge exists → OK
+- Check if only a reverse edge exists → **direction violation** (error)
+- Check altitude against edge constraints → **altitude violation** (error)
+- Check compulsory altitude match → **compulsory altitude violation** (error)
+- Node not found → **outside REA coverage** (warning)
+
+#### 1.5.5 Frontend integration
+
+When the user selects a corridor to follow:
+
+1. The corridor's far-end waypoint (graph-connecting node) is sent as origin
+2. The destination airport coordinates are sent as destination
+3. The API returns the optimal graph route
+4. The frontend merges: corridor own waypoints + API graph route (deduplicating the shared node)
+5. If the API fails or returns `found: false`, the corridor's own waypoints are used as fallback
+
+#### 1.5.6 AIRAC lifecycle
+
+A daily cron (`0 3 * * * UTC`) checks the `efetivacao` field of a sample region.
+If a newer date is detected, the in-memory graph cache and all Redis REA keys are
+invalidated. The next request rebuilds the graph from fresh WFS data.
+
+Code: `rea-navigation.service.ts` — `buildGraph()`, `dijkstra()`, `suggestRoute()`, `validateRoute()`.
+
+Sources:
+- DECEA GeoAISWEB WFS — `ICA:CV_REA_BR_COMPLETO` (authoritative segment data)
+- DECEA MCA 100-11 (corridor usage rules)
+- DECEA AIC-N-20/21 (São Paulo / Rio TMA VFR integration)
+
 ---
 
 ## 2. Flight Plan Form — Field 18: Other Information (ICAO Doc 4444 Appendix 2)

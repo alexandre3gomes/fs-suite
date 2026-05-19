@@ -2,11 +2,17 @@ import { Button, Logo, Text } from '@fs-suite/ui';
 import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Linking, Platform, ScrollView, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
+import { setLanguage, type SupportedLocale } from '../../../src/i18n';
 import { apiClient } from '../../../src/services/api.client';
 import { signInWithDev, signInWithGoogle } from '../../../src/services/auth.service';
 import { useAuthStore } from '../../../src/stores/auth.store';
+
+const LANGUAGES: { code: SupportedLocale; flag: string }[] = [
+  { code: 'pt-BR', flag: '\u{1F1E7}\u{1F1F7}' },
+  { code: 'en', flag: '\u{1F1FA}\u{1F1F8}' },
+];
 
 const FEATURES = [
   { key: 'Vfr', icon: '🗺', color: '#2563eb' },
@@ -24,6 +30,12 @@ const AI_CHECKS = [
   { key: 'Airspace', icon: '🗺' },
   { key: 'Regulations', icon: '📋' },
   { key: 'Risk', icon: '⚠️' },
+] as const;
+
+const REA_STEPS = [
+  { key: '1' },
+  { key: '2' },
+  { key: '3' },
 ] as const;
 
 const EXPORT_ITEMS = [
@@ -91,7 +103,7 @@ function LoginButtons({
 }
 
 export default function LoginScreen(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [loading, setLoading] = useState<'google' | 'dev' | null>(null);
   const [providers, setProviders] = useState<string[]>(['google']);
@@ -152,6 +164,30 @@ export default function LoginScreen(): JSX.Element {
           }}
           pointerEvents="none"
         />
+
+        {/* Language switcher */}
+        <View
+          style={{
+            position: 'absolute', top: 16, right: 16, zIndex: 10,
+            flexDirection: 'row', gap: 8, alignItems: 'center',
+            backgroundColor: 'rgba(255,255,255,0.08)',
+            borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6,
+          }}
+        >
+          {LANGUAGES.map((lang) => {
+            const isActive = i18n.language === lang.code;
+            return (
+              <Pressable
+                key={lang.code}
+                onPress={() => { void setLanguage(lang.code); }}
+                disabled={isActive}
+                style={{ opacity: isActive ? 0.4 : 1 }}
+              >
+                <Text style={{ fontSize: 18 }}>{lang.flag}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
         {/* Radial glow behind logo */}
         <View
@@ -278,6 +314,96 @@ export default function LoginScreen(): JSX.Element {
                 </Text>
               </View>
             ))}
+          </View>
+        </View>
+      </View>
+
+      {/* ===== REA NAVIGATION ENGINE SECTION ===== */}
+      <View
+        style={{
+          paddingHorizontal: 24,
+          paddingVertical: isWide ? 96 : 64,
+          backgroundColor: '#0c1222',
+          ...(Platform.OS === 'web' ? {
+            backgroundImage: 'linear-gradient(135deg, #0c1222 0%, #2a1215 50%, #0c1222 100%)',
+          } as never : {}),
+        }}
+      >
+        {/* Glow accent */}
+        <View
+          style={{
+            position: 'absolute', top: '30%', left: '50%', width: 400, height: 400,
+            marginLeft: -200, borderRadius: 200, opacity: 0.06,
+            backgroundColor: '#dc2626',
+            ...(Platform.OS === 'web' ? { filter: 'blur(80px)' } as never : {}),
+          }}
+          pointerEvents="none"
+        />
+
+        <View className="mx-auto w-full" style={{ maxWidth: 1000 }}>
+          {/* Badge */}
+          <View style={{ alignSelf: 'center', backgroundColor: '#dc262620', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6, marginBottom: 20 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#f87171', letterSpacing: 1 }}>
+              {t('home.reaBadge')}
+            </Text>
+          </View>
+
+          <Text
+            style={{
+              fontSize: isWide ? 32 : 24,
+              fontWeight: '700',
+              color: '#ffffff',
+              textAlign: 'center',
+              letterSpacing: -0.5,
+            }}
+          >
+            {t('home.reaTitle')}
+          </Text>
+          <View style={{ alignSelf: 'center', width: 60, height: 3, backgroundColor: '#dc2626', borderRadius: 2, marginTop: 16 }} />
+
+          <Text
+            style={{
+              fontSize: isWide ? 16 : 14,
+              color: '#94a3b8',
+              textAlign: 'center',
+              lineHeight: isWide ? 26 : 22,
+              marginTop: 24,
+              maxWidth: 680,
+              alignSelf: 'center',
+            }}
+          >
+            {t('home.reaDescription')}
+          </Text>
+
+          {/* How it works */}
+          <View
+            style={{
+              marginTop: 48,
+              backgroundColor: '#ffffff06',
+              borderRadius: 16,
+              padding: isWide ? 32 : 20,
+              borderWidth: 1,
+              borderColor: '#ffffff08',
+            }}
+          >
+            <Text style={{ fontSize: isWide ? 18 : 16, fontWeight: '700', color: '#e2e8f0', textAlign: 'center', marginBottom: 24 }}>
+              {t('home.aiHowTitle')}
+            </Text>
+            <View style={{ flexDirection: isWide ? 'row' : 'column', gap: isWide ? 32 : 20, justifyContent: 'center' }}>
+              {REA_STEPS.map((step) => (
+                <View key={step.key} style={{ flex: isWide ? 1 : undefined, alignItems: 'center' }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#dc262620', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#f87171' }}>{step.key}</Text>
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#e2e8f0', textAlign: 'center' }}>
+                    {t(`home.reaStep${step.key}Title`)}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#64748b', textAlign: 'center', lineHeight: 18, marginTop: 6 }}>
+                    {t(`home.reaStep${step.key}Desc`)}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
         </View>
       </View>

@@ -3,13 +3,21 @@ import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
+import {
+  type SuggestRouteResponse,
+  type ValidateRouteResponse,
+  ReaNavigationService,
+} from './rea-navigation.service';
 import { type ReaDetectionResult, type ReaRegionData, ReaService } from './rea.service';
 
 @ApiTags('rea')
 @Controller('rea')
 @UseGuards(JwtAuthGuard)
 export class ReaController {
-  constructor(private readonly rea: ReaService) {}
+  constructor(
+    private readonly rea: ReaService,
+    private readonly reaNav: ReaNavigationService,
+  ) {}
 
   @Get('regions')
   @ApiOperation({ summary: 'List all REA regions with chart PDF URLs' })
@@ -34,6 +42,40 @@ export class ReaController {
       return { regions: [] };
     }
     return this.rea.detectReaForRoute(waypoints);
+  }
+
+  @Get('navigate/suggest')
+  @ApiOperation({ summary: 'Suggest optimal REA route between two points using directed graph' })
+  @ApiQuery({ name: 'origin', description: 'Origin lat:lon', required: true })
+  @ApiQuery({ name: 'destination', description: 'Destination lat:lon', required: true })
+  @ApiQuery({ name: 'altitude', description: 'Planned altitude in feet', required: false })
+  async suggestRoute(
+    @Query('origin') origin: string,
+    @Query('destination') destination: string,
+    @Query('altitude') altitude?: string,
+  ): Promise<SuggestRouteResponse> {
+    const [oLat, oLon] = origin.split(':').map(Number);
+    const [dLat, dLon] = destination.split(':').map(Number);
+    if ([oLat, oLon, dLat, dLon].some((v) => v == null || isNaN(v!))) {
+      return { found: false, legs: [], waypoints: [], totalDistanceNm: 0, corridorNames: [], altitudeRange: null, compulsoryAltitude: null };
+    }
+    return this.reaNav.suggestRoute(
+      { lat: oLat!, lon: oLon! },
+      { lat: dLat!, lon: dLon! },
+      altitude ? Number(altitude) : undefined,
+    );
+  }
+
+  @Get('navigate/validate')
+  @ApiOperation({ summary: 'Validate a route against REA corridor direction and altitude rules' })
+  @ApiQuery({ name: 'waypoints', description: 'Comma-separated lat:lon pairs', required: true })
+  @ApiQuery({ name: 'altitude', description: 'Planned altitude in feet', required: false })
+  async validateRoute(
+    @Query('waypoints') waypointsStr: string,
+    @Query('altitude') altitude?: string,
+  ): Promise<ValidateRouteResponse> {
+    const waypoints = this.parseWaypoints(waypointsStr);
+    return this.reaNav.validateRoute(waypoints, altitude ? Number(altitude) : undefined);
   }
 
   private parseWaypoints(str: string): { lat: number; lon: number }[] {
