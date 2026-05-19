@@ -28,6 +28,9 @@ export class VisualReferenceDto {
   @ApiProperty() @IsString() @MaxLength(200) name!: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() distanceNm?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) timeMin?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() groundSpeedKts?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() windCorrectionAngle?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() magneticHeading?: number;
 }
 
 export class BriefingItemDto {
@@ -99,6 +102,11 @@ export class CreateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() fuelRequiredTotal?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() fuelPerWing?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) enduranceMinutes?: number;
+
+  // Wind / performance
+  @ApiPropertyOptional() @IsOptional() @IsInt() avgWindSpeed?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() avgWindDirection?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() groundSpeed?: number;
 
   // Routes (IFR waypoints)
   @ApiPropertyOptional({ type: [RouteWaypointDto] })

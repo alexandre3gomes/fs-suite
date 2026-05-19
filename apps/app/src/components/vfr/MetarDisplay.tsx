@@ -1,24 +1,8 @@
+import type { ParsedMetar } from '@fs-suite/types';
 import { useTranslation } from 'react-i18next';
 import { Text, View } from 'react-native';
 
-export interface ParsedMetar {
-  icaoId: string;
-  raw: string;
-  observationTime: string;
-  windDirection: number | string | null;
-  windSpeed: number | null;
-  windGust?: number | null;
-  visibility: string | null;
-  altimeter: number | null;
-  temperature: number | null;
-  dewpoint: number | null;
-  clouds: { cover: string; base: number }[];
-  flightCategory: string | null;
-  ceiling: number | null;
-  source?: 'adds' | 'noaa-text' | 'nearby';
-  nearbyFrom?: string;
-  nearbyDistanceNm?: number;
-}
+export type { ParsedMetar } from '@fs-suite/types';
 
 interface Props {
   metar: ParsedMetar | null;
@@ -75,6 +59,24 @@ export function MetarDisplay({ metar, loading }: Props) {
         {metar.raw}
       </Text>
 
+      {/* Decoded text (human-readable) */}
+      {metar.decodedText ? (
+        <Text className="mb-2 text-xs italic text-muted-foreground">
+          {metar.decodedText}
+        </Text>
+      ) : null}
+
+      {/* Present weather badges */}
+      {metar.presentWeather && metar.presentWeather.length > 0 ? (
+        <View className="mb-1.5 flex-row flex-wrap gap-1">
+          {metar.presentWeather.map((wx) => (
+            <View key={wx} className="rounded bg-amber-100 px-1.5 py-0.5 dark:bg-amber-900/30">
+              <Text className="text-[10px] font-semibold text-amber-800 dark:text-amber-300">{wx}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {/* Parsed fields */}
       <View className="flex-row flex-wrap gap-x-4 gap-y-1">
         <View className="flex-row items-center gap-1">
@@ -122,6 +124,15 @@ export function MetarDisplay({ metar, loading }: Props) {
           </Text>
         </View>
       </View>
+
+      {/* Remarks: windshear */}
+      {metar.remarks?.windshear ? (
+        <View className="mt-1.5 rounded bg-destructive/10 px-2 py-1">
+          <Text className="text-[10px] font-semibold text-destructive">
+            ⚠ {metar.remarks.windshear}
+          </Text>
+        </View>
+      ) : null}
 
       {/* Source attribution */}
       <Text className="mt-1.5 text-right text-[10px] italic text-muted-foreground">

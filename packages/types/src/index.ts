@@ -8,3 +8,4 @@ export * from './schemas/flight-plan';
 export * from './schemas/integration';
 export * from './schemas/pagination';
 export * from './schemas/user';
+export * from './schemas/weather';

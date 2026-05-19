@@ -1,29 +1,8 @@
+import type { ParsedTaf, TafForecastPeriod } from '@fs-suite/types';
 import { useTranslation } from 'react-i18next';
 import { Text, View } from 'react-native';
 
-export interface TafForecastPeriod {
-  timeFrom: number;
-  timeTo: number;
-  timeBec: number | null;
-  fcstChange: string | null;
-  probability: number | null;
-  windDirection: number | null;
-  windSpeed: number | null;
-  windGust: number | null;
-  visibility: number | string | null;
-  wxString: string | null;
-  clouds: { cover: string; base: number | null }[];
-  flightCategory: string | null;
-}
-
-export interface ParsedTaf {
-  icaoId: string;
-  raw: string;
-  issueTime: string;
-  validFrom: number;
-  validTo: number;
-  periods: TafForecastPeriod[];
-}
+export type { ParsedTaf, TafForecastPeriod } from '@fs-suite/types';
 
 interface Props {
   taf: ParsedTaf | null;

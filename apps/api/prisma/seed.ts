@@ -14,6 +14,7 @@ import * as https from 'https';
 import * as path from 'path';
 
 import { seedAircraft } from './seed-aircraft';
+import { enrichAircraftProfiles } from './seed-enrich';
 
 const prisma = new PrismaClient();
 
@@ -345,6 +346,7 @@ async function main(): Promise<void> {
   await seedRunways();
   await seedFrequencies();
   await seedAircraft(prisma);
+  await enrichAircraftProfiles(prisma);
 }
 
 main()

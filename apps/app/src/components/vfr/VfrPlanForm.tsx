@@ -656,42 +656,11 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     [routeLegs],
   );
 
-  // Fuel calculations (all in kg) — null-safe: missing data stays null
+  // Base fuel/weight variables
   const consumptionKgH = parseFloat(consumptionPerHour) || 0;
   const fuelOnBoardKg = parseFloat(fuelCurrentTotal) || 0;
   const cruiseKts = selectedAircraft?.cruiseSpeedKts ?? null;
   const canComputeFuel = cruiseKts != null && cruiseKts > 0 && consumptionKgH > 0;
-  // Trip: origin → destination
-  const tripHours = canComputeFuel && totalDistanceNm > 0 ? totalDistanceNm / cruiseKts! : 0;
-  const tripFuelKg = canComputeFuel && tripHours > 0 ? consumptionKgH * tripHours : 0;
-  // Alternate: destination → alternate
-  const altDistNm = destination && alternate
-    ? haversineDistanceNm(destination.latitude, destination.longitude, alternate.latitude, alternate.longitude)
-    : 0;
-  const altHours = canComputeFuel && altDistNm > 0 ? altDistNm / cruiseKts! : 0;
-  const altFuelKg = canComputeFuel && altHours > 0 ? consumptionKgH * altHours : 0;
-  // Contingency: % over trip fuel
-  const contingencyFactor = (parseFloat(contingencyPct) || 0) / 100;
-  const contingencyFuelKg = tripFuelKg * contingencyFactor;
-  // Reserve: RBAC 91.151 — 30 min day / 45 min night
-  const reserveFuelKg = consumptionKgH > 0 ? consumptionKgH * (reserveMinutes / 60) : 0;
-  // Min fuel = trip + alternate + contingency + reserve
-  const minFuelKg = tripFuelKg + altFuelKg + contingencyFuelKg + reserveFuelKg;
-  const maxFuelKg = selectedAircraft?.fuelCapacityL != null ? selectedAircraft.fuelCapacityL * AVGAS_KG_PER_L : null;
-  const acEmptyWeightKg = selectedAircraft?.emptyWeightKg ?? null;
-  const acMtowKg = selectedAircraft?.mtowKg ?? null;
-  const canComputeWeight = acEmptyWeightKg != null && acMtowKg != null;
-  const takeoffWeightKg = canComputeWeight
-    ? acEmptyWeightKg + payloadKg + fuelOnBoardKg
-    : null;
-  const mtowExcessKg = canComputeWeight && takeoffWeightKg != null
-    ? Math.max(0, takeoffWeightKg - acMtowKg)
-    : null;
-  const perWingKg = fuelOnBoardKg > 0 ? fuelOnBoardKg / 2 : 0;
-  const enduranceMin = consumptionKgH > 0 ? Math.floor((fuelOnBoardKg / consumptionKgH) * 60) : 0;
-  const enduranceHours = Math.floor(enduranceMin / 60);
-  const enduranceRemainder = enduranceMin % 60;
-  const tripMinutes = Math.round(tripHours * 60);
 
   const aircraftPerf: AircraftPerformance | null = useMemo(() => {
     if (!selectedAircraft || selectedAircraft.cruiseSpeedKts == null || selectedAircraft.cruiseSpeedKts <= 0) return null;
@@ -721,6 +690,36 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       originWindSpd,
     );
   }, [routeLegs, aircraftPerf, cruiseLevel, origin, destination, originWindDir, originWindSpd]);
+
+  // Fuel calculations — use wind-corrected ETE from enriched legs when available
+  const tripHours = enrichedLegs.length > 0
+    ? enrichedLegs.reduce((s, l) => s + l.timeMin, 0) / 60
+    : canComputeFuel && totalDistanceNm > 0 ? totalDistanceNm / cruiseKts! : 0;
+  const tripFuelKg = canComputeFuel && tripHours > 0 ? consumptionKgH * tripHours : 0;
+  const altDistNm = destination && alternate
+    ? haversineDistanceNm(destination.latitude, destination.longitude, alternate.latitude, alternate.longitude)
+    : 0;
+  const altHours = canComputeFuel && altDistNm > 0 ? altDistNm / cruiseKts! : 0;
+  const altFuelKg = canComputeFuel && altHours > 0 ? consumptionKgH * altHours : 0;
+  const contingencyFactor = (parseFloat(contingencyPct) || 0) / 100;
+  const contingencyFuelKg = tripFuelKg * contingencyFactor;
+  const reserveFuelKg = consumptionKgH > 0 ? consumptionKgH * (reserveMinutes / 60) : 0;
+  const minFuelKg = tripFuelKg + altFuelKg + contingencyFuelKg + reserveFuelKg;
+  const maxFuelKg = selectedAircraft?.fuelCapacityL != null ? selectedAircraft.fuelCapacityL * AVGAS_KG_PER_L : null;
+  const acEmptyWeightKg = selectedAircraft?.emptyWeightKg ?? null;
+  const acMtowKg = selectedAircraft?.mtowKg ?? null;
+  const canComputeWeight = acEmptyWeightKg != null && acMtowKg != null;
+  const takeoffWeightKg = canComputeWeight
+    ? acEmptyWeightKg + payloadKg + fuelOnBoardKg
+    : null;
+  const mtowExcessKg = canComputeWeight && takeoffWeightKg != null
+    ? Math.max(0, takeoffWeightKg - acMtowKg)
+    : null;
+  const perWingKg = fuelOnBoardKg > 0 ? fuelOnBoardKg / 2 : 0;
+  const enduranceMin = consumptionKgH > 0 ? Math.floor((fuelOnBoardKg / consumptionKgH) * 60) : 0;
+  const enduranceHours = Math.floor(enduranceMin / 60);
+  const enduranceRemainder = enduranceMin % 60;
+  const tripMinutes = Math.round(tripHours * 60);
 
   // Computed epochs for time-aware weather
   const departureEpochSec = useMemo(() => Math.floor(plannedDepartureTime.getTime() / 1000), [plannedDepartureTime]);

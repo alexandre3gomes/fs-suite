@@ -47,7 +47,9 @@ export class AircraftProfilesService {
     });
 
     const entries = templates.map(toCatalogEntry);
-    await client.setEx(CATALOG_CACHE_KEY, CATALOG_CACHE_TTL, JSON.stringify(entries)).catch(() => {});
+    if (entries.length > 0) {
+      await client.setEx(CATALOG_CACHE_KEY, CATALOG_CACHE_TTL, JSON.stringify(entries)).catch(() => {});
+    }
 
     return entries;
   }

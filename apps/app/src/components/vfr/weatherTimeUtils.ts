@@ -1,5 +1,4 @@
-import type { ParsedMetar } from './MetarDisplay';
-import type { ParsedTaf, TafForecastPeriod } from './TafDisplay';
+import type { ParsedMetar, ParsedTaf, TafForecastPeriod } from '@fs-suite/types';
 
 // --------------- Formatting ---------------
 

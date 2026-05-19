@@ -1064,17 +1064,25 @@ export function AerodromeMap({
       const b = map.getBounds();
       const bounds = { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() };
 
+      const zoom = map.getZoom();
+      let typesParam = '';
+      if (zoom < 6) typesParam = '&types=large_airport';
+      else if (zoom < 8) typesParam = '&types=large_airport,medium_airport';
+      else if (zoom < 10) typesParam = '&types=large_airport,medium_airport,small_airport,seaplane_base';
+
       const data = await apiClient.get<Aerodrome[]>(
-        `/aerodromes/map?south=${bounds.south}&west=${bounds.west}&north=${bounds.north}&east=${bounds.east}`,
+        `/aerodromes/map?south=${bounds.south}&west=${bounds.west}&north=${bounds.north}&east=${bounds.east}${typesParam}`,
       );
 
       let enriched: MapAerodrome[] = data.map((a) => ({ ...a, flightCategory: null }));
       if (data.length > 0 && data.length <= MAX_METAR_FETCH) {
         try {
           const icaos = data.map((a) => a.icao).join(',');
-          const metars = await apiClient.get<ParsedMetar[]>(`/weather/metar?icaos=${icaos}`);
-          const metarMap = new Map(metars.map((m) => [m.icaoId, m.flightCategory]));
-          enriched = data.map((a) => ({ ...a, flightCategory: metarMap.get(a.icao) ?? null }));
+          const categories = await apiClient.get<{ icao: string; flightCategory: string | null }[]>(
+            `/weather/flight-categories?icaos=${icaos}`,
+          );
+          const catMap = new Map(categories.map((c) => [c.icao, c.flightCategory]));
+          enriched = data.map((a) => ({ ...a, flightCategory: catMap.get(a.icao) ?? null }));
         } catch { /* best-effort */ }
       }
 
@@ -1082,16 +1090,8 @@ export function AerodromeMap({
       for (const m of markersRef.current) map.removeLayer(m);
       markersRef.current = [];
 
-      const zoom = map.getZoom();
-      const filtered = enriched.filter((a) => {
-        if (zoom >= 10) return true;
-        if (zoom >= 8) return a.type !== 'heliport' && a.type !== 'closed';
-        if (zoom >= 6) return a.type === 'large_airport' || a.type === 'medium_airport';
-        return a.type === 'large_airport';
-      });
-
       // Add new markers
-      for (const airport of filtered) {
+      for (const airport of enriched) {
         const color = airport.flightCategory
           ? (CATEGORY_COLORS[airport.flightCategory] ?? DEFAULT_DOT_COLOR)
           : DEFAULT_DOT_COLOR;

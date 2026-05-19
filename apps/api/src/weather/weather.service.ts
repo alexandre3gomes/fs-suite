@@ -1,42 +1,51 @@
+import type {
+  CrosswindAnalysis,
+  MetarCloud,
+  ParsedMetar,
+  ParsedTaf,
+  SigmetCollection,
+  SigmetHazardType,
+  TafForecastPeriod,
+} from '@fs-suite/types';
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
+import { decodeMetarToPtBr } from './metar-decoder';
+import { assessSafety, type SafetyAssessment, type SafetyCheckParams } from './safety-checker';
+
+export type { SafetyAssessment } from './safety-checker';
+
 const METAR_API_URL = 'https://aviationweather.gov/api/data/metar';
 const TAF_API_URL = 'https://aviationweather.gov/api/data/taf';
 const NOAA_TEXT_URL = 'https://tgftp.nws.noaa.gov/data/observations/metar/stations';
-const CACHE_TTL_SECONDS = 600; // 10 minutes
 const NOAA_STALE_THRESHOLD_MS = 3_600_000; // 1 hour
 const REQUEST_TIMEOUT_MS = 8000;
 const ISIGMET_API_URL = 'https://aviationweather.gov/api/data/isigmet?format=geojson';
 const AIRSIGMET_API_URL = 'https://aviationweather.gov/api/data/airsigmet?format=geojson';
 const SIGMET_CACHE_KEY = 'weather:sigmets';
-const SIGMET_CACHE_TTL = 600;
 
-export interface MetarCloud {
-  cover: string; // FEW, SCT, BKN, OVC
-  base: number; // feet AGL
-}
+// Differentiated cache TTLs
+const METAR_CACHE_TTL = 600; // 10 minutes
+const TAF_CACHE_TTL = 3600; // 1 hour — TAFs change infrequently
+const SIGMET_CACHE_TTL = 600; // 10 minutes — safety-critical
+const AVWX_CACHE_TTL = 600; // 10 minutes
+const ROUTE_IMPACT_CACHE_TTL = 600; // 10 minutes
 
-export interface ParsedMetar {
-  icaoId: string;
-  raw: string;
-  observationTime: string;
-  windDirection: number | string | null; // degrees or "VRB"
-  windSpeed: number | null; // knots
-  windGust: number | null; // knots
-  visibility: string | null; // statute miles or meters
-  altimeter: number | null; // hPa (QNH)
-  temperature: number | null; // celsius
-  dewpoint: number | null; // celsius
-  clouds: MetarCloud[];
-  flightCategory: string | null; // VFR, MVFR, IFR, LIFR
-  ceiling: number | null; // feet AGL (lowest BKN/OVC)
-  source: 'adds' | 'noaa-text' | 'nearby';
-  nearbyFrom?: string; // ICAO of the station providing this METAR
-  nearbyDistanceNm?: number;
-}
+export type {
+  CrosswindAnalysis,
+  MetarCloud,
+  ParsedMetar,
+  ParsedTaf,
+  SigmetCollection,
+  TafForecastPeriod,
+} from '@fs-suite/types';
+
+// ICAO present weather phenomena lookup
+const PRESENT_WEATHER_RE =
+  /^([+-])?(?:MI|BC|PR|DR|BL|SH|TS|FZ)?(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS)+$/;
 
 interface AddsMetarResponse {
   icaoId: string;
@@ -53,29 +62,6 @@ interface AddsMetarResponse {
   fltCat: string;
 }
 
-export interface TafForecastPeriod {
-  timeFrom: number;
-  timeTo: number;
-  timeBec: number | null;
-  fcstChange: string | null;
-  probability: number | null;
-  windDirection: number | null;
-  windSpeed: number | null;
-  windGust: number | null;
-  visibility: number | string | null;
-  wxString: string | null;
-  clouds: { cover: string; base: number | null }[];
-  flightCategory: string | null;
-}
-
-export interface ParsedTaf {
-  icaoId: string;
-  raw: string;
-  issueTime: string;
-  validFrom: number;
-  validTo: number;
-  periods: TafForecastPeriod[];
-}
 
 interface AddsTafResponse {
   icaoId: string;
@@ -98,27 +84,6 @@ interface AddsTafResponse {
   }[];
 }
 
-type SigmetHazardType = 'TS' | 'TURB' | 'ICE' | 'IFR' | 'MTN_OBSC' | 'OTHER';
-
-export interface SigmetFeatureProperties {
-  id: string;
-  hazardType: SigmetHazardType;
-  rawText: string;
-  qualifier: string | null;
-  validFrom: string;
-  validTo: string;
-  firId: string | null;
-  sigmetType: 'SIGMET' | 'AIRMET';
-}
-
-export interface SigmetCollection {
-  type: 'FeatureCollection';
-  features: {
-    type: 'Feature';
-    geometry: unknown;
-    properties: SigmetFeatureProperties;
-  }[];
-}
 
 @Injectable()
 export class WeatherService {
@@ -127,7 +92,60 @@ export class WeatherService {
   constructor(
     private readonly redis: RedisService,
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
   ) {}
+
+  async getFlightCategories(icaos: string[]): Promise<{ icao: string; flightCategory: string | null }[]> {
+    if (icaos.length === 0) return [];
+
+    const normalized = icaos.map((c) => c.toUpperCase().trim()).filter((c) => /^[A-Z]{4}$/.test(c));
+    if (normalized.length === 0) return [];
+
+    const client = this.redis.getClient();
+    const results = new Map<string, string | null>();
+    const missing: string[] = [];
+
+    for (const icao of normalized) {
+      const cached = await client.get(`metar:${icao}`).catch(() => null);
+      if (cached) {
+        const parsed = JSON.parse(cached) as ParsedMetar;
+        const obsAge = Date.now() - new Date(parsed.observationTime).getTime();
+        if (obsAge <= NOAA_STALE_THRESHOLD_MS) {
+          results.set(icao, parsed.flightCategory);
+        } else {
+          missing.push(icao);
+        }
+      } else {
+        missing.push(icao);
+      }
+    }
+
+    if (missing.length > 0) {
+      try {
+        const url = `${METAR_API_URL}?ids=${missing.join(',')}&format=json`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        if (response.ok) {
+          const data = (await response.json()) as AddsMetarResponse[];
+          for (const entry of data) {
+            const parsed = this.parseAddsResponse(entry);
+            await client.setEx(`metar:${parsed.icaoId}`, METAR_CACHE_TTL, JSON.stringify(parsed)).catch(() => {});
+            results.set(parsed.icaoId, parsed.flightCategory);
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`ADDS flight-category fetch failed: ${err}`);
+      }
+    }
+
+    return normalized.map((icao) => ({
+      icao,
+      flightCategory: results.get(icao) ?? null,
+    }));
+  }
 
   async getMetars(icaos: string[]): Promise<ParsedMetar[]> {
     if (icaos.length === 0) return [];
@@ -170,7 +188,7 @@ export class WeatherService {
         const data = (await response.json()) as AddsMetarResponse[];
         for (const entry of data) {
           const parsed = this.parseAddsResponse(entry);
-          await client.setEx(`metar:${parsed.icaoId}`, CACHE_TTL_SECONDS, JSON.stringify(parsed)).catch(() => {});
+          await client.setEx(`metar:${parsed.icaoId}`, METAR_CACHE_TTL, JSON.stringify(parsed)).catch(() => {});
           results.push(parsed);
           addsFound.add(parsed.icaoId);
         }
@@ -191,7 +209,7 @@ export class WeatherService {
       for (const result of noaaResults) {
         if (result.status === 'fulfilled' && result.value) {
           const parsed = result.value;
-          await client.setEx(`metar:${parsed.icaoId}`, CACHE_TTL_SECONDS, JSON.stringify(parsed)).catch(() => {});
+          await client.setEx(`metar:${parsed.icaoId}`, METAR_CACHE_TTL, JSON.stringify(parsed)).catch(() => {});
           results.push(parsed);
           noaaFound.add(parsed.icaoId);
         }
@@ -207,15 +225,120 @@ export class WeatherService {
       for (const result of nearbyResults) {
         if (result.status === 'fulfilled' && result.value) {
           const parsed = result.value;
-          await client.setEx(`metar:${parsed.icaoId}`, CACHE_TTL_SECONDS, JSON.stringify(parsed)).catch(() => {});
+          await client.setEx(`metar:${parsed.icaoId}`, METAR_CACHE_TTL, JSON.stringify(parsed)).catch(() => {});
           results.push(parsed);
         }
       }
     }
 
-    return normalized
+    const ordered = normalized
       .map((icao) => results.find((r) => r.icaoId === icao))
       .filter((r): r is ParsedMetar => r != null);
+
+    // Enrich with decoded text (AVWX if available, else pt-BR decoder)
+    await this.enrichWithDecodedText(ordered);
+
+    return ordered;
+  }
+
+  private async enrichWithDecodedText(metars: ParsedMetar[]): Promise<void> {
+    const client = this.redis.getClient();
+    const needsEnrichment = metars.filter((m) => !m.decodedText);
+    if (needsEnrichment.length === 0) return;
+
+    const avwxResults = await Promise.all(
+      needsEnrichment.map((m) => this.fetchAvwxDecoded(m.icaoId)),
+    );
+
+    for (let i = 0; i < needsEnrichment.length; i++) {
+      const metar = needsEnrichment[i]!;
+      metar.decodedText = avwxResults[i] ?? decodeMetarToPtBr(metar);
+      await client.setEx(`metar:${metar.icaoId}`, METAR_CACHE_TTL, JSON.stringify(metar)).catch(() => {});
+    }
+  }
+
+  private async fetchAvwxDecoded(icao: string): Promise<string | null> {
+    const token = this.config.get<string>('AVWX_TOKEN');
+    if (!token) return null;
+
+    const client = this.redis.getClient();
+    const cacheKey = `avwx:metar:${icao}`;
+    const cached = await client.get(cacheKey).catch(() => null);
+    if (cached) return cached;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const response = await fetch(
+        `https://avwx.rest/api/metar/${icao}?options=info,translate`,
+        { signal: controller.signal, headers: { Authorization: `BEARER ${token}` } },
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        this.logger.warn(`AVWX returned ${response.status} for ${icao}`);
+        return null;
+      }
+
+      const data = (await response.json()) as { translate?: { english?: string } };
+      const decoded = data.translate?.english ?? null;
+      if (decoded) {
+        await client.setEx(cacheKey, AVWX_CACHE_TTL, decoded).catch(() => {});
+      }
+      return decoded;
+    } catch (err) {
+      this.logger.warn(`AVWX fetch failed for ${icao}: ${err}`);
+      return null;
+    }
+  }
+
+  async getCrosswind(icao: string): Promise<CrosswindAnalysis> {
+    const code = icao.toUpperCase().trim();
+
+    const [metars, airport] = await Promise.all([
+      this.getMetars([code]),
+      this.prisma.airport.findUnique({
+        where: { icao: code },
+        include: { runways: true },
+      }),
+    ]);
+
+    const metar = metars[0];
+    const windDir = metar?.windDirection ?? null;
+    const windSpd = metar?.windSpeed ?? null;
+    const windGust = metar?.windGust ?? null;
+    const numericDir = typeof windDir === 'number' ? windDir : null;
+    const ws = windSpd ?? 0;
+
+    const runwayComponents: { ident: string; headwindKts: number; crosswindKts: number }[] = [];
+
+    for (const rwy of airport?.runways ?? []) {
+      if (rwy.closed) continue;
+      const thresholds = [
+        { ident: rwy.leIdent, heading: rwy.leHeadingDeg },
+        { ident: rwy.heIdent, heading: rwy.heHeadingDeg },
+      ];
+      for (const t of thresholds) {
+        if (!t.ident || t.heading == null || numericDir == null) continue;
+        const diffRad = ((numericDir - t.heading) * Math.PI) / 180;
+        runwayComponents.push({
+          ident: t.ident,
+          headwindKts: Math.round(ws * Math.cos(diffRad) * 10) / 10,
+          crosswindKts: Math.round(Math.abs(ws * Math.sin(diffRad)) * 10) / 10,
+        });
+      }
+    }
+
+    runwayComponents.sort((a, b) => b.headwindKts - a.headwindKts);
+
+    return {
+      icao: code,
+      windDirection: numericDir,
+      windSpeed: windSpd,
+      windGust,
+      runways: runwayComponents,
+      suggested: runwayComponents[0]?.ident ?? null,
+    };
   }
 
   async getTafs(icaos: string[]): Promise<ParsedTaf[]> {
@@ -257,7 +380,7 @@ export class WeatherService {
       for (const entry of data) {
         const parsed = this.parseAddsTafResponse(entry);
         await client
-          .setEx(`taf:${parsed.icaoId}`, CACHE_TTL_SECONDS, JSON.stringify(parsed))
+          .setEx(`taf:${parsed.icaoId}`, TAF_CACHE_TTL, JSON.stringify(parsed))
           .catch(() => {});
         results.push(parsed);
       }
@@ -348,6 +471,159 @@ export class WeatherService {
     const collection: SigmetCollection = { type: 'FeatureCollection', features };
     await client.setEx(SIGMET_CACHE_KEY, SIGMET_CACHE_TTL, JSON.stringify(collection)).catch(() => {});
     return collection;
+  }
+
+  async getRouteWeatherImpact(
+    waypoints: { lat: number; lon: number }[],
+    altitude: number,
+  ): Promise<{
+    waypoints: {
+      lat: number;
+      lon: number;
+      nearestStation: string | null;
+      distanceNm: number | null;
+      flightCategory: string | null;
+      ceiling: number | null;
+      visibility: string | null;
+      windDirection: number | string | null;
+      windSpeed: number | null;
+      presentWeather: string[];
+    }[];
+  }> {
+    const client = this.redis.getClient();
+    const cacheKey = `weather:route:${JSON.stringify(waypoints)}:${altitude}`;
+    const cached = await client.get(cacheKey).catch(() => null);
+    if (cached) return JSON.parse(cached);
+
+    const result: {
+      lat: number;
+      lon: number;
+      nearestStation: string | null;
+      distanceNm: number | null;
+      flightCategory: string | null;
+      ceiling: number | null;
+      visibility: string | null;
+      windDirection: number | string | null;
+      windSpeed: number | null;
+      presentWeather: string[];
+    }[] = [];
+
+    for (const wp of waypoints) {
+      const delta = 1.0;
+      const bbox = `${wp.lat - delta},${wp.lon - delta},${wp.lat + delta},${wp.lon + delta}`;
+
+      try {
+        const url = `${METAR_API_URL}?bbox=${bbox}&format=json`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+          result.push({ ...wp, nearestStation: null, distanceNm: null, flightCategory: null, ceiling: null, visibility: null, windDirection: null, windSpeed: null, presentWeather: [] });
+          continue;
+        }
+
+        const data = (await response.json()) as (AddsMetarResponse & { lat: number; lon: number })[];
+        if (data.length === 0) {
+          result.push({ ...wp, nearestStation: null, distanceNm: null, flightCategory: null, ceiling: null, visibility: null, windDirection: null, windSpeed: null, presentWeather: [] });
+          continue;
+        }
+
+        let nearest = data[0]!;
+        let nearestDist = this.haversineNm(wp.lat, wp.lon, nearest.lat, nearest.lon);
+        for (let i = 1; i < data.length; i++) {
+          const d = this.haversineNm(wp.lat, wp.lon, data[i]!.lat, data[i]!.lon);
+          if (d < nearestDist) {
+            nearest = data[i]!;
+            nearestDist = d;
+          }
+        }
+
+        const parsed = this.parseAddsResponse(nearest);
+        result.push({
+          ...wp,
+          nearestStation: parsed.icaoId,
+          distanceNm: Math.round(nearestDist * 10) / 10,
+          flightCategory: parsed.flightCategory,
+          ceiling: parsed.ceiling,
+          visibility: parsed.visibility,
+          windDirection: parsed.windDirection,
+          windSpeed: parsed.windSpeed,
+          presentWeather: parsed.presentWeather ?? [],
+        });
+      } catch {
+        result.push({ ...wp, nearestStation: null, distanceNm: null, flightCategory: null, ceiling: null, visibility: null, windDirection: null, windSpeed: null, presentWeather: [] });
+      }
+    }
+
+    const response = { waypoints: result };
+    await client.setEx(cacheKey, ROUTE_IMPACT_CACHE_TTL, JSON.stringify(response)).catch(() => {});
+    return response;
+  }
+
+  async assessFlightPlanSafety(plan: {
+    originIcao: string | null;
+    destinationIcao: string | null;
+    alternateIcao: string | null;
+    cruiseLevel: string | null;
+    fuelCurrentTotal: number | null;
+    fuelRequiredTotal: number | null;
+    takeoffWeightKg: number | null;
+    mtowKg: number | null;
+    todDistanceNm: number | null;
+    groundSpeed: number | null;
+    enduranceMinutes: number | null;
+    fuelReserveMinutes: number | null;
+  }): Promise<SafetyAssessment> {
+    const icaos = [plan.originIcao, plan.destinationIcao, plan.alternateIcao].filter(
+      (v): v is string => v != null,
+    );
+
+    const [metarList, tafList] = await Promise.all([
+      this.getMetars(icaos),
+      this.getTafs(icaos),
+    ]);
+
+    const metars: Record<string, ParsedMetar> = {};
+    for (const m of metarList) metars[m.icaoId] = m;
+
+    const tafs: Record<string, ParsedTaf> = {};
+    for (const t of tafList) tafs[t.icaoId] = t;
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const totalDistanceNm = plan.todDistanceNm ?? 0;
+    const cruiseSpeedKts = plan.groundSpeed ?? null;
+    const enduranceMin = plan.enduranceMinutes ?? 0;
+    const tripTimeSec =
+      cruiseSpeedKts && totalDistanceNm > 0
+        ? Math.round((totalDistanceNm / cruiseSpeedKts) * 3600)
+        : null;
+
+    const reserveMin = plan.fuelReserveMinutes ?? 30;
+    const fuelOnBoard = plan.fuelCurrentTotal ?? 0;
+    const fuelRequired = plan.fuelRequiredTotal ?? 0;
+
+    const params: SafetyCheckParams = {
+      originIcao: plan.originIcao,
+      destinationIcao: plan.destinationIcao,
+      alternateIcao: plan.alternateIcao,
+      cruiseLevel: plan.cruiseLevel,
+      fuelOnBoardKg: fuelOnBoard,
+      minFuelKg: fuelRequired,
+      takeoffWeightKg: plan.takeoffWeightKg,
+      mtowKg: plan.mtowKg,
+      totalDistanceNm,
+      cruiseSpeedKts,
+      enduranceMin,
+      flightCondition: reserveMin >= 45 ? 'night' : 'day',
+      departureEpochSec: nowSec,
+      arrivalEpochSec: tripTimeSec ? nowSec + tripTimeSec : null,
+      metars,
+      tafs,
+    };
+
+    return assessSafety(params);
   }
 
   private normalizeHazardType(hazard: string | null | undefined): SigmetHazardType {
@@ -462,7 +738,11 @@ export class WeatherService {
   }
 
   private parseRawMetar(icao: string, raw: string, observationTime: string): ParsedMetar {
-    const tokens = raw.split(/\s+/);
+    // Split body from remarks
+    const rmkIdx = raw.indexOf(' RMK ');
+    const body = rmkIdx >= 0 ? raw.slice(0, rmkIdx) : raw;
+    const rmkSection = rmkIdx >= 0 ? raw.slice(rmkIdx + 5) : '';
+    const tokens = body.split(/\s+/);
 
     // Wind: dddssKT or dddssGggKT or VRBssKT
     let windDirection: number | string | null = null;
@@ -477,10 +757,17 @@ export class WeatherService {
         windGust = wm[4] ? parseInt(wm[4], 10) : null;
       }
     }
-    // Calm wind
     if (tokens.includes('00000KT')) {
       windDirection = 0;
       windSpeed = 0;
+    }
+
+    // Variable wind direction: 280V350
+    let variableWindDir: { from: number; to: number } | undefined;
+    const varWindToken = tokens.find((t) => /^\d{3}V\d{3}$/.test(t));
+    if (varWindToken) {
+      const [from, to] = varWindToken.split('V');
+      variableWindDir = { from: parseInt(from!, 10), to: parseInt(to!, 10) };
     }
 
     // Visibility: meters (4 digits) or statute miles
@@ -493,10 +780,18 @@ export class WeatherService {
       if (visSm) visibility = visSm.replace('SM', '');
     }
 
+    // Present weather phenomena
+    const presentWeather: string[] = [];
+    for (const t of tokens) {
+      if (PRESENT_WEATHER_RE.test(t)) {
+        presentWeather.push(t);
+      }
+    }
+
     // Clouds
     const clouds: MetarCloud[] = [];
     for (const t of tokens) {
-      const cm = t.match(/^(FEW|SCT|BKN|OVC)(\d{3})$/);
+      const cm = t.match(/^(FEW|SCT|BKN|OVC)(\d{3})(CB|TCU)?$/);
       if (cm) {
         clouds.push({ cover: cm[1]!, base: parseInt(cm[2]!, 10) * 100 });
       }
@@ -524,6 +819,9 @@ export class WeatherService {
       }
     }
 
+    // Remarks: windshear and peak wind
+    const remarks = this.parseRemarks(rmkSection);
+
     // Ceiling & flight category
     const ceilingLayer = clouds
       .filter((c) => c.cover === 'BKN' || c.cover === 'OVC')
@@ -547,7 +845,26 @@ export class WeatherService {
       flightCategory,
       ceiling,
       source: 'noaa-text',
+      presentWeather: presentWeather.length > 0 ? presentWeather : undefined,
+      variableWindDir,
+      remarks: remarks ?? undefined,
     };
+  }
+
+  private parseRemarks(rmk: string): { windshear?: string; peakWind?: string } | undefined {
+    if (!rmk) return undefined;
+
+    let windshear: string | undefined;
+    let peakWind: string | undefined;
+
+    const wsMatch = rmk.match(/WS\s+(R\w+|ALL\s+RWY)/);
+    if (wsMatch) windshear = wsMatch[0].trim();
+
+    const pkMatch = rmk.match(/PK\s+WND\s+\d{3}\d{2,3}\/\d{2,4}/);
+    if (pkMatch) peakWind = pkMatch[0].trim();
+
+    if (!windshear && !peakWind) return undefined;
+    return { windshear, peakWind };
   }
 
   private computeFlightCategory(visibility: string | null, ceiling: number | null): string {
@@ -618,6 +935,23 @@ export class WeatherService {
       ?.filter((c) => c.cover === 'BKN' || c.cover === 'OVC')
       .sort((a, b) => a.base - b.base)[0];
 
+    // Extract V2 fields from raw observation text
+    const rawTokens = (entry.rawOb ?? '').split(/\s+/);
+    const presentWeather: string[] = [];
+    let variableWindDir: { from: number; to: number } | undefined;
+
+    for (const t of rawTokens) {
+      if (PRESENT_WEATHER_RE.test(t)) presentWeather.push(t);
+    }
+    const varWindToken = rawTokens.find((t) => /^\d{3}V\d{3}$/.test(t));
+    if (varWindToken) {
+      const [from, to] = varWindToken.split('V');
+      variableWindDir = { from: parseInt(from!, 10), to: parseInt(to!, 10) };
+    }
+
+    const rmkIdx = (entry.rawOb ?? '').indexOf(' RMK ');
+    const remarks = rmkIdx >= 0 ? this.parseRemarks(entry.rawOb.slice(rmkIdx + 5)) : undefined;
+
     return {
       icaoId: entry.icaoId,
       raw: entry.rawOb,
@@ -633,6 +967,9 @@ export class WeatherService {
       flightCategory: entry.fltCat ?? null,
       ceiling: ceilingLayer?.base ?? null,
       source: 'adds',
+      presentWeather: presentWeather.length > 0 ? presentWeather : undefined,
+      variableWindDir,
+      remarks,
     };
   }
 }

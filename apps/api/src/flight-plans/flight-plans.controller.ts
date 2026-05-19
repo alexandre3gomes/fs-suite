@@ -15,6 +15,7 @@ import type { User } from '@prisma/client';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { WeatherService } from '../weather/weather.service';
 
 import { CreateFlightPlanDto } from './dto/create-flight-plan.dto';
 import { UpdateFlightPlanDto } from './dto/update-flight-plan.dto';
@@ -24,7 +25,10 @@ import { FlightPlansService } from './flight-plans.service';
 @Controller('flight-plans')
 @UseGuards(JwtAuthGuard)
 export class FlightPlansController {
-  constructor(private readonly service: FlightPlansService) {}
+  constructor(
+    private readonly service: FlightPlansService,
+    private readonly weatherService: WeatherService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new flight plan' })
@@ -68,5 +72,12 @@ export class FlightPlansController {
   @ApiOperation({ summary: 'Duplicate plan as new draft' })
   async duplicate(@CurrentUser() user: User, @Param('id') id: string): Promise<unknown> {
     return this.service.duplicate(id, user.id);
+  }
+
+  @Get(':id/safety-assessment')
+  @ApiOperation({ summary: 'Assess flight safety based on current weather' })
+  async safetyAssessment(@CurrentUser() user: User, @Param('id') id: string): Promise<unknown> {
+    const plan = await this.service.findOne(id, user.id);
+    return this.weatherService.assessFlightPlanSafety(plan);
   }
 }

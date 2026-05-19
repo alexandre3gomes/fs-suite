@@ -21,6 +21,9 @@ export const VisualReferenceSchema = z.object({
   name: z.string().max(200),
   distanceNm: z.number().nullable(),
   timeMin: z.number().int().nullable(),
+  groundSpeedKts: z.number().int().nullable().optional(),
+  windCorrectionAngle: z.number().int().nullable().optional(),
+  magneticHeading: z.number().int().nullable().optional(),
 });
 
 export type VisualReference = z.infer<typeof VisualReferenceSchema>;
@@ -93,6 +96,11 @@ export const FlightPlanSchema = z.object({
   fuelPerWing: z.number().nullable(),
   enduranceMinutes: z.number().int().nullable(),
 
+  // Wind / performance
+  avgWindSpeed: z.number().int().nullable().optional(),
+  avgWindDirection: z.number().int().nullable().optional(),
+  groundSpeed: z.number().int().nullable().optional(),
+
   // Timestamps
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
@@ -161,6 +169,11 @@ export const CreateFlightPlanSchema = z.object({
   fuelPerWing: z.number().optional(),
   enduranceMinutes: z.number().int().min(0).optional(),
 
+  // Wind / performance
+  avgWindSpeed: z.number().int().optional(),
+  avgWindDirection: z.number().int().optional(),
+  groundSpeed: z.number().int().optional(),
+
   // Child collections
   routes: z
     .array(
@@ -181,6 +194,9 @@ export const CreateFlightPlanSchema = z.object({
         name: z.string().max(200),
         distanceNm: z.number().optional(),
         timeMin: z.number().int().min(0).optional(),
+        groundSpeedKts: z.number().int().optional(),
+        windCorrectionAngle: z.number().int().optional(),
+        magneticHeading: z.number().int().optional(),
       }),
     )
     .optional(),

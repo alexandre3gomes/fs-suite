@@ -12,6 +12,16 @@ const SIMBRIEF_AIRFRAMES_URL = 'https://www.simbrief.com/api/inputs.airframes.js
 const CACHE_TTL_SECONDS = 300; // 5 minutes per spec §13
 const AIRCRAFT_CACHE_TTL = 86400; // 24 hours — the list changes very rarely
 
+export interface NavlogFix {
+  ident: string;
+  lat: number;
+  lon: number;
+  altitude: number;
+  windDir: number;
+  windSpeed: number;
+  windComponent: number;
+}
+
 export interface SimBriefOfpResult {
   ofpId: string;
   originIcao: string;
@@ -48,6 +58,8 @@ export interface SimBriefOfpResult {
   star: string | null;
   // Total distance
   totalDistanceNm: number | null;
+  // Wind aloft from navlog
+  navlogFixes: NavlogFix[];
   // OFP files
   ofpPdfUrl: string | null;
   ofpHtml: string | null;
@@ -199,6 +211,19 @@ export class SimBriefService {
       return isLbs ? Math.round(raw * LBS_TO_KG) : Math.round(raw);
     };
 
+    // Extract wind aloft from navlog waypoints
+    const navlogFixes: NavlogFix[] = fixes
+      .filter((f) => String(f['ident'] ?? '').length > 0)
+      .map((f) => ({
+        ident: String(f['ident']),
+        lat: Number(f['pos_lat'] ?? 0),
+        lon: Number(f['pos_long'] ?? 0),
+        altitude: Number(f['altitude_feet'] ?? 0),
+        windDir: Number(f['wind_dir'] ?? 0),
+        windSpeed: Number(f['wind_spd'] ?? 0),
+        windComponent: Number(f['wind_component'] ?? 0),
+      }));
+
     return {
       ofpId: String(params['request_id'] ?? general['icao_airline'] ?? ''),
       originIcao: String(origin['icao_code'] ?? ''),
@@ -230,6 +255,7 @@ export class SimBriefService {
       sid: s(params['sid']),
       star: s(params['star']),
       totalDistanceNm: n(general['route_distance']),
+      navlogFixes,
       ofpPdfUrl,
       ofpHtml: s(text['plan_html']),
     };

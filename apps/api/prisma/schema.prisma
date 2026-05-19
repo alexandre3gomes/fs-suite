@@ -117,6 +117,7 @@ model Airport {
   runways     Runway[]
   frequencies Frequency[]
 
+  @@index([latitude, longitude])
   @@map("airports")
 }
 
@@ -212,6 +213,11 @@ model FlightPlan {
   fuelPerWing            Float? @map("fuel_per_wing")
   enduranceMinutes       Int?   @map("endurance_minutes")
 
+  // Wind / performance (computed from weather data)
+  avgWindSpeed     Int? @map("avg_wind_speed")
+  avgWindDirection Int? @map("avg_wind_direction")
+  groundSpeed      Int? @map("ground_speed")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at") // soft delete
@@ -241,12 +247,15 @@ model FlightPlanRoute {
 }
 
 model FlightPlanVisualReference {
-  id           String @id @default(cuid())
-  flightPlanId String @map("flight_plan_id")
-  sequence     Int
-  name         String
-  distanceNm   Float? @map("distance_nm")
-  timeMin      Int?   @map("time_min")
+  id                  String @id @default(cuid())
+  flightPlanId        String @map("flight_plan_id")
+  sequence            Int
+  name                String
+  distanceNm          Float? @map("distance_nm")
+  timeMin             Int?   @map("time_min")
+  groundSpeedKts      Int?   @map("ground_speed_kts")
+  windCorrectionAngle Int?   @map("wind_correction_angle")
+  magneticHeading     Int?   @map("magnetic_heading")
 
   flightPlan FlightPlan @relation(fields: [flightPlanId], references: [id], onDelete: Cascade)
 

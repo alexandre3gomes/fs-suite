@@ -1,44 +1,5 @@
 [
   {
-    "icaoType": "247D",
-    "name": "Boeing 247D Chevron",
-    "manufacturer": "Boeing",
-    "model": "247D Chevron",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 1022,
-    "fuelBurnLph": 123,
-    "cruiseSpeedKts": 128,
-    "stations": null
-  },
-  {
-    "icaoType": "310R",
-    "name": "Cessna",
-    "manufacturer": "Cessna",
-    "model": null,
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 617,
-    "fuelBurnLph": 115,
-    "cruiseSpeedKts": 185,
-    "stations": null
-  },
-  {
-    "icaoType": "A-1C",
-    "name": "Aviat Husky A-1C",
-    "manufacturer": "Aviat",
-    "model": "Husky A-1C",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 220,
-    "fuelBurnLph": 31,
-    "cruiseSpeedKts": 91,
-    "stations": null
-  },
-  {
     "icaoType": "A19N",
     "name": "Airbus A319neo",
     "manufacturer": "Airbus",
@@ -247,19 +208,6 @@
     "stations": null
   },
   {
-    "icaoType": "AP22",
-    "name": "VSKYLABS Aeroprakt A22-LS",
-    "manufacturer": "VSKYLABS",
-    "model": "Aeroprakt A22-LS",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 164,
-    "fuelBurnLph": 16,
-    "cruiseSpeedKts": 77,
-    "stations": null
-  },
-  {
     "icaoType": "B37M",
     "name": "Boeing 737 MAX 7",
     "manufacturer": "Boeing",
@@ -338,32 +286,6 @@
     "stations": null
   },
   {
-    "icaoType": "B463",
-    "name": "JustFlight BAe 146 300",
-    "manufacturer": "JustFlight",
-    "model": "BAe 146 300",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 11623,
-    "fuelBurnLph": 2606,
-    "cruiseSpeedKts": 386,
-    "stations": null
-  },
-  {
-    "icaoType": "B60",
-    "name": "Black Square Grand Duke - Piston",
-    "manufacturer": "Black",
-    "model": "Square Grand Duke - Piston",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 901,
-    "fuelBurnLph": 189,
-    "cruiseSpeedKts": 253,
-    "stations": null
-  },
-  {
     "icaoType": "B733",
     "name": "X-Aviation IXEG B733",
     "manufacturer": "X-Aviation",
@@ -439,19 +361,6 @@
     "fuelCapacityL": 254375,
     "fuelBurnLph": null,
     "cruiseSpeedKts": 488,
-    "stations": null
-  },
-  {
-    "icaoType": "B747",
-    "name": "Boeing 747-8",
-    "manufacturer": "Boeing",
-    "model": "747-8",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 241635,
-    "fuelBurnLph": 15893,
-    "cruiseSpeedKts": 490,
     "stations": null
   },
   {
@@ -696,19 +605,6 @@
     "stations": null
   },
   {
-    "icaoType": "BN2",
-    "name": "Britten Norman Islander",
-    "manufacturer": "Britten",
-    "model": "Norman Islander",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 454,
-    "fuelBurnLph": 69,
-    "cruiseSpeedKts": 130,
-    "stations": null
-  },
-  {
     "icaoType": "C152",
     "name": "Cessna 152",
     "manufacturer": "Cessna",
@@ -929,19 +825,6 @@
     "stations": null
   },
   {
-    "icaoType": "C337",
-    "name": "Cessna 337 Skimaster II Cruise @ 12,000 ft",
-    "manufacturer": "Cessna",
-    "model": "337 Skimaster II Cruise @ 12,000 ft",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 559,
-    "fuelBurnLph": 58,
-    "cruiseSpeedKts": 154,
-    "stations": null
-  },
-  {
     "icaoType": "C550",
     "name": "Cessna Citation II",
     "manufacturer": "Cessna",
@@ -981,19 +864,6 @@
     "stations": null
   },
   {
-    "icaoType": "CC19",
-    "name": "Asobo XCub",
-    "manufacturer": "Asobo",
-    "model": "XCub",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 185,
-    "fuelBurnLph": 31,
-    "cruiseSpeedKts": 114,
-    "stations": null
-  },
-  {
     "icaoType": "CL30",
     "name": "Bombardier Challenger 300",
     "manufacturer": "Bombardier",
@@ -1004,19 +874,6 @@
     "fuelCapacityL": 6690,
     "fuelBurnLph": 1066,
     "cruiseSpeedKts": 450,
-    "stations": null
-  },
-  {
-    "icaoType": "CONI",
-    "name": "Lockheed Super-Constellation L1049 Redwing",
-    "manufacturer": "Lockheed",
-    "model": "Super-Constellation L1049 Redwing",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 24951,
-    "fuelBurnLph": 1138,
-    "cruiseSpeedKts": 227,
     "stations": null
   },
   {
@@ -1179,19 +1036,6 @@
     "source": "curated"
   },
   {
-    "icaoType": "DC6B",
-    "name": "DC6 PMDG",
-    "manufacturer": "DC6",
-    "model": "PMDG",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 20835,
-    "fuelBurnLph": 1512,
-    "cruiseSpeedKts": 240,
-    "stations": null
-  },
-  {
     "icaoType": "DH8D",
     "name": "FlyJSim Q4XP",
     "manufacturer": "FlyJSim",
@@ -1335,32 +1179,6 @@
     "stations": null
   },
   {
-    "icaoType": "F260",
-    "name": "SIAI-Marchetti SF-260D G1000",
-    "manufacturer": "SIAI-Marchetti",
-    "model": "SF-260D G1000",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 164,
-    "fuelBurnLph": 51,
-    "cruiseSpeedKts": 162,
-    "stations": null
-  },
-  {
-    "icaoType": "F27",
-    "name": "Fokker F27 Inibuild/microsoft",
-    "manufacturer": "Fokker",
-    "model": "F27 Inibuild/microsoft",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 7428,
-    "fuelBurnLph": 1000,
-    "cruiseSpeedKts": 170,
-    "stations": null
-  },
-  {
     "icaoType": "GLF6",
     "name": "Gulfstream G650 / 650ER",
     "manufacturer": "Gulfstream",
@@ -1384,19 +1202,6 @@
     "fuelCapacityL": 136250,
     "fuelBurnLph": 8505,
     "cruiseSpeedKts": 430,
-    "stations": null
-  },
-  {
-    "icaoType": "L200",
-    "name": "Let L-200D Morava",
-    "manufacturer": "Let",
-    "model": "L-200D Morava",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 437,
-    "fuelBurnLph": 77,
-    "cruiseSpeedKts": 129,
     "stations": null
   },
   {
@@ -1660,32 +1465,6 @@
     "stations": null
   },
   {
-    "icaoType": "R66",
-    "name": "Calculé",
-    "manufacturer": "Calculé",
-    "model": null,
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 280,
-    "fuelBurnLph": 87,
-    "cruiseSpeedKts": 120,
-    "stations": null
-  },
-  {
-    "icaoType": "SAVG",
-    "name": "Savage Shock Ultra Asobo",
-    "manufacturer": "Savage",
-    "model": "Shock Ultra Asobo",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 117,
-    "fuelBurnLph": 23,
-    "cruiseSpeedKts": 85,
-    "stations": null
-  },
-  {
     "icaoType": "SF34",
     "name": "LES Saab 340A",
     "manufacturer": "LES",
@@ -1806,32 +1585,6 @@
     "fuelCapacityL": 1105,
     "fuelBurnLph": 178,
     "cruiseSpeedKts": 302,
-    "stations": null
-  },
-  {
-    "icaoType": "VL3",
-    "name": "VL-3 915 Lion",
-    "manufacturer": "VL-3",
-    "model": "915 Lion",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 140,
-    "fuelBurnLph": 26,
-    "cruiseSpeedKts": 156,
-    "stations": null
-  },
-  {
-    "icaoType": "XF11",
-    "name": "Flying Fries XF-11 Mark I",
-    "manufacturer": "Flying",
-    "model": "Fries XF-11 Mark I",
-    "source": "lnm",
-    "emptyWeightKg": null,
-    "mtowKg": null,
-    "fuelCapacityL": 7737,
-    "fuelBurnLph": 538,
-    "cruiseSpeedKts": 300,
     "stations": null
   }
 ]

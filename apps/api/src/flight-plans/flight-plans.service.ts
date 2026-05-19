@@ -50,6 +50,9 @@ function mapPlanFields(dto: Partial<CreateFlightPlanDto>): Partial<Omit<Prisma.F
     fuelRequiredTotal: dto.fuelRequiredTotal,
     fuelPerWing: dto.fuelPerWing,
     enduranceMinutes: dto.enduranceMinutes,
+    avgWindSpeed: dto.avgWindSpeed,
+    avgWindDirection: dto.avgWindDirection,
+    groundSpeed: dto.groundSpeed,
   };
 }
 
@@ -261,17 +264,20 @@ export class FlightPlansService {
 
   suggestRunway(
     windDirection: number | string | null,
+    windSpeed: number | null,
     runways: { leIdent: string | null; leHeadingDeg: number | null; heIdent: string | null; heHeadingDeg: number | null; closed: boolean }[],
-  ): string | null {
+  ): { runwayIdent: string; headwindKts: number; crosswindKts: number } | null {
     if (windDirection === null || windDirection === 'VRB' || typeof windDirection !== 'number') {
       return null;
     }
 
+    const ws = windSpeed ?? 0;
     const openRunways = runways.filter((r) => !r.closed);
     if (openRunways.length === 0) return null;
 
     let bestIdent: string | null = null;
     let bestHeadwind = -Infinity;
+    let bestCrosswind = 0;
 
     for (const rwy of openRunways) {
       const thresholds = [
@@ -281,16 +287,92 @@ export class FlightPlansService {
 
       for (const t of thresholds) {
         if (!t.ident || t.heading === null) continue;
-        const diff = ((windDirection - t.heading + 540) % 360) - 180;
-        const headwindFactor = Math.cos((diff * Math.PI) / 180);
+        const diffRad = ((windDirection - t.heading) * Math.PI) / 180;
+        const headwind = ws * Math.cos(diffRad);
+        const crosswind = Math.abs(ws * Math.sin(diffRad));
 
-        if (headwindFactor > bestHeadwind) {
-          bestHeadwind = headwindFactor;
+        if (headwind > bestHeadwind) {
+          bestHeadwind = headwind;
+          bestCrosswind = crosswind;
           bestIdent = t.ident;
         }
       }
     }
 
-    return bestIdent;
+    if (!bestIdent) return null;
+
+    return {
+      runwayIdent: bestIdent,
+      headwindKts: Math.round(bestHeadwind * 10) / 10,
+      crosswindKts: Math.round(bestCrosswind * 10) / 10,
+    };
+  }
+
+  calculateRoutePerformance(params: {
+    legs: { distanceNm: number; trueCourse: number; magneticCourse: number }[];
+    windDirection: number | null;
+    windSpeed: number | null;
+    cruiseSpeedKts: number;
+    fuelBurnLph: number;
+  }): {
+    legs: { groundSpeedKts: number; windCorrectionAngle: number; magneticHeading: number; timeMin: number }[];
+    totalTimeMin: number;
+    totalFuelL: number;
+    avgGroundSpeed: number;
+  } {
+    const { legs, windDirection, windSpeed, cruiseSpeedKts, fuelBurnLph } = params;
+
+    const enriched = legs.map((leg) => {
+      const { groundSpeed, wca } = this.windTriangle(
+        cruiseSpeedKts,
+        leg.trueCourse,
+        windDirection,
+        windSpeed,
+      );
+      const timeMin = groundSpeed > 0 ? (leg.distanceNm / groundSpeed) * 60 : 0;
+      const mh = ((leg.magneticCourse + wca) % 360 + 360) % 360;
+
+      return {
+        groundSpeedKts: groundSpeed,
+        windCorrectionAngle: wca,
+        magneticHeading: Math.round(mh),
+        timeMin: Math.round(timeMin * 10) / 10,
+      };
+    });
+
+    const totalTimeMin = enriched.reduce((s, l) => s + l.timeMin, 0);
+    const totalDist = legs.reduce((s, l) => s + l.distanceNm, 0);
+    const avgGroundSpeed = totalTimeMin > 0 ? Math.round(totalDist / (totalTimeMin / 60)) : cruiseSpeedKts;
+    const totalFuelL = fuelBurnLph * (totalTimeMin / 60);
+
+    return { legs: enriched, totalTimeMin, totalFuelL, avgGroundSpeed };
+  }
+
+  private windTriangle(
+    tas: number,
+    trueCourse: number,
+    windDirection: number | null,
+    windSpeed: number | null,
+  ): { groundSpeed: number; wca: number } {
+    if (windDirection == null || windSpeed == null || windSpeed === 0 || tas <= 0) {
+      return { groundSpeed: tas, wca: 0 };
+    }
+
+    const tcRad = (trueCourse * Math.PI) / 180;
+    const wdRad = (windDirection * Math.PI) / 180;
+    const xwind = windSpeed * Math.sin(wdRad - tcRad);
+
+    if (Math.abs(xwind) >= tas) {
+      return { groundSpeed: Math.max(1, tas - windSpeed), wca: 0 };
+    }
+
+    const wcaRad = Math.asin(xwind / tas);
+    const headwind = windSpeed * Math.cos(wdRad - tcRad);
+    const gs = tas * Math.cos(wcaRad) - headwind;
+
+    return {
+      groundSpeed: Math.max(1, Math.round(gs)),
+      wca: Math.round((wcaRad * 180) / Math.PI),
+    };
   }
 }
