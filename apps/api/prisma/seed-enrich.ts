@@ -534,14 +534,15 @@ export async function enrichAircraftProfiles(prisma: PrismaClient): Promise<void
 
   // Invalidate Redis cache
   try {
-    const Redis = require('ioredis');
+    const { createClient } = require('redis');
     const redisUrl = process.env.REDIS_URL ?? 'redis://:redis_dev@localhost:6380';
-    const redis = new Redis(redisUrl);
+    const redis = createClient({ url: redisUrl });
+    await redis.connect();
     await redis.del('aircraft:catalog');
     await redis.quit();
     console.log('\nRedis: cleared aircraft:catalog cache');
-  } catch {
-    console.warn('Redis: could not clear cache (non-critical)');
+  } catch (err) {
+    console.warn('Redis: could not clear cache:', (err as Error).message);
   }
 
   console.log(`\nEnrichment complete: ${enrichedCount} updated, ${unchangedCount} unchanged`);
