@@ -8,18 +8,12 @@ import { formatOptionalMetric, validateVfrPlan } from './weatherTimeUtils';
 
 function baseParams(overrides: Partial<ValidateVfrPlanParams> = {}): ValidateVfrPlanParams {
   const now = new Date();
-  const depEpoch = Math.floor(now.getTime() / 1000) + 3600;
   return {
     departureTime: now,
     origin: { icao: 'SBSP' },
     destination: { icao: 'SBGR' },
     alternate: null,
     aircraft: { cruiseSpeedKts: 120, mtowKg: 1111 },
-    metars: {},
-    tafs: {},
-    departureEpochSec: depEpoch,
-    arrivalEpochSec: depEpoch + 1800,
-    alternateArrivalEpochSec: null,
     cruiseLevel: 'FL045',
     totalDistanceNm: 50,
     fuelOnBoardKg: 100,

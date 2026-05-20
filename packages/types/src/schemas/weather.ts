@@ -94,6 +94,11 @@ export const SigmetFeaturePropertiesSchema = z.object({
   validTo: z.string(),
   firId: z.string().nullable(),
   sigmetType: z.enum(['SIGMET', 'AIRMET']),
+  status: z.enum(['OBS', 'FCST']).nullable(),
+  baseFt: z.number().nullable(),
+  topFt: z.number().nullable(),
+  movementDir: z.number().nullable(),
+  movementSpd: z.number().nullable(),
 });
 
 export type SigmetFeatureProperties = z.infer<typeof SigmetFeaturePropertiesSchema>;

@@ -10,13 +10,39 @@ import type {
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import { haversineNm as geoHaversineNm, initialBearing } from '../common/geo.utils';
+import { cruiseLevelToFeet, windTriangle } from '../common/wind.utils';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
 import { decodeMetarToPtBr } from './metar-decoder';
-import { assessSafety, type SafetyAssessment, type SafetyCheckParams } from './safety-checker';
+import {
+  assessSafety,
+  checkAerodrome,
+  findSigmetHazardSegments,
+  type HazardSegment,
+  type PerformanceAdjustments,
+  type SafetyAssessment,
+  type SafetyCheckParams,
+  type SigmetFeature,
+  type ValidationItem,
+} from './safety-checker';
 
 export type { SafetyAssessment } from './safety-checker';
+
+export interface FlightCategoryResult {
+  icao: string;
+  flightCategory: string | null;
+  derived: boolean;
+  referenceStation?: string;
+  referenceDistanceNm?: number;
+}
+
+export interface RouteSafetyResponse {
+  items: { id: string; severity: string; message: string; action?: string; source?: string }[];
+  performanceAdjustments?: PerformanceAdjustments;
+  hazardSegments: { fromIdx: number; toIdx: number; hazardType: string; severity: string }[];
+}
 
 const METAR_API_URL = 'https://aviationweather.gov/api/data/metar';
 const TAF_API_URL = 'https://aviationweather.gov/api/data/taf';
@@ -27,12 +53,29 @@ const ISIGMET_API_URL = 'https://aviationweather.gov/api/data/isigmet?format=geo
 const AIRSIGMET_API_URL = 'https://aviationweather.gov/api/data/airsigmet?format=geojson';
 const SIGMET_CACHE_KEY = 'weather:sigmets';
 
+function toIsoSafe(value: unknown): string {
+  if (!value) return '';
+  if (typeof value === 'string') return new Date(value).toISOString();
+  if (typeof value === 'number') return new Date(value * 1000).toISOString();
+  return '';
+}
+
+function parseSigmetStatus(raw: string): 'OBS' | 'FCST' | null {
+  if (/\bOBS\b/.test(raw)) return 'OBS';
+  if (/\bFCST\b/.test(raw)) return 'FCST';
+  return null;
+}
+
 // Differentiated cache TTLs
 const METAR_CACHE_TTL = 600; // 10 minutes
 const TAF_CACHE_TTL = 3600; // 1 hour — TAFs change infrequently
 const SIGMET_CACHE_TTL = 600; // 10 minutes — safety-critical
 const AVWX_CACHE_TTL = 600; // 10 minutes
 const ROUTE_IMPACT_CACHE_TTL = 600; // 10 minutes
+const WINDS_ALOFT_CACHE_TTL = 1800; // 30 minutes — upper winds change slowly
+const OPEN_METEO_URL = 'https://api.open-meteo.com/v1/forecast';
+const OPEN_METEO_PRESSURE_LEVELS = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200] as const;
+const AVGAS_DENSITY_KG_L = 0.72;
 
 export type {
   CrosswindAnalysis,
@@ -95,31 +138,31 @@ export class WeatherService {
     private readonly config: ConfigService,
   ) {}
 
-  async getFlightCategories(icaos: string[]): Promise<{ icao: string; flightCategory: string | null }[]> {
+  async getFlightCategories(icaos: string[]): Promise<FlightCategoryResult[]> {
     if (icaos.length === 0) return [];
 
     const normalized = icaos.map((c) => c.toUpperCase().trim()).filter((c) => /^[A-Z]{4}$/.test(c));
     if (normalized.length === 0) return [];
 
     const client = this.redis.getClient();
-    const results = new Map<string, string | null>();
+    const own = new Map<string, string>();
     const missing: string[] = [];
 
+    // 1) Cache
     for (const icao of normalized) {
       const cached = await client.get(`metar:${icao}`).catch(() => null);
       if (cached) {
         const parsed = JSON.parse(cached) as ParsedMetar;
         const obsAge = Date.now() - new Date(parsed.observationTime).getTime();
-        if (obsAge <= NOAA_STALE_THRESHOLD_MS) {
-          results.set(icao, parsed.flightCategory);
-        } else {
-          missing.push(icao);
+        if (obsAge <= NOAA_STALE_THRESHOLD_MS && parsed.flightCategory) {
+          own.set(icao, parsed.flightCategory);
+          continue;
         }
-      } else {
-        missing.push(icao);
       }
+      missing.push(icao);
     }
 
+    // 2) Batch ADDS for missing
     if (missing.length > 0) {
       try {
         const url = `${METAR_API_URL}?ids=${missing.join(',')}&format=json`;
@@ -133,18 +176,77 @@ export class WeatherService {
           for (const entry of data) {
             const parsed = this.parseAddsResponse(entry);
             await client.setEx(`metar:${parsed.icaoId}`, METAR_CACHE_TTL, JSON.stringify(parsed)).catch(() => {});
-            results.set(parsed.icaoId, parsed.flightCategory);
+            if (parsed.flightCategory) own.set(parsed.icaoId, parsed.flightCategory);
           }
         }
       } catch (err) {
-        this.logger.warn(`ADDS flight-category fetch failed: ${err}`);
+        this.logger.warn(`ADDS flight-category batch fetch failed: ${err}`);
       }
     }
 
-    return normalized.map((icao) => ({
-      icao,
-      flightCategory: results.get(icao) ?? null,
-    }));
+    // 3) Regional bbox for ICAOs still without own METAR
+    const derived = new Map<string, { cat: string; station: string; distNm: number }>();
+    const stillMissing = normalized.filter((icao) => !own.has(icao));
+
+    if (stillMissing.length > 0) {
+      try {
+        const airports = await this.prisma.airport.findMany({
+          where: { icao: { in: stillMissing } },
+          select: { icao: true, latitude: true, longitude: true },
+        });
+
+        if (airports.length > 0) {
+          const lats = airports.map((a) => a.latitude);
+          const lons = airports.map((a) => a.longitude);
+          const margin = 1.5;
+          const bbox = `${Math.min(...lats) - margin},${Math.min(...lons) - margin},${Math.max(...lats) + margin},${Math.max(...lons) + margin}`;
+
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+          const response = await fetch(`${METAR_API_URL}?bbox=${bbox}&format=json`, { signal: controller.signal });
+          clearTimeout(timeout);
+
+          if (response.ok) {
+            const regionStations = (await response.json()) as (AddsMetarResponse & { lat: number; lon: number })[];
+
+            if (regionStations.length > 0) {
+              const airportMap = new Map(airports.map((a) => [a.icao, a]));
+              for (const icao of stillMissing) {
+                const ap = airportMap.get(icao);
+                if (!ap) continue;
+
+                let bestCat: string | null = null;
+                let bestStation = '';
+                let bestDist = Infinity;
+                for (const st of regionStations) {
+                  const d = geoHaversineNm(ap.latitude, ap.longitude, st.lat, st.lon);
+                  if (d < bestDist) {
+                    bestDist = d;
+                    bestCat = st.fltCat ?? null;
+                    bestStation = st.icaoId;
+                  }
+                }
+                if (bestCat && bestStation) {
+                  derived.set(icao, { cat: bestCat, station: bestStation, distNm: Math.round(bestDist) });
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`Regional bbox flight-category fetch failed: ${err}`);
+      }
+    }
+
+    return normalized.map((icao) => {
+      const ownCat = own.get(icao);
+      if (ownCat) return { icao, flightCategory: ownCat, derived: false };
+
+      const ref = derived.get(icao);
+      if (ref) return { icao, flightCategory: ref.cat, derived: true, referenceStation: ref.station, referenceDistanceNm: ref.distNm };
+
+      return { icao, flightCategory: null, derived: false };
+    });
   }
 
   async getMetars(icaos: string[]): Promise<ParsedMetar[]> {
@@ -424,10 +526,15 @@ export class WeatherService {
               hazardType: this.normalizeHazardType(p.hazard),
               rawText: p.rawSigmet ?? '',
               qualifier: p.qualifier ?? null,
-              validFrom: p.validTimeFrom ? new Date(p.validTimeFrom * 1000).toISOString() : '',
-              validTo: p.validTimeTo ? new Date(p.validTimeTo * 1000).toISOString() : '',
+              validFrom: toIsoSafe(p.validTimeFrom),
+              validTo: toIsoSafe(p.validTimeTo),
               firId: p.firId ?? p.icaoId ?? null,
               sigmetType: 'SIGMET',
+              status: parseSigmetStatus(p.rawSigmet ?? ''),
+              baseFt: typeof p.base === 'number' ? p.base : null,
+              topFt: typeof p.top === 'number' ? p.top : null,
+              movementDir: typeof p.dir === 'number' ? p.dir : null,
+              movementSpd: typeof p.spd === 'number' ? p.spd : null,
             },
           });
         }
@@ -456,10 +563,15 @@ export class WeatherService {
               hazardType: this.normalizeHazardType(p.hazard),
               rawText: p.rawAirSigmet ?? '',
               qualifier: p.qualifier ?? null,
-              validFrom: p.validTimeFrom ? new Date(p.validTimeFrom * 1000).toISOString() : '',
-              validTo: p.validTimeTo ? new Date(p.validTimeTo * 1000).toISOString() : '',
+              validFrom: toIsoSafe(p.validTimeFrom),
+              validTo: toIsoSafe(p.validTimeTo),
               firId: null,
               sigmetType: p.airsigmetType === 'AIRMET' ? 'AIRMET' : 'SIGMET',
+              status: parseSigmetStatus(p.rawAirSigmet ?? ''),
+              baseFt: typeof p.altitudeLo1 === 'number' ? p.altitudeLo1 : null,
+              topFt: typeof p.altitudeHi1 === 'number' ? p.altitudeHi1 : null,
+              movementDir: typeof p.movementDir === 'number' ? p.movementDir : null,
+              movementSpd: typeof p.movementSpd === 'number' ? p.movementSpd : null,
             },
           });
         }
@@ -575,14 +687,27 @@ export class WeatherService {
     groundSpeed: number | null;
     enduranceMinutes: number | null;
     fuelReserveMinutes: number | null;
+    routes?: { latitude: number | null; longitude: number | null; sequence: number }[];
+    cruiseSpeedKts?: number | null;
+    fuelBurnLph?: number | null;
   }): Promise<SafetyAssessment> {
     const icaos = [plan.originIcao, plan.destinationIcao, plan.alternateIcao].filter(
       (v): v is string => v != null,
     );
 
-    const [metarList, tafList] = await Promise.all([
+    const routeWaypoints = (plan.routes ?? [])
+      .sort((a, b) => a.sequence - b.sequence)
+      .filter((r): r is typeof r & { latitude: number; longitude: number } =>
+        r.latitude != null && r.longitude != null,
+      )
+      .map((r) => ({ lat: r.latitude, lon: r.longitude }));
+
+    const fetchSigmets = routeWaypoints.length >= 2;
+
+    const [metarList, tafList, sigmetCollection] = await Promise.all([
       this.getMetars(icaos),
       this.getTafs(icaos),
+      fetchSigmets ? this.getSigmets() : Promise.resolve({ type: 'FeatureCollection' as const, features: [] }),
     ]);
 
     const metars: Record<string, ParsedMetar> = {};
@@ -592,6 +717,7 @@ export class WeatherService {
     for (const t of tafList) tafs[t.icaoId] = t;
 
     const nowSec = Math.floor(Date.now() / 1000);
+    const nowMs = nowSec * 1000;
     const totalDistanceNm = plan.todDistanceNm ?? 0;
     const cruiseSpeedKts = plan.groundSpeed ?? null;
     const enduranceMin = plan.enduranceMinutes ?? 0;
@@ -603,6 +729,15 @@ export class WeatherService {
     const reserveMin = plan.fuelReserveMinutes ?? 30;
     const fuelOnBoard = plan.fuelCurrentTotal ?? 0;
     const fuelRequired = plan.fuelRequiredTotal ?? 0;
+    const cruiseAltFt = plan.cruiseLevel ? cruiseLevelToFeet(plan.cruiseLevel) : null;
+
+    const validSigmets: SigmetFeature[] = sigmetCollection.features
+      .filter((f) => {
+        const from = new Date(f.properties.validFrom).getTime();
+        const to = new Date(f.properties.validTo).getTime();
+        return nowMs >= from && nowMs < to && f.geometry != null;
+      })
+      .map((f) => ({ geometry: f.geometry, properties: f.properties }));
 
     const params: SafetyCheckParams = {
       originIcao: plan.originIcao,
@@ -621,9 +756,270 @@ export class WeatherService {
       arrivalEpochSec: tripTimeSec ? nowSec + tripTimeSec : null,
       metars,
       tafs,
+      routeWaypoints: routeWaypoints.length >= 2 ? routeWaypoints : undefined,
+      sigmets: validSigmets.length > 0 ? validSigmets : undefined,
+      cruiseAltitudeFt: cruiseAltFt,
     };
 
-    return assessSafety(params);
+    const assessment = assessSafety(params);
+
+    let performanceAdjustments: PerformanceAdjustments | undefined;
+    const tas = plan.cruiseSpeedKts ?? cruiseSpeedKts;
+    const fuelBurnLph = plan.fuelBurnLph;
+
+    if (routeWaypoints.length >= 2 && cruiseAltFt && tas && tas > 0) {
+      try {
+        const winds = await this.getWindsAloft(routeWaypoints, cruiseAltFt, nowSec);
+        performanceAdjustments = this.computePerformanceAdjustments(
+          routeWaypoints, winds, tas, totalDistanceNm, fuelBurnLph ?? null,
+        );
+      } catch (err) {
+        this.logger.warn(`Winds aloft fetch failed, skipping performance adjustments: ${err}`);
+      }
+    }
+
+    return { ...assessment, performanceAdjustments };
+  }
+
+  async assessRouteSafety(params: {
+    waypoints: { lat: number; lon: number }[];
+    originIcao: string | null;
+    destinationIcao: string | null;
+    alternateIcao: string | null;
+    cruiseLevel: string | null;
+    cruiseSpeedKts: number | null;
+    fuelBurnLph: number | null;
+    totalDistanceNm: number;
+    departureEpochSec: number | null;
+    arrivalEpochSec: number | null;
+  }): Promise<RouteSafetyResponse> {
+    const {
+      waypoints, originIcao, destinationIcao, alternateIcao,
+      cruiseLevel, cruiseSpeedKts, fuelBurnLph, totalDistanceNm,
+      departureEpochSec, arrivalEpochSec,
+    } = params;
+
+    const items: RouteSafetyResponse['items'] = [];
+    let hazardSegments: HazardSegment[] = [];
+    let performanceAdjustments: PerformanceAdjustments | undefined;
+
+    const cruiseAltFt = cruiseLevel ? cruiseLevelToFeet(cruiseLevel) : null;
+    const nowMs = Date.now();
+    const nowSec = Math.floor(nowMs / 1000);
+    const depSec = departureEpochSec ?? nowSec;
+    const arrSec = arrivalEpochSec;
+
+    const icaos = [originIcao, destinationIcao, alternateIcao].filter((v): v is string => v != null);
+    const hasRoute = waypoints.length >= 2;
+
+    const [metarList, tafList, sigmetCollection] = await Promise.all([
+      icaos.length > 0 ? this.getMetars(icaos) : Promise.resolve([]),
+      icaos.length > 0 ? this.getTafs(icaos) : Promise.resolve([]),
+      hasRoute ? this.getSigmets() : Promise.resolve({ type: 'FeatureCollection' as const, features: [] }),
+    ]);
+
+    const metars: Record<string, ParsedMetar> = {};
+    for (const m of metarList) metars[m.icaoId] = m;
+    const tafs: Record<string, ParsedTaf> = {};
+    for (const t of tafList) tafs[t.icaoId] = t;
+
+    // Aerodrome weather checks
+    if (originIcao) {
+      const wxItems: ValidationItem[] = [];
+      checkAerodrome(originIcao, metars[originIcao] ?? null, tafs[originIcao] ?? null, depSec, 'origin', wxItems);
+      for (const wi of wxItems) {
+        items.push({ id: wi.id, severity: wi.severity, message: wi.message, action: wi.action, source: wi.source });
+      }
+    }
+    if (destinationIcao && arrSec) {
+      const wxItems: ValidationItem[] = [];
+      checkAerodrome(destinationIcao, metars[destinationIcao] ?? null, tafs[destinationIcao] ?? null, arrSec, 'dest', wxItems);
+      for (const wi of wxItems) {
+        items.push({ id: wi.id, severity: wi.severity, message: wi.message, action: wi.action, source: wi.source });
+      }
+    }
+
+    // SIGMET route intersection (with per-segment data)
+    if (hasRoute) {
+      const validSigmets: SigmetFeature[] = sigmetCollection.features
+        .filter((f) => {
+          const from = new Date(f.properties.validFrom).getTime();
+          const to = new Date(f.properties.validTo).getTime();
+          return nowMs >= from && nowMs < to && f.geometry != null;
+        })
+        .map((f) => ({ geometry: f.geometry, properties: f.properties }));
+
+      if (validSigmets.length > 0) {
+        const result = findSigmetHazardSegments(waypoints, validSigmets, cruiseAltFt);
+        for (const si of result.items) {
+          items.push({ id: si.id, severity: si.severity, message: si.message, source: si.source });
+        }
+        hazardSegments = result.segments;
+      }
+    }
+
+    // Winds aloft + performance adjustments
+    if (hasRoute && cruiseAltFt && cruiseSpeedKts && cruiseSpeedKts > 0) {
+      try {
+        const winds = await this.getWindsAloft(waypoints, cruiseAltFt, nowSec);
+        performanceAdjustments = this.computePerformanceAdjustments(
+          waypoints, winds, cruiseSpeedKts, totalDistanceNm, fuelBurnLph,
+        );
+      } catch (err) {
+        this.logger.warn(`Winds aloft fetch failed: ${err}`);
+      }
+    }
+
+    return { items, performanceAdjustments, hazardSegments };
+  }
+
+  // --------------- Winds Aloft (Open-Meteo) ---------------
+
+  private altitudeFtToPressureLevel(altFt: number): number {
+    const altM = altFt * 0.3048;
+    const pressure = 1013.25 * Math.pow(1 - 2.25577e-5 * altM, 5.25588);
+    let best: number = OPEN_METEO_PRESSURE_LEVELS[0];
+    let bestDiff = Math.abs(pressure - best);
+    for (const level of OPEN_METEO_PRESSURE_LEVELS) {
+      const diff = Math.abs(pressure - level);
+      if (diff < bestDiff) { best = level; bestDiff = diff; }
+    }
+    return best;
+  }
+
+  async getWindsAloft(
+    points: { lat: number; lon: number }[],
+    altitudeFt: number,
+    targetEpochSec: number,
+  ): Promise<{ lat: number; lon: number; windDir: number; windSpd: number }[]> {
+    const level = this.altitudeFtToPressureLevel(altitudeFt);
+    const client = this.redis.getClient();
+
+    const gridStep = 0.25;
+    const round = (v: number): number => Math.round(v / gridStep) * gridStep;
+
+    interface GridCell { rLat: number; rLon: number; key: string }
+    const cells: GridCell[] = points.map((p) => {
+      const rLat = round(p.lat);
+      const rLon = round(p.lon);
+      return { rLat, rLon, key: `winds:${rLat}:${rLon}:${level}` };
+    });
+
+    const uniqueKeys = [...new Set(cells.map((c) => c.key))];
+    const cached = new Map<string, { windDir: number; windSpd: number }>();
+
+    const cacheValues = await Promise.all(
+      uniqueKeys.map((k) => client.get(k).catch(() => null)),
+    );
+    for (let i = 0; i < uniqueKeys.length; i++) {
+      if (cacheValues[i]) {
+        try { cached.set(uniqueKeys[i]!, JSON.parse(cacheValues[i]!)); } catch { /* skip */ }
+      }
+    }
+
+    const missingCells = cells.filter((c) => !cached.has(c.key));
+    const uniqueMissing = [...new Map(missingCells.map((c) => [c.key, c])).values()];
+
+    if (uniqueMissing.length > 0) {
+      try {
+        const lats = uniqueMissing.map((c) => c.rLat).join(',');
+        const lons = uniqueMissing.map((c) => c.rLon).join(',');
+        const spdVar = `wind_speed_${level}hPa`;
+        const dirVar = `wind_direction_${level}hPa`;
+
+        const url = `${OPEN_METEO_URL}?latitude=${lats}&longitude=${lons}` +
+          `&hourly=${spdVar},${dirVar}&forecast_hours=24&timeformat=unixtime&wind_speed_unit=kn`;
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        if (response.ok) {
+          const data = await response.json();
+          const results: Record<string, unknown>[] = uniqueMissing.length === 1
+            ? [data as Record<string, unknown>]
+            : (data as Record<string, unknown>[]);
+
+          for (let i = 0; i < uniqueMissing.length; i++) {
+            const cell = uniqueMissing[i]!;
+            const result = results[i];
+            if (!result) continue;
+
+            const hourly = result.hourly as Record<string, unknown> | undefined;
+            if (!hourly) continue;
+
+            const times = hourly.time as number[] | undefined;
+            const speeds = hourly[spdVar] as number[] | undefined;
+            const dirs = hourly[dirVar] as number[] | undefined;
+            if (!times || !speeds || !dirs) continue;
+
+            let bestIdx = 0;
+            let bestTimeDiff = Math.abs(times[0]! - targetEpochSec);
+            for (let j = 1; j < times.length; j++) {
+              const diff = Math.abs(times[j]! - targetEpochSec);
+              if (diff < bestTimeDiff) { bestIdx = j; bestTimeDiff = diff; }
+            }
+
+            const wind = { windDir: dirs[bestIdx] ?? 0, windSpd: speeds[bestIdx] ?? 0 };
+            cached.set(cell.key, wind);
+            await client.setEx(cell.key, WINDS_ALOFT_CACHE_TTL, JSON.stringify(wind)).catch(() => {});
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`Open-Meteo winds fetch failed: ${err}`);
+      }
+    }
+
+    return points.map((p, i) => {
+      const wind = cached.get(cells[i]!.key) ?? { windDir: 0, windSpd: 0 };
+      return { lat: p.lat, lon: p.lon, ...wind };
+    });
+  }
+
+  private computePerformanceAdjustments(
+    waypoints: { lat: number; lon: number }[],
+    winds: { windDir: number; windSpd: number }[],
+    tasKts: number,
+    totalDistanceNm: number,
+    fuelBurnLph: number | null,
+  ): PerformanceAdjustments {
+    let totalWindTime = 0;
+    let weightedHeadwind = 0;
+    let totalDist = 0;
+
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const a = waypoints[i]!;
+      const b = waypoints[i + 1]!;
+      const legDist = geoHaversineNm(a.lat, a.lon, b.lat, b.lon);
+      if (legDist < 0.1) continue;
+
+      const tc = initialBearing(a.lat, a.lon, b.lat, b.lon);
+      const midIdx = Math.min(i, winds.length - 1);
+      const w = winds[midIdx]!;
+
+      const { groundSpeed } = windTriangle(tasKts, tc, w.windDir, w.windSpd);
+      const headwindComponent = w.windSpd * Math.cos(((w.windDir - tc) * Math.PI) / 180);
+
+      totalWindTime += legDist / groundSpeed;
+      weightedHeadwind += headwindComponent * legDist;
+      totalDist += legDist;
+    }
+
+    const avgHeadwind = totalDist > 0 ? weightedHeadwind / totalDist : 0;
+    const distForCalc = totalDistanceNm > 0 ? totalDistanceNm : totalDist;
+    const noWindTimeMin = (distForCalc / tasKts) * 60;
+    const windTimeMin = totalDist > 0 ? totalWindTime * 60 * (distForCalc / totalDist) : noWindTimeMin;
+    const timeDeltaMin = windTimeMin - noWindTimeMin;
+    const additionalFuelKg = fuelBurnLph != null
+      ? (timeDeltaMin / 60) * fuelBurnLph * AVGAS_DENSITY_KG_L
+      : 0;
+
+    return {
+      averageHeadwindKts: Math.round(avgHeadwind * 10) / 10,
+      estimatedTimeIncreaseMinutes: Math.round(timeDeltaMin * 10) / 10,
+      additionalFuelRequiredKg: Math.round(additionalFuelKg * 10) / 10,
+    };
   }
 
   private normalizeHazardType(hazard: string | null | undefined): SigmetHazardType {
@@ -688,12 +1084,7 @@ export class WeatherService {
   }
 
   private haversineNm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 3440.065; // Earth radius in nm
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) ** 2 +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(a));
+    return geoHaversineNm(lat1, lon1, lat2, lon2);
   }
 
   // --------------- NOAA text fallback ---------------

@@ -113,10 +113,15 @@ export default function LoginScreen(): JSX.Element {
   const isWide = width >= 768;
 
   useEffect(() => {
-    apiClient
-      .get<{ providers: string[] }>('/auth/providers')
-      .then((res) => setProviders(res.providers))
-      .catch(() => {});
+    let retryTimer: ReturnType<typeof setTimeout>;
+    const fetchProviders = (): void => {
+      apiClient
+        .get<{ providers: string[] }>('/auth/providers')
+        .then((res) => setProviders(res.providers))
+        .catch(() => { retryTimer = setTimeout(fetchProviders, 3000); });
+    };
+    fetchProviders();
+    return () => clearTimeout(retryTimer);
   }, []);
 
   if (isAuthenticated) {

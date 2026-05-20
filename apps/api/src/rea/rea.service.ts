@@ -1,5 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import {
+  cross as geoCross,
+  extractRings as geoExtractRings,
+  haversineNm as geoHaversineNm,
+  pointInRing as geoPointInRing,
+  routeIntersectsPolygon as geoRouteIntersectsPolygon,
+  segmentsIntersect as geoSegmentsIntersect,
+} from '../common/geo.utils';
 import { RedisService } from '../redis/redis.service';
 
 // DECEA GeoAISWEB WFS base
@@ -601,79 +609,29 @@ export class ReaService {
     waypoints: { lat: number; lon: number }[],
     geometry: GeoJSON.MultiPolygon | GeoJSON.Polygon,
   ): boolean {
-    const rings = this.extractRings(geometry);
-
-    // Check if any waypoint is inside any ring
-    for (const wp of waypoints) {
-      for (const ring of rings) {
-        if (this.pointInRing(wp.lat, wp.lon, ring)) return true;
-      }
-    }
-
-    // Check if any route segment intersects any polygon edge
-    for (let i = 0; i < waypoints.length - 1; i++) {
-      const a = waypoints[i]!;
-      const b = waypoints[i + 1]!;
-      for (const ring of rings) {
-        for (let j = 0; j < ring.length - 1; j++) {
-          const c = ring[j]!;
-          const d = ring[j + 1]!;
-          if (this.segmentsIntersect(a.lon, a.lat, b.lon, b.lat, c[0]!, c[1]!, d[0]!, d[1]!)) {
-            return true;
-          }
-        }
-      }
-    }
-
-    return false;
+    return geoRouteIntersectsPolygon(waypoints, geometry as { type: string; coordinates: unknown });
   }
 
   private extractRings(geometry: GeoJSON.MultiPolygon | GeoJSON.Polygon): number[][][] {
-    if (geometry.type === 'Polygon') {
-      return geometry.coordinates as number[][][];
-    }
-    // MultiPolygon: flatten to list of rings (outer rings only)
-    return (geometry.coordinates as number[][][][]).map((poly) => poly[0]!);
+    return geoExtractRings(geometry as { type: string; coordinates: unknown });
   }
 
   private pointInRing(lat: number, lon: number, ring: number[][]): boolean {
-    let inside = false;
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const xi = ring[i]![0]!, yi = ring[i]![1]!;
-      const xj = ring[j]![0]!, yj = ring[j]![1]!;
-      if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
-        inside = !inside;
-      }
-    }
-    return inside;
+    return geoPointInRing(lat, lon, ring);
   }
 
   private segmentsIntersect(
     ax: number, ay: number, bx: number, by: number,
     cx: number, cy: number, dx: number, dy: number,
   ): boolean {
-    const d1 = this.cross(cx, cy, dx, dy, ax, ay);
-    const d2 = this.cross(cx, cy, dx, dy, bx, by);
-    const d3 = this.cross(ax, ay, bx, by, cx, cy);
-    const d4 = this.cross(ax, ay, bx, by, dx, dy);
-    if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
-        ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
-      return true;
-    }
-    return false;
+    return geoSegmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy);
   }
 
   private cross(ax: number, ay: number, bx: number, by: number, cx: number, cy: number): number {
-    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    return geoCross(ax, ay, bx, by, cx, cy);
   }
 
   private haversineNm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 3440.065;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-    return R * 2 * Math.asin(Math.sqrt(a));
+    return geoHaversineNm(lat1, lon1, lat2, lon2);
   }
 }

@@ -321,6 +321,19 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const [tafs, setTafs] = useState<Record<string, ParsedTaf>>({});
   const [tafLoading, setTafLoading] = useState(false);
 
+  // Route safety (aerodrome wx + SIGMET intersection + winds aloft)
+  interface RouteSafetyData {
+    items: { id: string; severity: string; message: string; action?: string; source?: string }[];
+    performanceAdjustments?: {
+      averageHeadwindKts: number;
+      estimatedTimeIncreaseMinutes: number;
+      additionalFuelRequiredKg: number;
+    };
+    hazardSegments: { fromIdx: number; toIdx: number; hazardType: string; severity: string }[];
+  }
+  const [routeSafety, setRouteSafety] = useState<RouteSafetyData | null>(null);
+  const [routeSafetyLoading, setRouteSafetyLoading] = useState(false);
+
   // Alternate suggestions
   const [altSuggestions, setAltSuggestions] = useState<(Aerodrome & { distNm: number; flightCategory?: string | null })[]>([]);
   const [altSugLoading, setAltSugLoading] = useState(false);
@@ -720,6 +733,37 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     return arrivalEpochSec + Math.round((altDistNm / cruiseKts) * 3600);
   }, [arrivalEpochSec, cruiseKts, altDistNm]);
 
+  // Fetch route safety (aerodrome wx + SIGMET intersection + winds aloft) — debounced
+  useEffect(() => {
+    if (!origin || !destination) { setRouteSafety(null); return; }
+    const waypoints: { lat: number; lon: number }[] = [];
+    waypoints.push({ lat: origin.latitude, lon: origin.longitude });
+    for (const wp of routeWaypoints) waypoints.push({ lat: wp.lat, lon: wp.lng });
+    waypoints.push({ lat: destination.latitude, lon: destination.longitude });
+    if (waypoints.length < 2) { setRouteSafety(null); return; }
+
+    const timer = setTimeout(() => {
+      setRouteSafetyLoading(true);
+      apiClient.post<RouteSafetyData>('/weather/route-safety', {
+        waypoints,
+        originIcao: origin.icao,
+        destinationIcao: destination.icao,
+        alternateIcao: alternate?.icao,
+        cruiseLevel: cruiseLevel || undefined,
+        cruiseSpeedKts: selectedAircraft?.cruiseSpeedKts ?? undefined,
+        fuelBurnLph: selectedAircraft?.fuelBurnLph ?? undefined,
+        totalDistanceNm: totalDistanceNm > 0 ? totalDistanceNm : undefined,
+        departureEpochSec,
+        arrivalEpochSec: arrivalEpochSec ?? undefined,
+      })
+        .then(setRouteSafety)
+        .catch(() => setRouteSafety(null))
+        .finally(() => setRouteSafetyLoading(false));
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [origin, destination, alternate, routeWaypoints, cruiseLevel, selectedAircraft, totalDistanceNm, departureEpochSec, arrivalEpochSec]);
+
   // Auto-detect day/night based on civil twilight at origin (departure) and destination (arrival)
   useEffect(() => {
     if (!origin) return;
@@ -742,20 +786,31 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     }
   }, [minFuelKg, fuelManuallyEdited]);
 
-  // Flight viability validation
+  // Wind-adjusted performance: GS, ETE, fuel delta
+  const windAdjustedGS = useMemo(() => {
+    if (!routeSafety?.performanceAdjustments || !cruiseKts) return null;
+    return Math.round(cruiseKts - routeSafety.performanceAdjustments.averageHeadwindKts);
+  }, [routeSafety?.performanceAdjustments, cruiseKts]);
+
+  const windAdjustedTripMin = useMemo(() => {
+    if (!routeSafety?.performanceAdjustments || tripMinutes <= 0) return null;
+    return Math.round(tripMinutes + routeSafety.performanceAdjustments.estimatedTimeIncreaseMinutes);
+  }, [routeSafety?.performanceAdjustments, tripMinutes]);
+
+  const windAdjustedArrivalSec = useMemo(() => {
+    if (windAdjustedTripMin == null || windAdjustedTripMin <= 0) return null;
+    return departureEpochSec + windAdjustedTripMin * 60;
+  }, [departureEpochSec, windAdjustedTripMin]);
+
+  // Flight viability validation (client-side structural + backend weather merged)
   const planViability: PlanViability = useMemo(() => {
     if (!hasVfr) return { status: 'viable', items: [] };
-    return validateVfrPlan({
+    const result = validateVfrPlan({
       departureTime: plannedDepartureTime,
       origin,
       destination,
       alternate,
       aircraft: selectedAircraft,
-      metars,
-      tafs,
-      departureEpochSec,
-      arrivalEpochSec,
-      alternateArrivalEpochSec,
       cruiseLevel,
       totalDistanceNm,
       fuelOnBoardKg,
@@ -766,11 +821,37 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       enduranceMin,
       icaoPrefix: origin?.icao?.substring(0, 2) ?? '',
     });
+
+    if (routeSafety?.items.length) {
+      const existingIds = new Set(result.items.map((i) => i.id));
+      for (const si of routeSafety.items) {
+        if (!existingIds.has(si.id)) {
+          result.items.push({
+            id: si.id,
+            severity: si.severity as 'blocking' | 'actionable' | 'warning' | 'unverifiable',
+            message: si.message,
+            action: si.action,
+            source: si.source,
+          });
+        }
+      }
+    }
+
+    const hasBlocking = result.items.some((i) => i.severity === 'blocking');
+    const hasActionable = result.items.some((i) => i.severity === 'actionable');
+    const hasUnverifiable = result.items.some((i) => i.severity === 'unverifiable');
+    const hasWarning = result.items.some((i) => i.severity === 'warning');
+    if (hasBlocking) result.status = 'not-viable';
+    else if (hasActionable) result.status = 'incomplete';
+    else if (hasUnverifiable) result.status = 'unverifiable';
+    else if (hasWarning) result.status = 'viable-with-warnings';
+    else result.status = 'viable';
+
+    return result;
   }, [
     hasVfr, plannedDepartureTime, origin, destination, alternate, selectedAircraft,
-    metars, tafs, departureEpochSec, arrivalEpochSec, alternateArrivalEpochSec,
     cruiseLevel, totalDistanceNm, fuelOnBoardKg, minFuelKg, takeoffWeightKg,
-    selectedAircraft?.mtowKg, flightCondition, enduranceMin, origin?.icao,
+    selectedAircraft?.mtowKg, flightCondition, enduranceMin, origin?.icao, routeSafety,
   ]);
 
   // Suggested cruise level based on average magnetic course and departure region
@@ -1458,6 +1539,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       selectedReaCorridorName={followedCorridorName}
       flightRules={flightRules}
       tocTodPositions={tocTodPositions}
+      hazardSegments={routeSafety?.hazardSegments}
     />
   );
 
@@ -2575,6 +2657,12 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
                 <Text className="text-[10px] font-bold text-muted-foreground">TAS</Text>
                 <Text className="font-mono text-xs text-foreground">{cruiseKts != null && cruiseKts > 0 ? `${cruiseKts} kt` : '—'}</Text>
               </View>
+              {windAdjustedGS != null ? (
+                <View className="flex-row items-center gap-1">
+                  <Text className="text-[10px] font-bold text-sky-600">GS</Text>
+                  <Text className="font-mono text-xs font-semibold text-sky-700">{windAdjustedGS} kt</Text>
+                </View>
+              ) : null}
               <View className="flex-row items-center gap-1">
                 <Text className="text-[10px] font-bold text-muted-foreground">DIST</Text>
                 <Text className="font-mono text-xs text-foreground">{totalDistanceNm > 0 ? `${Math.round(totalDistanceNm)} nm` : '—'}</Text>
@@ -2584,22 +2672,28 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             {/* Separator */}
             <View className="my-2 border-t border-border/50" />
 
-            {/* Times */}
+            {/* Times — show wind-adjusted values when available */}
             <View className="flex-row flex-wrap gap-x-4 gap-y-1">
               <View className="flex-row items-center gap-1">
                 <Text className="text-[10px] font-bold text-muted-foreground">ETD</Text>
                 <Text className="font-mono text-xs text-foreground">{formatZulu(plannedDepartureTime)}</Text>
               </View>
               <View className="flex-row items-center gap-1">
-                <Text className="text-[10px] font-bold text-muted-foreground">ETE</Text>
-                <Text className="font-mono text-xs text-foreground">
-                  {tripMinutes > 0 ? `${String(Math.floor(tripMinutes / 60)).padStart(2, '0')}:${String(tripMinutes % 60).padStart(2, '0')}` : '—'}
+                <Text className={`text-[10px] font-bold ${windAdjustedTripMin != null ? 'text-sky-600' : 'text-muted-foreground'}`}>ETE</Text>
+                <Text className={`font-mono text-xs ${windAdjustedTripMin != null ? 'font-semibold text-sky-700' : 'text-foreground'}`}>
+                  {(() => {
+                    const mins = windAdjustedTripMin ?? tripMinutes;
+                    return mins > 0 ? `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}` : '—';
+                  })()}
                 </Text>
               </View>
               <View className="flex-row items-center gap-1">
-                <Text className="text-[10px] font-bold text-muted-foreground">ETA</Text>
-                <Text className="font-mono text-xs text-foreground">
-                  {arrivalEpochSec ? formatZulu(new Date(arrivalEpochSec * 1000)) : '—'}
+                <Text className={`text-[10px] font-bold ${windAdjustedArrivalSec != null ? 'text-sky-600' : 'text-muted-foreground'}`}>ETA</Text>
+                <Text className={`font-mono text-xs ${windAdjustedArrivalSec != null ? 'font-semibold text-sky-700' : 'text-foreground'}`}>
+                  {(() => {
+                    const sec = windAdjustedArrivalSec ?? arrivalEpochSec;
+                    return sec ? formatZulu(new Date(sec * 1000)) : '—';
+                  })()}
                 </Text>
               </View>
             </View>
@@ -2626,6 +2720,46 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
                t('vfr.unverifiable')}
             </Text>
           </View>
+
+          {/* Winds aloft / performance adjustments */}
+          {routeSafety?.performanceAdjustments ? (
+            <View className="mt-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-2.5">
+              <Text className="text-[11px] font-bold text-sky-900 mb-1.5">{t('vfr.windsAloftTitle')}</Text>
+              <View className="flex-row flex-wrap gap-x-4 gap-y-1">
+                <View className="flex-row items-center gap-1">
+                  <Text className="text-[10px] font-bold text-sky-700">
+                    {routeSafety.performanceAdjustments.averageHeadwindKts >= 0 ? 'HW' : 'TW'}
+                  </Text>
+                  <Text className="font-mono text-xs text-sky-900">
+                    {Math.abs(routeSafety.performanceAdjustments.averageHeadwindKts)} kt
+                  </Text>
+                </View>
+                <View className="flex-row items-center gap-1">
+                  <Text className="text-[10px] font-bold text-sky-700">
+                    {routeSafety.performanceAdjustments.estimatedTimeIncreaseMinutes >= 0 ? '+T' : '-T'}
+                  </Text>
+                  <Text className="font-mono text-xs text-sky-900">
+                    {Math.abs(routeSafety.performanceAdjustments.estimatedTimeIncreaseMinutes)} min
+                  </Text>
+                </View>
+                {routeSafety.performanceAdjustments.additionalFuelRequiredKg !== 0 ? (
+                  <View className="flex-row items-center gap-1">
+                    <Text className="text-[10px] font-bold text-sky-700">
+                      {routeSafety.performanceAdjustments.additionalFuelRequiredKg >= 0 ? '+FUEL' : '-FUEL'}
+                    </Text>
+                    <Text className="font-mono text-xs text-sky-900">
+                      {Math.abs(routeSafety.performanceAdjustments.additionalFuelRequiredKg)} kg
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+          ) : routeSafetyLoading ? (
+            <View className="mt-2 flex-row items-center gap-2 rounded-md border border-sky-200 bg-sky-50/50 px-3 py-2">
+              <ActivityIndicator size="small" color="#0284c7" />
+              <Text className="text-[11px] text-sky-700">{t('vfr.loadingWindsAloft')}</Text>
+            </View>
+          ) : null}
 
           {planViability.items.length > 0 ? (
             <View className="mt-2 gap-1.5">

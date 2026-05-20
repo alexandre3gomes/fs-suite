@@ -34,8 +34,19 @@ interface WmsFeatureInfoResponse {
 
 // --------------- Types ---------------
 
+interface FlightCategoryData {
+  icao: string;
+  flightCategory: string | null;
+  derived: boolean;
+  referenceStation?: string;
+  referenceDistanceNm?: number;
+}
+
 interface MapAerodrome extends Aerodrome {
   flightCategory?: string | null;
+  derived?: boolean;
+  referenceStation?: string;
+  referenceDistanceNm?: number;
 }
 
 export interface ReaCorridorSegment {
@@ -89,6 +100,7 @@ interface Props {
   selectedReaCorridorName?: string | null;
   flightRules?: 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
   tocTodPositions?: TocTodPosition[];
+  hazardSegments?: { fromIdx: number; toIdx: number; hazardType: string; severity: string }[];
 }
 
 // --------------- Constants ---------------
@@ -105,9 +117,43 @@ const CATEGORY_BG_COLORS: Record<string, string> = {
   IFR: 'rgba(127,29,29,0.8)',
   LIFR: 'rgba(107,33,168,0.8)',
 };
+const DERIVED_BG_COLORS: Record<string, string> = {
+  VFR: 'rgba(20,83,45,0.35)',
+  MVFR: 'rgba(30,58,95,0.35)',
+  IFR: 'rgba(127,29,29,0.35)',
+  LIFR: 'rgba(107,33,168,0.35)',
+};
+const DERIVED_BORDER_COLORS: Record<string, string> = {
+  VFR: 'rgba(22,163,74,0.6)',
+  MVFR: 'rgba(37,99,235,0.6)',
+  IFR: 'rgba(220,38,38,0.6)',
+  LIFR: 'rgba(217,70,239,0.6)',
+};
 const DEFAULT_DOT_COLOR = '#94a3b8';
 const DEFAULT_BADGE_BG = 'rgba(55,65,81,0.8)';
 const MAX_METAR_FETCH = 50;
+const SATELLITE_LEGEND = [
+  { color: '#c8c8c8', i18n: 'vfr.satWarmSurface' },
+  { color: '#808080', i18n: 'vfr.satCoolSurface' },
+  { color: '#00d4d4', i18n: 'vfr.satLowCloud' },
+  { color: '#0055cc', i18n: 'vfr.satMidCloud' },
+  { color: '#000088', i18n: 'vfr.satUpperCloud' },
+  { color: '#00cc00', i18n: 'vfr.satHighCloud' },
+  { color: '#aaff00', i18n: 'vfr.satVeryHigh' },
+  { color: '#ffff00', i18n: 'vfr.satConvective' },
+  { color: '#ff6600', i18n: 'vfr.satDeepConvective' },
+] as const;
+
+const RADAR_LEGEND = [
+  { color: '#9bf4f5', i18n: 'vfr.radarDrizzle' },
+  { color: '#00c5ff', i18n: 'vfr.radarLight' },
+  { color: '#0fa00f', i18n: 'vfr.radarModerate' },
+  { color: '#ffff00', i18n: 'vfr.radarHeavy' },
+  { color: '#ff9900', i18n: 'vfr.radarVeryHeavy' },
+  { color: '#ff0000', i18n: 'vfr.radarExtreme' },
+  { color: '#cc00cc', i18n: 'vfr.radarStorm' },
+] as const;
+
 const DEFAULT_CENTER: [number, number] = [-15.78, -47.93];
 const DEFAULT_ZOOM = 5;
 const TILE_LAYERS = {
@@ -119,7 +165,7 @@ const TILE_LAYERS = {
   satellite: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     attr: '&copy; Esri, Maxar, Earthstar Geographics',
-    i18nKey: 'vfr.layerSatellite',
+    i18nKey: 'vfr.layerSatelliteBase',
   },
   topo: {
     url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
@@ -171,7 +217,7 @@ function injectLeafletCSS() {
 export function AerodromeMap({
   onSelectOrigin, onSelectDestination, onSelectAlternate, onMapReady,
   routeOrigin, routeDestination, routeAlternate, routeWaypoints, onAddWaypoint, onRemoveWaypoint, onUpdateWaypoint,
-  reaSegments, selectedReaCorridorName, flightRules, tocTodPositions,
+  reaSegments, selectedReaCorridorName, flightRules, tocTodPositions, hazardSegments,
 }: Props) {
   const { t } = useTranslation();
   const wrapperRef = useRef<View>(null);
@@ -184,10 +230,12 @@ export function AerodromeMap({
   const openAipLayerRef = useRef<L.TileLayer | null>(null);
   const chartLayersRef = useRef<Record<string, L.TileLayer.WMS>>({});
   const sigmetLayerRef = useRef<L.GeoJSON | null>(null);
-  const radarFrameLayersRef = useRef<L.TileLayer[]>([]);
+  const radarFrameUrlsRef = useRef<string[]>([]);
   const radarFrameTimesRef = useRef<number[]>([]);
   const radarFrameIdxRef = useRef(0);
   const radarPlayingRef = useRef(false);
+  const radarLayerRef = useRef<L.TileLayer | null>(null);
+  const satelliteLayerRef = useRef<L.TileLayer | null>(null);
   const [ready, setReady] = useState(false);
   const [mapInitialized, setMapInitialized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -201,6 +249,7 @@ export function AerodromeMap({
   const [hasRoute, setHasRoute] = useState(false);
   const [showSigmets, setShowSigmets] = useState(false);
   const [showRadar, setShowRadar] = useState(false);
+  const [showSatellite, setShowSatellite] = useState(false);
   const [radarPlaying, setRadarPlaying] = useState(false);
   const [radarTimestamp, setRadarTimestamp] = useState('');
 
@@ -437,6 +486,17 @@ export function AerodromeMap({
       OTHER: 'vfr.sigmetOther',
     };
 
+    const QUALIFIER_I18N: Record<string, string> = {
+      EMBD: 'vfr.sigmetQualEmbd',
+      OBSC: 'vfr.sigmetQualObsc',
+      FRQ: 'vfr.sigmetQualFrq',
+      SQL: 'vfr.sigmetQualSql',
+      ISOL: 'vfr.sigmetQualIsol',
+      OCNL: 'vfr.sigmetQualOccnl',
+      SEV: 'vfr.sigmetQualSevere',
+      MOD: 'vfr.sigmetQualModerate',
+    };
+
     let cancelled = false;
     let interval: ReturnType<typeof setInterval>;
 
@@ -467,22 +527,64 @@ export function AerodromeMap({
           style: (feature) => {
             const hazard: string = feature?.properties?.hazardType ?? 'OTHER';
             const s = HAZARD_STYLES[hazard] ?? HAZARD_STYLES.OTHER!;
-            return { color: s.border, weight: 2, fillColor: s.fill, fillOpacity: 0.4 };
+            const isFcst = feature?.properties?.status === 'FCST';
+            return {
+              color: s.border, weight: 2, fillColor: s.fill,
+              fillOpacity: isFcst ? 0.2 : 0.4,
+              dashArray: isFcst ? '8 4' : undefined,
+            };
           },
           onEachFeature: (feature, layer) => {
             const p = feature.properties ?? {};
-            const hazardKey = HAZARD_I18N[p.hazardType as string] ?? 'vfr.sigmetOther';
-            const hazardLabel = tRef.current(hazardKey);
+            const t_ = tRef.current;
+            const hazardLabel = t_(HAZARD_I18N[p.hazardType as string] ?? 'vfr.sigmetOther');
+            const qualKey = QUALIFIER_I18N[(p.qualifier as string ?? '').toUpperCase()];
+            const qualLabel = qualKey ? t_(qualKey) : (p.qualifier as string) ?? '';
             const validFrom = p.validFrom ? new Date(p.validFrom as string).toUTCString().slice(0, -4) : '';
             const validTo = p.validTo ? new Date(p.validTo as string).toUTCString().slice(0, -4) : '';
+            const topFt = p.topFt as number | null;
+            const movDir = p.movementDir as number | null;
+            const movSpd = p.movementSpd as number | null;
+            const status = p.status as string | null;
+
+            const statusBadge = status === 'OBS'
+              ? `<span style="background:#dc2626;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px">${t_('vfr.sigmetObs')}</span>`
+              : status === 'FCST'
+                ? `<span style="background:#d97706;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px">${t_('vfr.sigmetFcst')}</span>`
+                : '';
+            const statusHint = status === 'OBS'
+              ? `<div style="font-size:9px;color:#6b7280;font-style:italic;margin-bottom:4px">${t_('vfr.sigmetObsHint')}</div>`
+              : status === 'FCST'
+                ? `<div style="font-size:9px;color:#6b7280;font-style:italic;margin-bottom:4px">${t_('vfr.sigmetFcstHint')}</div>`
+                : '';
+
+            const details: string[] = [];
+            if (qualLabel) details.push(escapeHtml(qualLabel));
+            if (topFt != null) details.push(`${t_('vfr.sigmetTop')} FL${Math.round(topFt / 100)}`);
+
+            let movementLine = '';
+            if (movDir != null && movSpd != null) {
+              movementLine = `${t_('vfr.sigmetMoving')} ${movDir}° / ${movSpd}kt`;
+            } else if (status != null) {
+              movementLine = t_('vfr.sigmetStationary');
+            }
+
             layer.bindPopup(
-              `<div style="font-family:system-ui,sans-serif;max-width:320px">` +
-                `<div style="font-weight:700;font-size:12px;margin-bottom:4px">${(p.sigmetType as string) ?? 'SIGMET'} — ${escapeHtml(hazardLabel)}</div>` +
-                (p.firId ? `<div style="font-size:10px;color:#6b7280;margin-bottom:2px">FIR: ${escapeHtml(p.firId as string)}</div>` : '') +
-                `<div style="font-family:monospace;font-size:10px;color:#334155;margin:4px 0;word-break:break-all;line-height:1.4;white-space:pre-wrap">${escapeHtml((p.rawText as string) ?? '')}</div>` +
-                (validFrom || validTo ? `<div style="font-size:10px;color:#6b7280">${tRef.current('vfr.sigmetValid')}: ${validFrom} → ${validTo}</div>` : '') +
+              `<div style="font-family:system-ui,sans-serif;max-width:360px">` +
+                `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">` +
+                  `<span style="font-weight:700;font-size:13px;color:#1e293b">${(p.sigmetType as string) ?? 'SIGMET'} — ${escapeHtml(hazardLabel)}</span>` +
+                  statusBadge +
+                `</div>` +
+                statusHint +
+                (p.firId ? `<div style="font-size:10px;color:#6b7280;margin-bottom:4px">FIR ${escapeHtml(p.firId as string)}</div>` : '') +
+                (details.length > 0 ? `<div style="font-size:11px;color:#334155;margin-bottom:4px">${details.join(' · ')}</div>` : '') +
+                (movementLine ? `<div style="font-size:11px;color:#334155;margin-bottom:4px">${escapeHtml(movementLine)}</div>` : '') +
+                (validFrom || validTo ? `<div style="font-size:10px;color:#6b7280;margin-bottom:6px">${t_('vfr.sigmetValid')}: ${validFrom} → ${validTo}</div>` : '') +
+                `<details style="margin-top:2px"><summary style="font-size:10px;color:#6b7280;cursor:pointer">Raw SIGMET</summary>` +
+                `<div style="font-family:monospace;font-size:9px;color:#475569;margin-top:4px;word-break:break-all;line-height:1.4;white-space:pre-wrap;background:#f1f5f9;padding:6px;border-radius:4px">${escapeHtml((p.rawText as string) ?? '')}</div>` +
+                `</details>` +
               `</div>`,
-              { maxWidth: 360 },
+              { maxWidth: 400 },
             );
           },
         }).addTo(map);
@@ -502,15 +604,15 @@ export function AerodromeMap({
     };
   }, [showSigmets]);
 
-  // RainViewer animated radar overlay
+  // RainViewer animated radar overlay — one tile layer at a time to avoid 429
   useEffect(() => {
     if (!mapRef.current || Platform.OS !== 'web') return;
     const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
 
     if (!showRadar) {
-      for (const fl of radarFrameLayersRef.current) map.removeLayer(fl);
-      radarFrameLayersRef.current = [];
+      if (radarLayerRef.current) { map.removeLayer(radarLayerRef.current); radarLayerRef.current = null; }
+      radarFrameUrlsRef.current = [];
       radarFrameTimesRef.current = [];
       radarFrameIdxRef.current = 0;
       radarPlayingRef.current = false;
@@ -521,17 +623,22 @@ export function AerodromeMap({
 
     let cancelled = false;
 
-    const formatUtc = (ms: number) => {
+    const formatUtc = (ms: number): string => {
       const d = new Date(ms);
       return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`;
     };
 
-    const updateTimestamp = (idx: number) => {
+    const showFrame = (idx: number): void => {
+      const url = radarFrameUrlsRef.current[idx];
+      if (!url) return;
+      if (radarLayerRef.current) map.removeLayer(radarLayerRef.current);
+      radarLayerRef.current = Leaf.tileLayer(url, { opacity: 0.6, zIndex: 400, maxNativeZoom: 7, maxZoom: 18 }).addTo(map);
+      radarFrameIdxRef.current = idx;
       const ts = radarFrameTimesRef.current[idx];
       if (ts != null) setRadarTimestamp(formatUtc(ts));
     };
 
-    const loadFrames = async () => {
+    const loadFrames = async (): Promise<void> => {
       try {
         const resp = await fetch('https://api.rainviewer.com/public/weather-maps.json');
         if (!resp.ok || cancelled) return;
@@ -540,35 +647,21 @@ export function AerodromeMap({
         const frames: { time: number; path: string }[] = data?.radar?.past ?? [];
         if (frames.length === 0) return;
 
-        for (const fl of radarFrameLayersRef.current) map.removeLayer(fl);
-
-        const newLayers: L.TileLayer[] = [];
-        for (const frame of frames) {
-          const url = `https://tilecache.rainviewer.com${frame.path}/256/{z}/{x}/{y}/6/1_1.png`;
-          newLayers.push(Leaf.tileLayer(url, { opacity: 0, zIndex: 400, crossOrigin: 'anonymous' }).addTo(map));
-        }
-
-        radarFrameLayersRef.current = newLayers;
+        radarFrameUrlsRef.current = frames.map(
+          (f) => `https://tilecache.rainviewer.com${f.path}/256/{z}/{x}/{y}/6/1_1.png`,
+        );
         radarFrameTimesRef.current = frames.map((f) => f.time * 1000);
-
-        const lastIdx = newLayers.length - 1;
-        newLayers[lastIdx]!.setOpacity(0.6);
-        radarFrameIdxRef.current = lastIdx;
-        updateTimestamp(lastIdx);
+        showFrame(frames.length - 1);
       } catch { /* best-effort */ }
     };
 
     const animInterval = setInterval(() => {
       if (!radarPlayingRef.current) return;
-      const layers = radarFrameLayersRef.current;
-      if (layers.length === 0) return;
-      const prev = radarFrameIdxRef.current;
-      layers[prev]?.setOpacity(0);
-      const next = (prev + 1) % layers.length;
-      layers[next]?.setOpacity(0.6);
-      radarFrameIdxRef.current = next;
-      updateTimestamp(next);
-    }, 500);
+      const urls = radarFrameUrlsRef.current;
+      if (urls.length === 0) return;
+      const next = (radarFrameIdxRef.current + 1) % urls.length;
+      showFrame(next);
+    }, 1000);
 
     void loadFrames();
     const refreshInterval = setInterval(() => void loadFrames(), 300_000);
@@ -577,14 +670,44 @@ export function AerodromeMap({
       cancelled = true;
       clearInterval(animInterval);
       clearInterval(refreshInterval);
-      for (const fl of radarFrameLayersRef.current) map.removeLayer(fl);
-      radarFrameLayersRef.current = [];
+      if (radarLayerRef.current) { map.removeLayer(radarLayerRef.current); radarLayerRef.current = null; }
+      radarFrameUrlsRef.current = [];
       radarFrameTimesRef.current = [];
       radarPlayingRef.current = false;
       setRadarPlaying(false);
       setRadarTimestamp('');
     };
   }, [showRadar]);
+
+  // GOES-16 satellite infrared overlay (NASA GIBS)
+  useEffect(() => {
+    if (!mapRef.current || Platform.OS !== 'web') return;
+    const Leaf = require('leaflet') as LeafletModule;
+    const map = mapRef.current;
+
+    if (!showSatellite) {
+      if (satelliteLayerRef.current) { map.removeLayer(satelliteLayerRef.current); satelliteLayerRef.current = null; }
+      return;
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const url = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/${today}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`;
+    satelliteLayerRef.current = Leaf.tileLayer(url, { opacity: 0.5, zIndex: 350, maxNativeZoom: 6, maxZoom: 18, attribution: 'NASA GIBS' }).addTo(map);
+
+    const refreshInterval = setInterval(() => {
+      if (satelliteLayerRef.current) {
+        map.removeLayer(satelliteLayerRef.current);
+        const d = new Date().toISOString().slice(0, 10);
+        const u = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/${d}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`;
+        satelliteLayerRef.current = Leaf.tileLayer(u, { opacity: 0.5, zIndex: 350, maxNativeZoom: 6, maxZoom: 18, attribution: 'NASA GIBS' }).addTo(map);
+      }
+    }, 600_000);
+
+    return () => {
+      clearInterval(refreshInterval);
+      if (satelliteLayerRef.current) { map.removeLayer(satelliteLayerRef.current); satelliteLayerRef.current = null; }
+    };
+  }, [showSatellite]);
 
   // ResizeObserver — invalidate map size when container resizes (sidebar collapse, etc.)
   useEffect(() => {
@@ -730,6 +853,20 @@ export function AerodromeMap({
     const routeLatlngs = fullRoute.map((p) => [p.lat, p.lng] as L.LatLngTuple);
     const outlinePoly = Leaf.polyline(routeLatlngs, { color: ROUTE_OUTLINE, weight: 8, opacity: 0.6, lineCap: 'butt', lineJoin: 'round' }).addTo(group);
     const mainPoly = Leaf.polyline(routeLatlngs, { color: ROUTE_COLOR, weight: 5, opacity: 0.85, lineCap: 'butt', lineJoin: 'round' }).addTo(group);
+
+    // Hazard overlay — red segments where SIGMETs intersect the route
+    if (hazardSegments && hazardSegments.length > 0) {
+      for (const seg of hazardSegments) {
+        if (seg.fromIdx < fullRoute.length && seg.toIdx < fullRoute.length) {
+          const a = fullRoute[seg.fromIdx]!;
+          const b = fullRoute[seg.toIdx]!;
+          const color = seg.severity === 'blocking' ? '#dc2626' : '#f59e0b';
+          Leaf.polyline([[a.lat, a.lng], [b.lat, b.lng]] as L.LatLngTuple[], {
+            color, weight: 7, opacity: 0.9, lineCap: 'round', lineJoin: 'round', dashArray: '12 6',
+          }).addTo(group);
+        }
+      }
+    }
 
     // Mutable copy of route positions for live drag updates
     const livePositions = fullRoute.map((p) => [p.lat, p.lng] as [number, number]);
@@ -992,7 +1129,7 @@ export function AerodromeMap({
       routeBoundsRef.current = null;
       setHasRoute(false);
     };
-  }, [routeOrigin, routeDestination, routeAlternate, waypointsKey, tocTodPositions, mapInitialized]);
+  }, [routeOrigin, routeDestination, routeAlternate, waypointsKey, tocTodPositions, hazardSegments, mapInitialized]);
 
   // REA corridor overlay
   const reaKey = reaSegments ? reaSegments.map((s) => `${s.nome}:${s.trecho}`).join(';') : '';
@@ -1078,11 +1215,20 @@ export function AerodromeMap({
       if (data.length > 0 && data.length <= MAX_METAR_FETCH) {
         try {
           const icaos = data.map((a) => a.icao).join(',');
-          const categories = await apiClient.get<{ icao: string; flightCategory: string | null }[]>(
+          const categories = await apiClient.get<FlightCategoryData[]>(
             `/weather/flight-categories?icaos=${icaos}`,
           );
-          const catMap = new Map(categories.map((c) => [c.icao, c.flightCategory]));
-          enriched = data.map((a) => ({ ...a, flightCategory: catMap.get(a.icao) ?? null }));
+          const catMap = new Map(categories.map((c) => [c.icao, c]));
+          enriched = data.map((a) => {
+            const cat = catMap.get(a.icao);
+            return {
+              ...a,
+              flightCategory: cat?.flightCategory ?? null,
+              derived: cat?.derived ?? false,
+              referenceStation: cat?.referenceStation,
+              referenceDistanceNm: cat?.referenceDistanceNm,
+            };
+          });
         } catch { /* best-effort */ }
       }
 
@@ -1092,16 +1238,27 @@ export function AerodromeMap({
 
       // Add new markers
       for (const airport of enriched) {
+        const isDerived = airport.derived && airport.flightCategory;
         const color = airport.flightCategory
           ? (CATEGORY_COLORS[airport.flightCategory] ?? DEFAULT_DOT_COLOR)
           : DEFAULT_DOT_COLOR;
         const bgColor = airport.flightCategory
-          ? (CATEGORY_BG_COLORS[airport.flightCategory] ?? DEFAULT_BADGE_BG)
+          ? (isDerived
+            ? (DERIVED_BG_COLORS[airport.flightCategory!] ?? DEFAULT_BADGE_BG)
+            : (CATEGORY_BG_COLORS[airport.flightCategory] ?? DEFAULT_BADGE_BG))
           : DEFAULT_BADGE_BG;
+        const borderColor = isDerived
+          ? (DERIVED_BORDER_COLORS[airport.flightCategory!] ?? 'rgba(255,255,255,0.12)')
+          : 'rgba(255,255,255,0.12)';
+        const borderStyle = isDerived ? `1.5px dashed ${borderColor}` : `1px solid ${borderColor}`;
+        const dotStyle = isDerived
+          ? `width:8px;height:8px;border-radius:4px;border:2px solid ${color};flex-shrink:0`
+          : `width:8px;height:8px;border-radius:4px;background:${color};flex-shrink:0`;
+        const arrowColor = isDerived ? 'transparent' : bgColor;
 
         const icon = Leaf.divIcon({
           className: '',
-          html: `<div style="transform:translate(-50%,-100%);margin-top:-10px"><div style="display:inline-flex;align-items:center;gap:4px;background:${bgColor};color:#fff;font-size:11px;font-weight:700;padding:3px 7px;border-radius:4px;white-space:nowrap;cursor:pointer;font-family:system-ui,sans-serif;line-height:1;letter-spacing:0.4px;border:1px solid rgba(255,255,255,0.12)"><span style="width:8px;height:8px;border-radius:4px;background:${color};flex-shrink:0"></span>${escapeHtml(airport.icao)}</div><div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:4px solid ${bgColor};margin:0 auto"></div></div>`,
+          html: `<div style="transform:translate(-50%,-100%);margin-top:-10px"><div style="display:inline-flex;align-items:center;gap:4px;background:${bgColor};color:#fff;font-size:11px;font-weight:700;padding:3px 7px;border-radius:4px;white-space:nowrap;cursor:pointer;font-family:system-ui,sans-serif;line-height:1;letter-spacing:0.4px;border:${borderStyle}"><span style="${dotStyle}"></span>${escapeHtml(airport.icao)}</div><div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:4px solid ${arrowColor};margin:0 auto"></div></div>`,
           iconSize: [0, 0] as L.PointTuple,
           iconAnchor: [0, 0] as L.PointTuple,
         });
@@ -1265,6 +1422,18 @@ export function AerodromeMap({
               {t('vfr.layerRadar')}
             </Text>
           </Pressable>
+          <Pressable
+            onPress={() => setShowSatellite((v) => !v)}
+            style={{
+              backgroundColor: showSatellite ? '#059669' : 'rgba(255,255,255,0.92)',
+              borderRadius: 4, borderWidth: 1, borderColor: '#dfe2e8',
+              paddingHorizontal: 7, paddingVertical: 4,
+            }}
+          >
+            <Text style={{ fontSize: 9, fontWeight: '600', color: showSatellite ? '#fff' : '#374151' }}>
+              {t('vfr.layerSatellite')}
+            </Text>
+          </Pressable>
           {showRadar ? (
             <>
               <Pressable
@@ -1310,7 +1479,45 @@ export function AerodromeMap({
         <Text style={{ fontSize: 10, color: '#9ca3af' }}>{t('vfr.rightClickHint')}</Text>
       </View>
 
-      {/* Legend */}
+      {/* Weather layer legends */}
+      {(showRadar || showSatellite) ? (
+        <View style={{ position: 'absolute', bottom: 38, left: 8, zIndex: 1000, flexDirection: 'row', gap: 4 }}>
+          {showRadar ? (
+            <View style={{
+              backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 6,
+              borderWidth: 1, borderColor: '#dfe2e8', paddingHorizontal: 8, paddingVertical: 5,
+            }}>
+              <Text style={{ fontSize: 9, fontWeight: '700', color: '#374151', marginBottom: 4 }}>
+                {t('vfr.radarLegendTitle')}
+              </Text>
+              {RADAR_LEGEND.map((item, i) => (
+                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 1 }}>
+                  <View style={{ width: 14, height: 8, backgroundColor: item.color, borderRadius: 2 }} />
+                  <Text style={{ fontSize: 8, color: '#4b5563' }}>{t(item.i18n)}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {showSatellite ? (
+            <View style={{
+              backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 6,
+              borderWidth: 1, borderColor: '#dfe2e8', paddingHorizontal: 8, paddingVertical: 5,
+            }}>
+              <Text style={{ fontSize: 9, fontWeight: '700', color: '#374151', marginBottom: 4 }}>
+                {t('vfr.satLegendTitle')}
+              </Text>
+              {SATELLITE_LEGEND.map((item, i) => (
+                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 1 }}>
+                  <View style={{ width: 14, height: 8, backgroundColor: item.color, borderRadius: 2 }} />
+                  <Text style={{ fontSize: 8, color: '#4b5563' }}>{t(item.i18n)}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Flight category legend */}
       <View
         style={{
           position: 'absolute', bottom: 8, left: 8, zIndex: 1000,
@@ -1450,13 +1657,23 @@ function buildAirportPopupHtml(
         </div>
       </div>`;
   } else {
-    metarHtml = `<div style="margin:6px 0;font-size:10px;color:#9ca3af;font-style:italic">${escapeHtml(t('vfr.noMetar'))}</div>`;
+    const refInfo = airport.derived && airport.referenceStation && airport.flightCategory
+      ? `<div style="margin:6px 0;padding:5px 8px;background:#fffbeb;border-radius:4px;border:1px dashed #d97706">
+          <div style="font-size:9px;color:#d97706;font-weight:600;margin-bottom:2px">${escapeHtml(t('vfr.derivedCategory'))}</div>
+          <div style="font-size:10px;color:#92400e">Ref: ${escapeHtml(airport.referenceStation)} (${airport.referenceDistanceNm ?? '?'} nm)</div>
+        </div>`
+      : `<div style="margin:6px 0;font-size:10px;color:#9ca3af;font-style:italic">${escapeHtml(t('vfr.noMetar'))}</div>`;
+    metarHtml = refInfo;
   }
 
   const runwayHtml = runways ? buildRunwayHtml(runways, suggestedRwy, t) : '';
 
+  const derivedBadgeStyle = airport.derived && cat
+    ? `display:inline-block;background:transparent;color:${catColor};font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:6px;vertical-align:middle;border:1.5px dashed ${catColor}`
+    : '';
+  const ownBadgeStyle = `display:inline-block;background:${catColor};color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:6px;vertical-align:middle`;
   const catBadge = cat
-    ? `<span style="display:inline-block;background:${catColor};color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:6px;vertical-align:middle">${cat}</span>`
+    ? `<span style="${airport.derived ? derivedBadgeStyle : ownBadgeStyle}">${cat}${airport.derived ? ' ~' : ''}</span>`
     : '';
 
   return `

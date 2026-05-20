@@ -1,9 +1,10 @@
 import type { CrosswindAnalysis, ParsedMetar, ParsedTaf, SigmetCollection } from '@fs-suite/types';
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
+import type { FlightCategoryResult, RouteSafetyResponse } from './weather.service';
 import { WeatherService } from './weather.service';
 
 @ApiTags('weather')
@@ -22,7 +23,7 @@ export class WeatherController {
   })
   async getFlightCategories(
     @Query('icaos') icaos: string,
-  ): Promise<{ icao: string; flightCategory: string | null }[]> {
+  ): Promise<FlightCategoryResult[]> {
     if (!icaos || icaos.trim().length === 0) return [];
 
     const codes = icaos
@@ -125,5 +126,39 @@ export class WeatherController {
     const altitude = altitudeStr ? parseInt(altitudeStr, 10) : 5000;
 
     return this.weatherService.getRouteWeatherImpact(waypoints, altitude);
+  }
+
+  @Post('route-safety')
+  @ApiOperation({ summary: 'Full route weather assessment: aerodrome wx, SIGMET intersection, winds aloft' })
+  async getRouteSafety(
+    @Body() body: {
+      waypoints: { lat: number; lon: number }[];
+      originIcao?: string;
+      destinationIcao?: string;
+      alternateIcao?: string;
+      cruiseLevel?: string;
+      cruiseSpeedKts?: number;
+      fuelBurnLph?: number;
+      totalDistanceNm?: number;
+      departureEpochSec?: number;
+      arrivalEpochSec?: number;
+    },
+  ): Promise<RouteSafetyResponse> {
+    const waypoints = (body.waypoints ?? []).filter(
+      (wp) => typeof wp.lat === 'number' && typeof wp.lon === 'number' && !isNaN(wp.lat) && !isNaN(wp.lon),
+    );
+
+    return this.weatherService.assessRouteSafety({
+      waypoints,
+      originIcao: body.originIcao ?? null,
+      destinationIcao: body.destinationIcao ?? null,
+      alternateIcao: body.alternateIcao ?? null,
+      cruiseLevel: body.cruiseLevel ?? null,
+      cruiseSpeedKts: body.cruiseSpeedKts ?? null,
+      fuelBurnLph: body.fuelBurnLph ?? null,
+      totalDistanceNm: body.totalDistanceNm ?? 0,
+      departureEpochSec: body.departureEpochSec ?? null,
+      arrivalEpochSec: body.arrivalEpochSec ?? null,
+    });
   }
 }

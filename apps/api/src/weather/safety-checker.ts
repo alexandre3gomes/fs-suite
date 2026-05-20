@@ -1,4 +1,7 @@
-import type { ParsedMetar, ParsedTaf, TafForecastPeriod } from '@fs-suite/types';
+import type { ParsedMetar, ParsedTaf, SigmetFeatureProperties, TafForecastPeriod } from '@fs-suite/types';
+
+import { routeIntersectsPolygon, segmentIntersectsPolygon } from '../common/geo.utils';
+import { cruiseLevelToFeet } from '../common/wind.utils';
 
 const METAR_VALIDITY_SEC = 5400; // 90 minutes
 const VMC_CEILING_MIN_FT = 1500;
@@ -7,6 +10,7 @@ const VFR_MAX_FL_BRAZIL = 145;
 const VFR_MAX_FL_ICAO = 200;
 const FUEL_RESERVE_DAY_MIN = 30;
 const FUEL_RESERVE_NIGHT_MIN = 45;
+const SIGMET_ALT_MARGIN_FT = 2000;
 
 export type ViabilityStatus = 'viable' | 'viable-with-warnings' | 'incomplete' | 'not-viable' | 'unverifiable';
 
@@ -18,9 +22,21 @@ export interface ValidationItem {
   source?: string;
 }
 
+export interface PerformanceAdjustments {
+  averageHeadwindKts: number;
+  estimatedTimeIncreaseMinutes: number;
+  additionalFuelRequiredKg: number;
+}
+
 export interface SafetyAssessment {
   status: ViabilityStatus;
   items: ValidationItem[];
+  performanceAdjustments?: PerformanceAdjustments;
+}
+
+export interface SigmetFeature {
+  geometry: unknown;
+  properties: SigmetFeatureProperties;
 }
 
 export interface SafetyCheckParams {
@@ -40,6 +56,9 @@ export interface SafetyCheckParams {
   arrivalEpochSec: number | null;
   metars: Record<string, ParsedMetar>;
   tafs: Record<string, ParsedTaf>;
+  routeWaypoints?: { lat: number; lon: number }[];
+  sigmets?: SigmetFeature[];
+  cruiseAltitudeFt?: number | null;
 }
 
 function isMetarValidAt(metar: ParsedMetar, targetEpochSec: number): boolean {
@@ -116,7 +135,132 @@ function getMaxVfrFl(icaoPrefix: string): number {
   return VFR_MAX_FL_ICAO;
 }
 
-function checkAerodrome(
+const HAZARD_LABELS: Record<string, string> = {
+  TS: 'Tempestade',
+  TURB: 'Turbulência',
+  ICE: 'Gelo',
+  IFR: 'IFR/Teto baixo',
+  MTN_OBSC: 'Obscurecimento de montanha',
+  OTHER: 'Meteorologia adversa',
+};
+
+function sigmetSeverity(
+  hazardType: string,
+  sigmetType: string,
+): 'blocking' | 'warning' {
+  if (hazardType === 'TS') return 'blocking';
+  if (sigmetType === 'SIGMET' && (hazardType === 'TURB' || hazardType === 'ICE')) return 'blocking';
+  return 'warning';
+}
+
+function altitudeOverlaps(
+  cruiseFt: number | null | undefined,
+  baseFt: number | null,
+  topFt: number | null,
+): boolean {
+  if (cruiseFt == null) return true;
+  const lo = baseFt != null ? baseFt - SIGMET_ALT_MARGIN_FT : 0;
+  const hi = topFt != null ? topFt + SIGMET_ALT_MARGIN_FT : 99999;
+  return cruiseFt >= lo && cruiseFt <= hi;
+}
+
+export interface HazardSegment {
+  fromIdx: number;
+  toIdx: number;
+  hazardType: string;
+  severity: 'blocking' | 'warning';
+  sigmetId: string;
+}
+
+export function checkSigmetIntersections(
+  waypoints: { lat: number; lon: number }[],
+  sigmets: SigmetFeature[],
+  cruiseAltFt: number | null | undefined,
+  items: ValidationItem[],
+): void {
+  if (waypoints.length < 2) return;
+
+  for (const sigmet of sigmets) {
+    const geo = sigmet.geometry as { type: string; coordinates: unknown } | null;
+    if (!geo || (geo.type !== 'Polygon' && geo.type !== 'MultiPolygon')) continue;
+
+    if (!routeIntersectsPolygon(waypoints, geo)) continue;
+
+    const p = sigmet.properties;
+    if (!altitudeOverlaps(cruiseAltFt, p.baseFt, p.topFt)) continue;
+
+    const hazardLabel = HAZARD_LABELS[p.hazardType] ?? p.hazardType;
+    const severity = sigmetSeverity(p.hazardType, p.sigmetType);
+    const altRange = p.baseFt != null || p.topFt != null
+      ? ` (${p.baseFt ?? 'SFC'}–${p.topFt != null ? `FL${Math.round(p.topFt / 100)}` : 'UNL'})`
+      : '';
+    const fir = p.firId ? ` — FIR ${p.firId}` : '';
+    const qual = p.qualifier ? ` ${p.qualifier}` : '';
+    const rawSnippet = p.rawText.length > 100 ? p.rawText.slice(0, 100) + '…' : p.rawText;
+
+    items.push({
+      id: `sigmet-${p.id}`,
+      severity,
+      message: `Rota intercepta ${p.sigmetType}${fir}: ${hazardLabel}${qual}${altRange}. "${rawSnippet}"`,
+      source: p.sigmetType,
+    });
+  }
+}
+
+export function findSigmetHazardSegments(
+  waypoints: { lat: number; lon: number }[],
+  sigmets: SigmetFeature[],
+  cruiseAltFt: number | null | undefined,
+): { items: ValidationItem[]; segments: HazardSegment[] } {
+  const items: ValidationItem[] = [];
+  const segments: HazardSegment[] = [];
+  if (waypoints.length < 2) return { items, segments };
+
+  const seen = new Set<string>();
+
+  for (const sigmet of sigmets) {
+    const geo = sigmet.geometry as { type: string; coordinates: unknown } | null;
+    if (!geo || (geo.type !== 'Polygon' && geo.type !== 'MultiPolygon')) continue;
+
+    const p = sigmet.properties;
+    if (!altitudeOverlaps(cruiseAltFt, p.baseFt, p.topFt)) continue;
+
+    const severity = sigmetSeverity(p.hazardType, p.sigmetType);
+    let hitRoute = false;
+
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      if (segmentIntersectsPolygon(waypoints[i]!, waypoints[i + 1]!, geo)) {
+        hitRoute = true;
+        const segKey = `${i}-${p.id}`;
+        if (!seen.has(segKey)) {
+          seen.add(segKey);
+          segments.push({ fromIdx: i, toIdx: i + 1, hazardType: p.hazardType, severity, sigmetId: p.id });
+        }
+      }
+    }
+
+    if (hitRoute) {
+      const hazardLabel = HAZARD_LABELS[p.hazardType] ?? p.hazardType;
+      const altRange = p.baseFt != null || p.topFt != null
+        ? ` (${p.baseFt ?? 'SFC'}–${p.topFt != null ? `FL${Math.round(p.topFt / 100)}` : 'UNL'})`
+        : '';
+      const fir = p.firId ? ` — FIR ${p.firId}` : '';
+      const qual = p.qualifier ? ` ${p.qualifier}` : '';
+      const rawSnippet = p.rawText.length > 100 ? p.rawText.slice(0, 100) + '…' : p.rawText;
+
+      items.push({
+        id: `sigmet-${p.id}`,
+        severity,
+        message: `Rota intercepta ${p.sigmetType}${fir}: ${hazardLabel}${qual}${altRange}. "${rawSnippet}"`,
+        source: p.sigmetType,
+      });
+    }
+  }
+
+  return { items, segments };
+}
+
+export function checkAerodrome(
   icao: string,
   metar: ParsedMetar | null,
   taf: ParsedTaf | null,
@@ -169,19 +313,25 @@ function checkAerodrome(
 
   const wx = getFlightCategoryForTime(metar, taf, targetEpochSec);
   const srcLabel = wx.source === 'metar' ? 'METAR' : wx.period ? `TAF ${fmtDayTime(wx.period.timeFrom)}` : 'TAF';
+  const arrivalCtx = role === 'dest'
+    ? `, no horário estimado de chegada (${fmtDayTime(targetEpochSec)})`
+    : '';
+  const tafPeriodRef = role === 'dest' && wx.source === 'taf' && wx.period
+    ? ` Período TAF: ${fmtDayTime(wx.period.timeFrom)}–${fmtDayTime(wx.period.timeTo)}.`
+    : '';
 
   if (wx.category === 'IFR' || wx.category === 'LIFR') {
     items.push({
       id: `wx-${idPrefix}-imc`,
       severity: 'blocking',
-      message: `Condições na ${prefix} (${icao}) abaixo dos mínimos VMC: ${wx.category}${wx.ceiling != null ? ` (teto: ${wx.ceiling} ft)` : ''}${wx.visibility ? ` (vis: ${wx.visibility})` : ''}. Fonte: ${srcLabel}.`,
+      message: `Condições na ${prefix} (${icao}) abaixo dos mínimos VMC: ${wx.category}${wx.ceiling != null ? ` (teto: ${wx.ceiling} ft)` : ''}${wx.visibility ? ` (vis: ${wx.visibility})` : ''}${arrivalCtx}. Fonte: ${srcLabel}.${tafPeriodRef}`,
       source: 'ICA 100-12 §3.2',
     });
   } else if (wx.category === 'MVFR') {
     items.push({
       id: `wx-${idPrefix}-mvfr`,
       severity: 'warning',
-      message: `Condições marginais VFR na ${prefix} (${icao}): MVFR. Fonte: ${srcLabel}.`,
+      message: `Condições marginais VFR na ${prefix} (${icao}): MVFR${arrivalCtx}. Fonte: ${srcLabel}.${tafPeriodRef}`,
     });
   }
 
@@ -236,6 +386,17 @@ export function assessSafety(params: SafetyCheckParams): SafetyAssessment {
       params.tafs[params.destinationIcao] ?? null,
       params.arrivalEpochSec,
       'dest',
+      items,
+    );
+  }
+
+  // SIGMET route intersection
+  const cruiseAltFt = params.cruiseLevel ? cruiseLevelToFeet(params.cruiseLevel) : null;
+  if (params.routeWaypoints && params.sigmets) {
+    checkSigmetIntersections(
+      params.routeWaypoints,
+      params.sigmets,
+      params.cruiseAltitudeFt ?? cruiseAltFt,
       items,
     );
   }

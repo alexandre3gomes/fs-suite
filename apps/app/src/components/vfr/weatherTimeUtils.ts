@@ -10,8 +10,6 @@ export function formatOptionalMetric(value: number | null | undefined, unit: str
 // --------------- Constants ---------------
 
 const METAR_VALIDITY_SEC = 5400; // 90 minutes
-const VMC_CEILING_MIN_FT = 1500;
-const VMC_VIS_MIN_M = 5000;
 const VFR_MAX_FL_BRAZIL = 145;
 const VFR_MAX_FL_ICAO = 200;
 const FUEL_RESERVE_DAY_MIN = 30;
@@ -197,19 +195,6 @@ export function getFlightCategoryForTime(
   return { source: 'unavailable', category: null, ceiling: null, visibility: null };
 }
 
-function isTafBeyondValidity(taf: ParsedTaf | null, targetEpochSec: number): boolean {
-  if (!taf) return false;
-  return targetEpochSec >= taf.validTo;
-}
-
-function visibilityToMeters(vis: string | null): number | null {
-  if (vis == null) return null;
-  if (vis === '6+' || vis === '10+' || vis === 'P6SM') return 10000;
-  const numVal = parseFloat(vis);
-  if (isNaN(numVal)) return null;
-  if (numVal <= 10) return Math.round(numVal * 1609.34);
-  return numVal;
-}
 
 // --------------- Validation ---------------
 
@@ -236,25 +221,12 @@ function getMaxVfrFl(icaoPrefix: string): number {
   return VFR_MAX_FL_ICAO;
 }
 
-function fmtDayTime(epoch: number): string {
-  const d = new Date(epoch * 1000);
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  const hh = String(d.getUTCHours()).padStart(2, '0');
-  const mm = String(d.getUTCMinutes()).padStart(2, '0');
-  return mm === '00' ? `${day}/${hh}Z` : `${day}/${hh}${mm}Z`;
-}
-
 export interface ValidateVfrPlanParams {
   departureTime: Date;
   origin: { icao: string } | null;
   destination: { icao: string } | null;
   alternate: { icao: string } | null;
   aircraft: { cruiseSpeedKts: number | null; mtowKg: number | null } | null;
-  metars: Record<string, ParsedMetar>;
-  tafs: Record<string, ParsedTaf>;
-  departureEpochSec: number;
-  arrivalEpochSec: number | null;
-  alternateArrivalEpochSec: number | null;
   cruiseLevel: string;
   totalDistanceNm: number;
   fuelOnBoardKg: number;
@@ -264,7 +236,6 @@ export interface ValidateVfrPlanParams {
   flightCondition: 'day' | 'night';
   enduranceMin: number;
   icaoPrefix: string;
-  metarFetchFailed?: boolean;
 }
 
 export function validateVfrPlan(params: ValidateVfrPlanParams): PlanViability {
@@ -292,163 +263,9 @@ export function validateVfrPlan(params: ValidateVfrPlanParams): PlanViability {
     items.push({ id: 'departure-past', severity: 'blocking', message: 'Horário de partida já passou. Atualize para um horário futuro.' });
   }
 
-  // --- Weather checks for origin ---
-  if (params.origin) {
-    const icao = params.origin.icao;
-    const metar = params.metars[icao] ?? null;
-    const taf = params.tafs[icao] ?? null;
-
-    if (!metar && !taf) {
-      items.push({
-        id: 'no-metar-origin',
-        severity: 'unverifiable',
-        message: `METAR e TAF indisponíveis para ${icao}.`,
-        action: 'Consulte condições meteorológicas em fontes externas (REDEMET, aviationweather.gov).',
-      });
-    } else {
-      if (!metar) {
-        items.push({
-          id: 'no-metar-origin',
-          severity: 'unverifiable',
-          message: `METAR indisponível para ${icao}.`,
-          action: 'Consulte condições meteorológicas em fontes externas.',
-        });
-      }
-
-      const needsTaf = !metar || !isMetarValidAt(metar, params.departureEpochSec);
-      if (needsTaf && !taf) {
-        items.push({
-          id: 'no-taf-origin',
-          severity: 'unverifiable',
-          message: `TAF indisponível para ${icao}. Previsão para o horário de partida não pode ser verificada.`,
-          action: 'Consulte a previsão em fontes externas.',
-        });
-      } else if (needsTaf && taf && isTafBeyondValidity(taf, params.departureEpochSec)) {
-        items.push({
-          id: 'beyond-taf-origin',
-          severity: 'unverifiable',
-          message: `Horário de partida (${fmtDayTime(params.departureEpochSec)}) está além da cobertura do TAF para ${icao} (válido até ${fmtDayTime(taf.validTo)}).`,
-          action: 'Verifique a previsão mais próxima da data do voo.',
-        });
-      } else {
-        const wx = getFlightCategoryForTime(metar, taf, params.departureEpochSec);
-        const srcLabel = wx.source === 'metar' ? 'METAR' : wx.period ? `TAF ${fmtDayTime(wx.period.timeFrom)}` : 'TAF';
-
-        if (wx.category === 'IFR' || wx.category === 'LIFR') {
-          items.push({
-            id: 'wx-origin-imc',
-            severity: 'blocking',
-            message: `Condições meteorológicas na origem (${icao}) abaixo dos mínimos VMC: ${wx.category}${wx.ceiling != null ? ` (teto: ${wx.ceiling} ft)` : ''}${wx.visibility ? ` (vis: ${wx.visibility})` : ''}. Fonte: ${srcLabel}.`,
-            source: 'ICA 100-12 §3.2',
-          });
-        } else if (wx.category === 'MVFR') {
-          items.push({
-            id: 'wx-origin-mvfr',
-            severity: 'warning',
-            message: `Condições marginais VFR na origem (${icao}): MVFR. Fonte: ${srcLabel}. Avalie cuidadosamente.`,
-          });
-        }
-
-        if (wx.ceiling != null && wx.ceiling < VMC_CEILING_MIN_FT && wx.category !== 'IFR' && wx.category !== 'LIFR') {
-          items.push({
-            id: 'wx-origin-ceiling',
-            severity: 'blocking',
-            message: `Teto na origem (${icao}) inferior a ${VMC_CEILING_MIN_FT} ft AGL: ${wx.ceiling} ft. VFR não autorizado.`,
-            source: 'ICA 100-12 §3.2',
-          });
-        }
-
-        const visMeters = visibilityToMeters(wx.visibility);
-        if (visMeters != null && visMeters < VMC_VIS_MIN_M && wx.category !== 'IFR' && wx.category !== 'LIFR') {
-          items.push({
-            id: 'wx-origin-vis',
-            severity: 'blocking',
-            message: `Visibilidade na origem (${icao}) inferior a ${VMC_VIS_MIN_M} m: ${visMeters} m. VFR não autorizado.`,
-            source: 'ICA 100-12 §3.2',
-          });
-        }
-      }
-    }
-  }
-
-  // --- Weather checks for destination ---
-  if (params.destination && params.arrivalEpochSec) {
-    const icao = params.destination.icao;
-    const metar = params.metars[icao] ?? null;
-    const taf = params.tafs[icao] ?? null;
-
-    if (!metar && !taf) {
-      items.push({
-        id: 'no-metar-dest',
-        severity: 'unverifiable',
-        message: `METAR e TAF indisponíveis para ${icao}.`,
-        action: 'Consulte condições meteorológicas em fontes externas (REDEMET, aviationweather.gov).',
-      });
-    } else {
-      if (!taf) {
-        items.push({
-          id: 'no-taf-dest',
-          severity: 'unverifiable',
-          message: `TAF indisponível para ${icao}. Previsão para o horário de chegada não pode ser verificada.`,
-          action: 'Consulte a previsão em fontes externas.',
-        });
-      } else if (isTafBeyondValidity(taf, params.arrivalEpochSec)) {
-        items.push({
-          id: 'beyond-taf-dest',
-          severity: 'unverifiable',
-          message: `Horário de chegada (${fmtDayTime(params.arrivalEpochSec)}) está além da cobertura do TAF para ${icao} (válido até ${fmtDayTime(taf.validTo)}).`,
-          action: 'Verifique a previsão mais próxima da data do voo.',
-        });
-      } else {
-        const wx = getFlightCategoryForTime(metar, taf, params.arrivalEpochSec);
-        const srcLabel = wx.source === 'metar' ? 'METAR' : wx.period ? `TAF ${fmtDayTime(wx.period.timeFrom)}` : 'TAF';
-
-        if (wx.category === 'IFR' || wx.category === 'LIFR') {
-          items.push({
-            id: 'wx-dest-imc',
-            severity: 'blocking',
-            message: `Condições meteorológicas no destino (${icao}) abaixo dos mínimos VMC: ${wx.category}${wx.ceiling != null ? ` (teto: ${wx.ceiling} ft)` : ''}${wx.visibility ? ` (vis: ${wx.visibility})` : ''}. Fonte: ${srcLabel}.`,
-            source: 'ICA 100-12 §3.2',
-          });
-        } else if (wx.category === 'MVFR') {
-          items.push({
-            id: 'wx-dest-mvfr',
-            severity: 'warning',
-            message: `Condições marginais VFR no destino (${icao}): MVFR. Fonte: ${srcLabel}. Avalie cuidadosamente.`,
-          });
-        }
-
-        if (wx.ceiling != null && wx.ceiling < VMC_CEILING_MIN_FT && wx.category !== 'IFR' && wx.category !== 'LIFR') {
-          items.push({
-            id: 'wx-dest-ceiling',
-            severity: 'blocking',
-            message: `Teto no destino (${icao}) inferior a ${VMC_CEILING_MIN_FT} ft AGL: ${wx.ceiling} ft. VFR não autorizado.`,
-            source: 'ICA 100-12 §3.2',
-          });
-        }
-
-        const visMeters = visibilityToMeters(wx.visibility);
-        if (visMeters != null && visMeters < VMC_VIS_MIN_M && wx.category !== 'IFR' && wx.category !== 'LIFR') {
-          items.push({
-            id: 'wx-dest-vis',
-            severity: 'blocking',
-            message: `Visibilidade no destino (${icao}) inferior a ${VMC_VIS_MIN_M} m: ${visMeters} m. VFR não autorizado.`,
-            source: 'ICA 100-12 §3.2',
-          });
-        }
-      }
-    }
-  }
-
-  // --- Fetch failure ---
-  if (params.metarFetchFailed) {
-    items.push({
-      id: 'wx-fetch-failed',
-      severity: 'unverifiable',
-      message: 'Não foi possível obter dados meteorológicos. Verifique sua conexão e tente novamente.',
-      action: 'Se o problema persistir, consulte fontes externas.',
-    });
-  }
+  // Weather checks (origin/dest METAR/TAF, SIGMET intersection) are handled
+  // by the backend POST /weather/route-safety endpoint and merged into
+  // planViability in VfrPlanForm.tsx.
 
   // --- Fuel checks ---
   if (params.aircraft && params.totalDistanceNm > 0 && params.fuelOnBoardKg > 0) {
