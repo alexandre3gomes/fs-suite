@@ -1304,7 +1304,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
       return;
     }
-    const savePayload: Partial<VfrPlanData> = {
+    const savePayload: Partial<VfrPlanData> & Record<string, unknown> = {
       flightRules: data.flightRules,
       originIcao: data.originIcao,
       originName: data.originName,
@@ -1330,6 +1330,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       simbriefOfpId: data.simbriefOfpId,
       routeText: data.routeText,
       cruiseLevel: data.cruiseLevel,
+      plannedAltitude: data.cruiseLevel ? parseCruiseLevelFt(data.cruiseLevel) ?? undefined : undefined,
       todDistanceNm: data.todDistanceNm,
       fuelConsumptionPerHour: data.fuelConsumptionPerHour,
       fuelCurrentTotal: data.fuelCurrentTotal,
@@ -1340,10 +1341,20 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       fuelCapacityL: data.fuelCapacityL,
       fuelBurnLph: data.fuelBurnLph,
       aircraftStations: data.aircraftStations,
+      cruiseSpeedKts: data.cruiseSpeedKts,
       enduranceMinutes: data.enduranceMinutes,
       visualReferences: data.visualReferences,
       status: data.status,
       remarks: data.remarks,
+      // Operational time basis
+      plannedDepartureUtc: plannedDepartureTime.toISOString(),
+      estimatedElapsedMin: tripMinutes > 0 ? tripMinutes : undefined,
+      estimatedArrivalUtc: arrivalEpochSec
+        ? new Date(arrivalEpochSec * 1000).toISOString()
+        : undefined,
+      totalDistanceNm: totalDistanceNm > 0 ? totalDistanceNm : undefined,
+      groundSpeed: windAdjustedGS ?? (cruiseKts ? Math.round(cruiseKts) : undefined),
+      weatherBasis: new Date().toISOString(),
       routes: routeWaypoints.length > 0
         ? routeWaypoints.map((wp, i) => ({
             sequence: i,

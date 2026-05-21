@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, Text, View } from 'react-native';
 
-import { apiClient } from '../../services/api.client';
+import { API_URL, apiClient } from '../../services/api.client';
 
 import type { Aerodrome } from './AerodromeSearch';
 import type { ParsedMetar } from './MetarDisplay';
@@ -144,14 +144,12 @@ const SATELLITE_LEGEND = [
   { color: '#ff6600', i18n: 'vfr.satDeepConvective' },
 ] as const;
 
-const RADAR_LEGEND = [
-  { color: '#9bf4f5', i18n: 'vfr.radarDrizzle' },
-  { color: '#00c5ff', i18n: 'vfr.radarLight' },
-  { color: '#0fa00f', i18n: 'vfr.radarModerate' },
-  { color: '#ffff00', i18n: 'vfr.radarHeavy' },
-  { color: '#ff9900', i18n: 'vfr.radarVeryHeavy' },
-  { color: '#ff0000', i18n: 'vfr.radarExtreme' },
-  { color: '#cc00cc', i18n: 'vfr.radarStorm' },
+const PRECIP_LEGEND = [
+  { color: '#78c8ff', i18n: 'vfr.radarDrizzle' },
+  { color: '#1ea0ff', i18n: 'vfr.radarLight' },
+  { color: '#00d250', i18n: 'vfr.radarModerate' },
+  { color: '#fff000', i18n: 'vfr.radarHeavy' },
+  { color: '#ff2800', i18n: 'vfr.radarVeryHeavy' },
 ] as const;
 
 const DEFAULT_CENTER: [number, number] = [-15.78, -47.93];
@@ -230,10 +228,6 @@ export function AerodromeMap({
   const openAipLayerRef = useRef<L.TileLayer | null>(null);
   const chartLayersRef = useRef<Record<string, L.TileLayer.WMS>>({});
   const sigmetLayerRef = useRef<L.GeoJSON | null>(null);
-  const radarFrameUrlsRef = useRef<string[]>([]);
-  const radarFrameTimesRef = useRef<number[]>([]);
-  const radarFrameIdxRef = useRef(0);
-  const radarPlayingRef = useRef(false);
   const radarLayerRef = useRef<L.TileLayer | null>(null);
   const satelliteLayerRef = useRef<L.TileLayer | null>(null);
   const [ready, setReady] = useState(false);
@@ -250,8 +244,6 @@ export function AerodromeMap({
   const [showSigmets, setShowSigmets] = useState(false);
   const [showRadar, setShowRadar] = useState(false);
   const [showSatellite, setShowSatellite] = useState(false);
-  const [radarPlaying, setRadarPlaying] = useState(false);
-  const [radarTimestamp, setRadarTimestamp] = useState('');
 
   // Stable refs for callbacks
   const onSelectOriginRef = useRef(onSelectOrigin);
@@ -397,17 +389,17 @@ export function AerodromeMap({
 
   // Switch tile layer
   useEffect(() => {
-    if (!mapRef.current || Platform.OS !== 'web') return;
+    if (!mapInitialized || !mapRef.current || Platform.OS !== 'web') return;
     const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
     const layer = TILE_LAYERS[activeLayer];
     if (tileLayerRef.current) map.removeLayer(tileLayerRef.current);
     tileLayerRef.current = Leaf.tileLayer(layer.url, { attribution: layer.attr, maxZoom: 18, crossOrigin: 'anonymous' }).addTo(map);
-  }, [activeLayer]);
+  }, [activeLayer, mapInitialized]);
 
   // Toggle OpenAIP airspace overlay
   useEffect(() => {
-    if (!mapRef.current || Platform.OS !== 'web') return;
+    if (!mapInitialized || !mapRef.current || Platform.OS !== 'web') return;
     const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
 
@@ -423,11 +415,11 @@ export function AerodromeMap({
       map.removeLayer(openAipLayerRef.current);
       openAipLayerRef.current = null;
     }
-  }, [showAirspace]);
+  }, [showAirspace, mapInitialized]);
 
   // DECEA WMS chart overlay (mutually exclusive — only one active at a time)
   useEffect(() => {
-    if (!mapRef.current || Platform.OS !== 'web') return;
+    if (!mapInitialized || !mapRef.current || Platform.OS !== 'web') return;
     const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
 
@@ -452,11 +444,11 @@ export function AerodromeMap({
         attribution: '&copy; DECEA/ICA',
       }).addTo(map);
     }
-  }, [activeChart]);
+  }, [activeChart, mapInitialized]);
 
   // SIGMET / AIRMET GeoJSON overlay
   useEffect(() => {
-    if (!mapRef.current || Platform.OS !== 'web') return;
+    if (!mapInitialized || !mapRef.current || Platform.OS !== 'web') return;
     const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
 
@@ -502,7 +494,7 @@ export function AerodromeMap({
 
     const loadSigmets = async () => {
       try {
-        const data = await apiClient.get<{
+        const res = await apiClient.get<{
           type: string;
           features: Array<{
             type: string;
@@ -523,7 +515,16 @@ export function AerodromeMap({
           map.removeLayer(sigmetLayerRef.current);
         }
 
-        sigmetLayerRef.current = Leaf.geoJSON(data as never, {
+        const geojson: GeoJSON.FeatureCollection = {
+          type: 'FeatureCollection',
+          features: (res.features ?? []).map((f) => ({
+            type: 'Feature' as const,
+            geometry: f.geometry as GeoJSON.Geometry,
+            properties: f.properties,
+          })),
+        };
+
+        sigmetLayerRef.current = Leaf.geoJSON(geojson, {
           style: (feature) => {
             const hazard: string = feature?.properties?.hazardType ?? 'OTHER';
             const s = HAZARD_STYLES[hazard] ?? HAZARD_STYLES.OTHER!;
@@ -588,7 +589,9 @@ export function AerodromeMap({
             );
           },
         }).addTo(map);
-      } catch { /* best-effort */ }
+      } catch (err) {
+        console.warn('[SIGMET] Failed to load:', err);
+      }
     };
 
     void loadSigmets();
@@ -602,86 +605,37 @@ export function AerodromeMap({
         sigmetLayerRef.current = null;
       }
     };
-  }, [showSigmets]);
+  }, [showSigmets, mapInitialized]);
 
-  // RainViewer animated radar overlay — one tile layer at a time to avoid 429
+  // OpenWeatherMap precipitation overlay (proxied via API to keep key server-side)
   useEffect(() => {
-    if (!mapRef.current || Platform.OS !== 'web') return;
+    if (!mapInitialized || !mapRef.current || Platform.OS !== 'web') return;
     const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
 
     if (!showRadar) {
       if (radarLayerRef.current) { map.removeLayer(radarLayerRef.current); radarLayerRef.current = null; }
-      radarFrameUrlsRef.current = [];
-      radarFrameTimesRef.current = [];
-      radarFrameIdxRef.current = 0;
-      radarPlayingRef.current = false;
-      setRadarPlaying(false);
-      setRadarTimestamp('');
       return;
     }
 
-    let cancelled = false;
+    radarLayerRef.current = Leaf.tileLayer(
+      `${API_URL}/v1/weather/tiles/precipitation/{z}/{x}/{y}.png`,
+      { opacity: 0.8, zIndex: 400, maxNativeZoom: 6, maxZoom: 18 },
+    ).addTo(map);
 
-    const formatUtc = (ms: number): string => {
-      const d = new Date(ms);
-      return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`;
-    };
-
-    const showFrame = (idx: number): void => {
-      const url = radarFrameUrlsRef.current[idx];
-      if (!url) return;
-      if (radarLayerRef.current) map.removeLayer(radarLayerRef.current);
-      radarLayerRef.current = Leaf.tileLayer(url, { opacity: 0.6, zIndex: 400, maxNativeZoom: 7, maxZoom: 18 }).addTo(map);
-      radarFrameIdxRef.current = idx;
-      const ts = radarFrameTimesRef.current[idx];
-      if (ts != null) setRadarTimestamp(formatUtc(ts));
-    };
-
-    const loadFrames = async (): Promise<void> => {
-      try {
-        const resp = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-        if (!resp.ok || cancelled) return;
-        const data = await resp.json();
-        if (cancelled) return;
-        const frames: { time: number; path: string }[] = data?.radar?.past ?? [];
-        if (frames.length === 0) return;
-
-        radarFrameUrlsRef.current = frames.map(
-          (f) => `https://tilecache.rainviewer.com${f.path}/256/{z}/{x}/{y}/6/1_1.png`,
-        );
-        radarFrameTimesRef.current = frames.map((f) => f.time * 1000);
-        showFrame(frames.length - 1);
-      } catch { /* best-effort */ }
-    };
-
-    const animInterval = setInterval(() => {
-      if (!radarPlayingRef.current) return;
-      const urls = radarFrameUrlsRef.current;
-      if (urls.length === 0) return;
-      const next = (radarFrameIdxRef.current + 1) % urls.length;
-      showFrame(next);
-    }, 1000);
-
-    void loadFrames();
-    const refreshInterval = setInterval(() => void loadFrames(), 300_000);
+    const refreshInterval = setInterval(() => {
+      if (radarLayerRef.current) radarLayerRef.current.redraw();
+    }, 600_000);
 
     return () => {
-      cancelled = true;
-      clearInterval(animInterval);
       clearInterval(refreshInterval);
       if (radarLayerRef.current) { map.removeLayer(radarLayerRef.current); radarLayerRef.current = null; }
-      radarFrameUrlsRef.current = [];
-      radarFrameTimesRef.current = [];
-      radarPlayingRef.current = false;
-      setRadarPlaying(false);
-      setRadarTimestamp('');
     };
-  }, [showRadar]);
+  }, [showRadar, mapInitialized]);
 
   // GOES-16 satellite infrared overlay (NASA GIBS)
   useEffect(() => {
-    if (!mapRef.current || Platform.OS !== 'web') return;
+    if (!mapInitialized || !mapRef.current || Platform.OS !== 'web') return;
     const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
 
@@ -690,16 +644,21 @@ export function AerodromeMap({
       return;
     }
 
+    const gibsUrl = (date: string) =>
+      `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/${date}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`;
+
     const today = new Date().toISOString().slice(0, 10);
-    const url = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/${today}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`;
-    satelliteLayerRef.current = Leaf.tileLayer(url, { opacity: 0.5, zIndex: 350, maxNativeZoom: 6, maxZoom: 18, attribution: 'NASA GIBS' }).addTo(map);
+    satelliteLayerRef.current = Leaf.tileLayer(gibsUrl(today), {
+      opacity: 0.55, zIndex: 350, maxNativeZoom: 6, maxZoom: 18, attribution: 'NASA GIBS',
+    }).addTo(map);
 
     const refreshInterval = setInterval(() => {
-      if (satelliteLayerRef.current) {
-        map.removeLayer(satelliteLayerRef.current);
+      if (satelliteLayerRef.current && mapRef.current) {
+        mapRef.current.removeLayer(satelliteLayerRef.current);
         const d = new Date().toISOString().slice(0, 10);
-        const u = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/${d}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`;
-        satelliteLayerRef.current = Leaf.tileLayer(u, { opacity: 0.5, zIndex: 350, maxNativeZoom: 6, maxZoom: 18, attribution: 'NASA GIBS' }).addTo(map);
+        satelliteLayerRef.current = Leaf.tileLayer(gibsUrl(d), {
+          opacity: 0.55, zIndex: 350, maxNativeZoom: 6, maxZoom: 18, attribution: 'NASA GIBS',
+        }).addTo(mapRef.current);
       }
     }, 600_000);
 
@@ -707,7 +666,7 @@ export function AerodromeMap({
       clearInterval(refreshInterval);
       if (satelliteLayerRef.current) { map.removeLayer(satelliteLayerRef.current); satelliteLayerRef.current = null; }
     };
-  }, [showSatellite]);
+  }, [showSatellite, mapInitialized]);
 
   // ResizeObserver — invalidate map size when container resizes (sidebar collapse, etc.)
   useEffect(() => {
@@ -814,7 +773,7 @@ export function AerodromeMap({
 
     map.on('click', handleClick);
     return () => { map.off('click', handleClick); };
-  }, [activeChart]);
+  }, [activeChart, mapInitialized]);
 
   // Route rendering — redraws when waypoints / origin / destination change
   // Serialize waypoints for stable dependency (array reference may not change on re-render)
@@ -1434,37 +1393,6 @@ export function AerodromeMap({
               {t('vfr.layerSatellite')}
             </Text>
           </Pressable>
-          {showRadar ? (
-            <>
-              <Pressable
-                onPress={() => {
-                  const next = !radarPlaying;
-                  radarPlayingRef.current = next;
-                  setRadarPlaying(next);
-                }}
-                style={{
-                  backgroundColor: radarPlaying ? '#059669' : 'rgba(255,255,255,0.92)',
-                  borderRadius: 4, borderWidth: 1, borderColor: '#dfe2e8',
-                  width: 26, alignItems: 'center', justifyContent: 'center',
-                  paddingVertical: 4,
-                }}
-              >
-                <Text style={{ fontSize: 10, color: radarPlaying ? '#fff' : '#374151' }}>
-                  {radarPlaying ? '⏸' : '▶'}
-                </Text>
-              </Pressable>
-              {radarTimestamp ? (
-                <View style={{
-                  backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 4,
-                  paddingHorizontal: 6, paddingVertical: 4,
-                }}>
-                  <Text style={{ fontSize: 9, fontWeight: '700', color: '#fff', fontFamily: 'monospace' }}>
-                    {radarTimestamp}
-                  </Text>
-                </View>
-              ) : null}
-            </>
-          ) : null}
         </View>
       </View>
 
@@ -1490,7 +1418,7 @@ export function AerodromeMap({
               <Text style={{ fontSize: 9, fontWeight: '700', color: '#374151', marginBottom: 4 }}>
                 {t('vfr.radarLegendTitle')}
               </Text>
-              {RADAR_LEGEND.map((item, i) => (
+              {PRECIP_LEGEND.map((item, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 1 }}>
                   <View style={{ width: 14, height: 8, backgroundColor: item.color, borderRadius: 2 }} />
                   <Text style={{ fontSize: 8, color: '#4b5563' }}>{t(item.i18n)}</Text>
@@ -1637,23 +1565,30 @@ function buildAirportPopupHtml(
   let metarHtml: string;
   if (metar) {
     const cloudsTxt = metar.clouds.length > 0
-      ? metar.clouds.map((c) => `${c.cover} ${c.base}`).join(' / ')
+      ? metar.clouds.map((c) => {
+          const name = t(`vfr.cloud${c.cover}` as never) ?? c.cover;
+          return c.base > 0 ? `${name} ${c.base.toLocaleString()} ft` : String(name);
+        }).join(' / ')
       : '—';
 
     const nearbyLabel = metar.source === 'nearby' && metar.nearbyFrom
       ? `<div style="font-size:9px;color:#d97706;font-weight:600;margin-bottom:3px">METAR ${escapeHtml(metar.nearbyFrom)} (${metar.nearbyDistanceNm ?? '?'} nm)</div>`
       : '';
+    const ageHours = Math.round((Date.now() - new Date(metar.observationTime).getTime()) / 3_600_000);
+    const staleLabel = ageHours >= 2
+      ? `<div style="font-size:9px;color:#d97706;font-weight:600;margin-bottom:3px">METAR ${ageHours}h</div>`
+      : '';
 
     metarHtml = `
       <div style="margin:6px 0;padding:6px 8px;background:#f1f5f9;border-radius:4px;border:1px solid #e2e8f0">
-        ${nearbyLabel}
+        ${nearbyLabel}${staleLabel}
         <div style="font-family:monospace;font-size:10px;color:#334155;margin-bottom:5px;word-break:break-all;line-height:1.4">${escapeHtml(metar.raw)}</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px 12px;font-size:10px;color:#475569">
           <span><b>${escapeHtml(t('vfr.wind'))}:</b> ${formatPopupWind(metar.windDirection, metar.windSpeed)}</span>
           <span><b>${escapeHtml(t('vfr.visibility'))}:</b> ${metar.visibility ?? '—'}</span>
           ${metar.ceiling != null ? `<span><b>${escapeHtml(t('vfr.ceiling'))}:</b> ${metar.ceiling} ft</span>` : ''}
           <span><b>${escapeHtml(t('vfr.qnh'))}:</b> ${metar.altimeter ?? '—'} hPa</span>
-          <span><b>☁:</b> ${cloudsTxt}</span>
+          <span><b>${escapeHtml(t('vfr.clouds'))}:</b> ${cloudsTxt}</span>
         </div>
       </div>`;
   } else {

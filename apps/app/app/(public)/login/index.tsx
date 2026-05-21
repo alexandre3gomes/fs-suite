@@ -2,7 +2,7 @@ import { Button, Logo, Text } from '@fs-suite/ui';
 import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { setLanguage, type SupportedLocale } from '../../../src/i18n';
 import { apiClient } from '../../../src/services/api.client';
@@ -21,6 +21,16 @@ const FEATURES = [
   { key: 'Weight', icon: '⚖️', color: '#7c3aed' },
   { key: 'Simbrief', icon: '📋', color: '#0284c7' },
   { key: 'Charts', icon: '📄', color: '#16a34a' },
+] as const;
+
+const WX_ITEMS = [
+  { key: 'Metar', icon: '📡' },
+  { key: 'Taf', icon: '📅' },
+  { key: 'Category', icon: '🎯' },
+  { key: 'Sigmet', icon: '⚡' },
+  { key: 'Precip', icon: '🌧' },
+  { key: 'Satellite', icon: '🛰' },
+  { key: 'Crosswind', icon: '💨' },
 ] as const;
 
 const AI_CHECKS = [
@@ -316,6 +326,100 @@ export default function LoginScreen(): JSX.Element {
                 </View>
                 <Text style={{ fontSize: 13, color: '#6b7280', lineHeight: 20, marginTop: 10 }}>
                   {t(`home.feat${feat.key}Desc`)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </View>
+
+      {/* ===== WEATHER SECTION ===== */}
+      <View
+        style={{
+          paddingHorizontal: 24,
+          paddingVertical: isWide ? 96 : 64,
+          backgroundColor: '#0c1222',
+          ...(Platform.OS === 'web' ? {
+            backgroundImage: 'linear-gradient(135deg, #0c1222 0%, #0f1d30 50%, #0c1222 100%)',
+          } as never : {}),
+        }}
+      >
+        {/* Glow accent */}
+        <View
+          style={{
+            position: 'absolute', top: '30%', left: '50%', width: 400, height: 400,
+            marginLeft: -200, borderRadius: 200, opacity: 0.06,
+            backgroundColor: '#0ea5e9',
+            ...(Platform.OS === 'web' ? { filter: 'blur(80px)' } as never : {}),
+          }}
+          pointerEvents="none"
+        />
+
+        <View className="mx-auto w-full" style={{ maxWidth: 1000 }}>
+          {/* Badge */}
+          <View style={{ alignSelf: 'center', backgroundColor: '#0ea5e920', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6, marginBottom: 20 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#38bdf8', letterSpacing: 1 }}>
+              {t('home.wxBadge')}
+            </Text>
+          </View>
+
+          <Text
+            style={{
+              fontSize: isWide ? 32 : 24,
+              fontWeight: '700',
+              color: '#ffffff',
+              textAlign: 'center',
+              letterSpacing: -0.5,
+            }}
+          >
+            {t('home.wxTitle')}
+          </Text>
+          <View style={{ alignSelf: 'center', width: 60, height: 3, backgroundColor: '#0ea5e9', borderRadius: 2, marginTop: 16 }} />
+
+          <Text
+            style={{
+              fontSize: isWide ? 16 : 14,
+              color: '#94a3b8',
+              textAlign: 'center',
+              lineHeight: isWide ? 26 : 22,
+              marginTop: 24,
+              maxWidth: 680,
+              alignSelf: 'center',
+            }}
+          >
+            {t('home.wxDescription')}
+          </Text>
+
+          {/* Weather items grid */}
+          <View
+            style={{
+              marginTop: 48,
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: isWide ? 16 : 12,
+              justifyContent: 'center',
+            }}
+          >
+            {WX_ITEMS.map((item) => (
+              <View
+                key={item.key}
+                style={{
+                  width: isWide ? '30%' : '46%',
+                  minWidth: isWide ? 180 : 140,
+                  maxWidth: isWide ? 300 : undefined,
+                  backgroundColor: '#ffffff08',
+                  borderRadius: 12,
+                  padding: isWide ? 20 : 16,
+                  borderWidth: 1,
+                  borderColor: '#ffffff10',
+                }}
+              >
+                <Text style={{ fontSize: 24, marginBottom: 8 }}>{item.icon}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#e2e8f0' }}>
+                  {t(`home.wx${item.key}`)}
+                </Text>
+                <Text style={{ fontSize: 12, color: '#64748b', lineHeight: 18, marginTop: 6 }}>
+                  {t(`home.wx${item.key}Desc`)}
                 </Text>
               </View>
             ))}
@@ -698,47 +802,6 @@ export default function LoginScreen(): JSX.Element {
                 </Text>
               </View>
             ))}
-          </View>
-        </View>
-      </View>
-
-      {/* ===== SUPPORT SECTION ===== */}
-      <View className="bg-background px-6 py-16 md:py-24">
-        <View className="mx-auto w-full items-center" style={{ maxWidth: 640 }}>
-          <Logo height={isWide ? 120 : 80} />
-          <Text
-            style={{
-              fontSize: isWide ? 28 : 22,
-              fontWeight: '700',
-              color: '#1a1d26',
-              textAlign: 'center',
-              marginTop: 20,
-            }}
-          >
-            {t('home.community')}
-          </Text>
-          <Text
-            style={{
-              fontSize: 15,
-              color: '#6b7280',
-              textAlign: 'center',
-              lineHeight: 24,
-              marginTop: 12,
-              maxWidth: 520,
-            }}
-          >
-            {t('home.communityDesc')}
-          </Text>
-          <View style={{ marginTop: 24 }}>
-            <Button
-              variant="outline"
-              size="lg"
-              className="gap-3 border-border bg-white shadow-sm"
-              onPress={() => { void Linking.openURL('https://ko-fi.com/R5R51MLQM3'); }}
-            >
-              <Text style={{ fontSize: 20 }}>☕</Text>
-              <Text className="text-sm font-medium text-foreground">{t('home.kofi')}</Text>
-            </Button>
           </View>
         </View>
       </View>

@@ -54,6 +54,7 @@ export interface SafetyCheckParams {
   flightCondition: 'day' | 'night';
   departureEpochSec: number;
   arrivalEpochSec: number | null;
+  alternateArrivalEpochSec?: number | null;
   metars: Record<string, ParsedMetar>;
   tafs: Record<string, ParsedTaf>;
   routeWaypoints?: { lat: number; lon: number }[];
@@ -265,11 +266,12 @@ export function checkAerodrome(
   metar: ParsedMetar | null,
   taf: ParsedTaf | null,
   targetEpochSec: number,
-  role: 'origin' | 'dest',
+  role: 'origin' | 'dest' | 'alternate',
   items: ValidationItem[],
 ): void {
-  const prefix = role === 'origin' ? 'origem' : 'destino';
-  const idPrefix = role === 'origin' ? 'origin' : 'dest';
+  const prefixMap = { origin: 'origem', dest: 'destino', alternate: 'alternado' } as const;
+  const prefix = prefixMap[role];
+  const idPrefix = role;
 
   if (!metar && !taf) {
     items.push({
@@ -292,10 +294,11 @@ export function checkAerodrome(
 
   const needsTaf = !metar || !isMetarValidAt(metar, targetEpochSec);
   if (needsTaf && !taf) {
+    const timeCtx = role === 'origin' ? 'partida' : role === 'dest' ? 'chegada' : 'chegada ao alternado';
     items.push({
       id: `no-taf-${idPrefix}`,
       severity: 'unverifiable',
-      message: `TAF indisponível para ${icao}. Previsão para o horário de ${role === 'origin' ? 'partida' : 'chegada'} não pode ser verificada.`,
+      message: `TAF indisponível para ${icao}. Previsão para o horário de ${timeCtx} não pode ser verificada.`,
       action: 'Consulte a previsão em fontes externas.',
     });
     return;
@@ -313,10 +316,10 @@ export function checkAerodrome(
 
   const wx = getFlightCategoryForTime(metar, taf, targetEpochSec);
   const srcLabel = wx.source === 'metar' ? 'METAR' : wx.period ? `TAF ${fmtDayTime(wx.period.timeFrom)}` : 'TAF';
-  const arrivalCtx = role === 'dest'
-    ? `, no horário estimado de chegada (${fmtDayTime(targetEpochSec)})`
+  const arrivalCtx = role !== 'origin'
+    ? `, no horário estimado de ${role === 'dest' ? 'chegada' : 'chegada ao alternado'} (${fmtDayTime(targetEpochSec)})`
     : '';
-  const tafPeriodRef = role === 'dest' && wx.source === 'taf' && wx.period
+  const tafPeriodRef = role !== 'origin' && wx.source === 'taf' && wx.period
     ? ` Período TAF: ${fmtDayTime(wx.period.timeFrom)}–${fmtDayTime(wx.period.timeTo)}.`
     : '';
 
@@ -388,6 +391,20 @@ export function assessSafety(params: SafetyCheckParams): SafetyAssessment {
       'dest',
       items,
     );
+  }
+
+  if (params.alternateIcao) {
+    const altEpoch = params.alternateArrivalEpochSec ?? params.arrivalEpochSec;
+    if (altEpoch) {
+      checkAerodrome(
+        params.alternateIcao,
+        params.metars[params.alternateIcao] ?? null,
+        params.tafs[params.alternateIcao] ?? null,
+        altEpoch,
+        'alternate',
+        items,
+      );
+    }
   }
 
   // SIGMET route intersection

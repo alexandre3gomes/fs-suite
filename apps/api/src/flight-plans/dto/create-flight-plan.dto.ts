@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsDateString,
   IsEnum,
   IsInt,
   IsNumber,
@@ -77,9 +78,14 @@ export class CreateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() fuelCapacityL?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() fuelBurnLph?: number;
   @ApiPropertyOptional() @IsOptional() aircraftStations?: unknown;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) cruiseSpeedKts?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) callsign?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) registration?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) simbriefOfpId?: string;
+
+  // Equipment (ICAO Item 10)
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) equipmentCode?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) surveillanceCode?: string;
 
   // Route
   @ApiPropertyOptional() @IsOptional() @IsString() routeText?: string;
@@ -102,6 +108,18 @@ export class CreateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() fuelRequiredTotal?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() fuelPerWing?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) enduranceMinutes?: number;
+
+  // Supplementary (ICAO Item 19)
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) personsOnBoard?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) pilotInCommand?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) aircraftColorMarkings?: string;
+
+  // Operational time basis
+  @ApiPropertyOptional() @IsOptional() @IsDateString() plannedDepartureUtc?: string;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) estimatedElapsedMin?: number;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() estimatedArrivalUtc?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) totalDistanceNm?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() weatherBasis?: string;
 
   // Wind / performance
   @ApiPropertyOptional() @IsOptional() @IsInt() avgWindSpeed?: number;

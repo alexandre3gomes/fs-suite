@@ -38,7 +38,9 @@ export const BriefingItemSchema = z.object({
 
 export type BriefingItem = z.infer<typeof BriefingItemSchema>;
 
-// --- FlightPlan response schema (matches Prisma model) ---
+// --- FlightPlan response schema ---
+// Organized into OPERATIONAL CORE (auditable plan data) and
+// ENRICHMENTS (computed, snapshot, display data).
 
 export const FlightPlanSchema = z.object({
   id: z.string().cuid(),
@@ -46,49 +48,51 @@ export const FlightPlanSchema = z.object({
   status: z.nativeEnum(PlanStatus),
   flightRules: z.nativeEnum(FlightRules),
 
-  // Origin snapshot
+  // ── OPERATIONAL CORE ─────────────────────────────────────
+
+  // Aerodromes
   originIcao: z.string(),
   originName: z.string(),
   originElevationFt: z.number().int().nullable(),
-  originRunwayInUse: z.string().nullable(),
-  originMetarRaw: z.string().nullable(),
-
-  // Destination snapshot
   destinationIcao: z.string(),
   destinationName: z.string(),
   destinationElevationFt: z.number().int().nullable(),
-  destinationRunwayInUse: z.string().nullable(),
-  destinationMetarRaw: z.string().nullable(),
-
-  // Alternate snapshot
   alternateIcao: z.string().nullable(),
   alternateName: z.string().nullable(),
   alternateElevationFt: z.number().int().nullable(),
-  alternateRunwayInUse: z.string().nullable(),
-  alternateMetarRaw: z.string().nullable(),
 
-  // Aircraft (snapshot)
+  // Aircraft identification
   aircraftType: z.string().nullable(),
   aircraftName: z.string().nullable(),
+  callsign: z.string().nullable(),
+  registration: z.string().nullable(),
+
+  // Aircraft performance
   emptyWeightKg: z.number().nullable(),
   takeoffWeightKg: z.number().nullable(),
   mtowKg: z.number().nullable(),
   fuelCapacityL: z.number().nullable(),
   fuelBurnLph: z.number().nullable(),
   aircraftStations: z.unknown().nullable(),
-  callsign: z.string().nullable(),
-  registration: z.string().nullable(),
-  simbriefOfpId: z.string().nullable(),
+  cruiseSpeedKts: z.number().int().nullable(),
+
+  // Equipment (ICAO Item 10)
+  equipmentCode: z.string().nullable(),
+  surveillanceCode: z.string().nullable(),
 
   // Route
   routeText: z.string().nullable(),
   cruiseLevel: z.string().nullable(),
   plannedAltitude: z.number().int().nullable(),
+  totalDistanceNm: z.number().nullable(),
   remarks: z.string().nullable(),
-  todMinutes: z.number().int().nullable(),
-  todDistanceNm: z.number().nullable(),
 
-  // Fuel
+  // Time
+  plannedDepartureUtc: z.coerce.date().nullable(),
+  estimatedElapsedMin: z.number().int().nullable(),
+  estimatedArrivalUtc: z.coerce.date().nullable(),
+
+  // Fuel / endurance
   fuelConsumptionPerHour: z.number().nullable(),
   fuelCurrentTotal: z.number().nullable(),
   fuelReserveMinutes: z.number().int().nullable(),
@@ -96,23 +100,65 @@ export const FlightPlanSchema = z.object({
   fuelPerWing: z.number().nullable(),
   enduranceMinutes: z.number().int().nullable(),
 
-  // Wind / performance
+  // Supplementary (ICAO Item 19)
+  personsOnBoard: z.number().int().nullable(),
+  pilotInCommand: z.string().nullable(),
+  aircraftColorMarkings: z.string().nullable(),
+
+  // ── ENRICHMENTS ──────────────────────────────────────────
+
+  // Aerodrome snapshots (weather at save time)
+  originRunwayInUse: z.string().nullable(),
+  originMetarRaw: z.string().nullable(),
+  destinationRunwayInUse: z.string().nullable(),
+  destinationMetarRaw: z.string().nullable(),
+  alternateRunwayInUse: z.string().nullable(),
+  alternateMetarRaw: z.string().nullable(),
+
+  // Wind / performance (computed)
   avgWindSpeed: z.number().int().nullable().optional(),
   avgWindDirection: z.number().int().nullable().optional(),
   groundSpeed: z.number().int().nullable().optional(),
 
-  // Timestamps
+  // TOC/TOD (computed)
+  todMinutes: z.number().int().nullable(),
+  todDistanceNm: z.number().nullable(),
+
+  // External references
+  simbriefOfpId: z.string().nullable(),
+
+  // Assessment basis (reproducibility)
+  weatherBasis: z.string().nullable(),
+
+  // ── METADATA ─────────────────────────────────────────────
+
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   deletedAt: z.coerce.date().nullable(),
 
-  // Relations (optional in responses)
+  // Relations
   routes: z.array(FlightPlanRouteSchema).optional(),
   visualReferences: z.array(VisualReferenceSchema).optional(),
   briefingItems: z.array(BriefingItemSchema).optional(),
 });
 
 export type FlightPlan = z.infer<typeof FlightPlanSchema>;
+
+// Operational core — the auditable plan data
+export type OperationalPlanCore = Pick<FlightPlan,
+  | 'flightRules'
+  | 'originIcao' | 'originName' | 'originElevationFt'
+  | 'destinationIcao' | 'destinationName' | 'destinationElevationFt'
+  | 'alternateIcao' | 'alternateName' | 'alternateElevationFt'
+  | 'aircraftType' | 'aircraftName' | 'callsign' | 'registration'
+  | 'emptyWeightKg' | 'takeoffWeightKg' | 'mtowKg' | 'fuelCapacityL' | 'fuelBurnLph'
+  | 'cruiseSpeedKts' | 'equipmentCode' | 'surveillanceCode'
+  | 'routeText' | 'cruiseLevel' | 'plannedAltitude' | 'totalDistanceNm' | 'remarks'
+  | 'plannedDepartureUtc' | 'estimatedElapsedMin' | 'estimatedArrivalUtc'
+  | 'fuelConsumptionPerHour' | 'fuelCurrentTotal' | 'fuelReserveMinutes'
+  | 'fuelRequiredTotal' | 'fuelPerWing' | 'enduranceMinutes'
+  | 'personsOnBoard' | 'pilotInCommand' | 'aircraftColorMarkings'
+>;
 
 // --- Create input (canonical fields only, no aiValidation) ---
 
@@ -149,9 +195,14 @@ export const CreateFlightPlanSchema = z.object({
   fuelCapacityL: z.number().optional(),
   fuelBurnLph: z.number().optional(),
   aircraftStations: z.unknown().optional(),
+  cruiseSpeedKts: z.number().int().positive().optional(),
   callsign: z.string().max(20).optional(),
   registration: z.string().max(20).optional(),
   simbriefOfpId: z.string().max(100).optional(),
+
+  // Equipment (ICAO Item 10)
+  equipmentCode: z.string().max(20).optional(),
+  surveillanceCode: z.string().max(20).optional(),
 
   // Route
   routeText: z.string().optional(),
@@ -168,6 +219,18 @@ export const CreateFlightPlanSchema = z.object({
   fuelRequiredTotal: z.number().optional(),
   fuelPerWing: z.number().optional(),
   enduranceMinutes: z.number().int().min(0).optional(),
+
+  // Supplementary (ICAO Item 19)
+  personsOnBoard: z.number().int().min(1).optional(),
+  pilotInCommand: z.string().max(100).optional(),
+  aircraftColorMarkings: z.string().max(200).optional(),
+
+  // Operational time basis
+  plannedDepartureUtc: z.coerce.date().optional(),
+  estimatedElapsedMin: z.number().int().min(0).optional(),
+  estimatedArrivalUtc: z.coerce.date().optional(),
+  totalDistanceNm: z.number().min(0).optional(),
+  weatherBasis: z.string().optional(),
 
   // Wind / performance
   avgWindSpeed: z.number().int().optional(),
@@ -233,6 +296,7 @@ export const FlightPlanListItemSchema = FlightPlanSchema.pick({
   originName: true,
   destinationIcao: true,
   destinationName: true,
+  plannedDepartureUtc: true,
   createdAt: true,
   updatedAt: true,
 });

@@ -54,6 +54,16 @@ export function MetarDisplay({ metar, loading }: Props) {
         </Text>
       ) : null}
 
+      {/* Stale METAR indicator (> 1h old) */}
+      {(() => {
+        const ageH = Math.round((Date.now() - new Date(metar.observationTime).getTime()) / 3_600_000);
+        return ageH >= 2 ? (
+          <Text className="mb-1 text-[10px] font-medium text-amber-600">
+            {t('vfr.metarStale', { hours: ageH })}
+          </Text>
+        ) : null;
+      })()}
+
       {/* Raw METAR */}
       <Text className="mb-2 font-mono text-xs text-foreground" selectable>
         {metar.raw}

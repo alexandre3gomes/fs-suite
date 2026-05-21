@@ -5,6 +5,7 @@ export * from './enums';
 export * from './schemas/airport';
 export * from './schemas/aircraft-profile';
 export * from './schemas/flight-plan';
+export * from './schemas/icao-flight-plan';
 export * from './schemas/integration';
 export * from './schemas/pagination';
 export * from './schemas/user';

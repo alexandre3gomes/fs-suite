@@ -1,4 +1,11 @@
 import {
+  assessConformity,
+  formatIcaoFlightPlanText,
+  projectFlightPlanToIcao,
+  type ConformityReport,
+  type IcaoFlightPlanProjection,
+} from '@fs-suite/types';
+import {
   Body,
   Controller,
   Delete,
@@ -79,5 +86,22 @@ export class FlightPlansController {
   async safetyAssessment(@CurrentUser() user: User, @Param('id') id: string): Promise<unknown> {
     const plan = await this.service.findOne(id, user.id);
     return this.weatherService.assessFlightPlanSafety(plan);
+  }
+
+  @Get(':id/icao')
+  @ApiOperation({ summary: 'ICAO flight plan projection, conformity report, and text export' })
+  async icaoProjection(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ): Promise<{
+    projection: IcaoFlightPlanProjection;
+    conformity: ConformityReport;
+    text: string;
+  }> {
+    const plan = await this.service.findOne(id, user.id);
+    const projection = projectFlightPlanToIcao(plan as never);
+    const conformity = assessConformity(plan as never);
+    const text = formatIcaoFlightPlanText(projection);
+    return { projection, conformity, text };
   }
 }

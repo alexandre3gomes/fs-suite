@@ -1,8 +1,11 @@
 import type { CrosswindAnalysis, ParsedMetar, ParsedTaf, SigmetCollection } from '@fs-suite/types';
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
+import type { Response } from 'express';
 
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { JwtAuthGuard, Public } from '../common/guards/jwt-auth.guard';
 
 import type { FlightCategoryResult, RouteSafetyResponse } from './weather.service';
 import { WeatherService } from './weather.service';
@@ -11,7 +14,10 @@ import { WeatherService } from './weather.service';
 @Controller('weather')
 @UseGuards(JwtAuthGuard)
 export class WeatherController {
-  constructor(private readonly weatherService: WeatherService) {}
+  constructor(
+    private readonly weatherService: WeatherService,
+    private readonly config: ConfigService,
+  ) {}
 
   @Get('flight-categories')
   @ApiOperation({ summary: 'Get flight categories (VFR/MVFR/IFR/LIFR) for map display' })
@@ -160,5 +166,40 @@ export class WeatherController {
       departureEpochSec: body.departureEpochSec ?? null,
       arrivalEpochSec: body.arrivalEpochSec ?? null,
     });
+  }
+
+  @Public()
+  @SkipThrottle()
+  @Get('tiles/precipitation/:z/:x/:y.png')
+  @ApiOperation({ summary: 'Proxy OWM precipitation tile (public, cached 10 min)' })
+  async precipitationTile(
+    @Param('z') z: string,
+    @Param('x') x: string,
+    @Param('y') y: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const cors = { 'Cross-Origin-Resource-Policy': 'cross-origin' } as const;
+    const zi = parseInt(z, 10);
+    const xi = parseInt(x, 10);
+    const yi = parseInt(y, 10);
+    if ([zi, xi, yi].some((n) => isNaN(n) || n < 0) || zi > 18) {
+      res.set(cors).status(400).end();
+      return;
+    }
+
+    try {
+      const buffer = await this.weatherService.getPrecipitationTile(zi, xi, yi);
+      if (!buffer) {
+        res.set(cors).status(503).end();
+        return;
+      }
+      res.set({
+        ...cors,
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=600',
+      }).send(buffer);
+    } catch {
+      res.set(cors).status(502).end();
+    }
   }
 }

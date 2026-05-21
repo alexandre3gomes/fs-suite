@@ -155,7 +155,9 @@ model Frequency {
   @@map("frequencies")
 }
 
-// --- Unified Flight Plan ---
+// --- Flight Plan ---
+// Schema is organized into OPERATIONAL CORE (auditable plan data)
+// and ENRICHMENTS (briefing, visual aids, computed data).
 
 model FlightPlan {
   id          String      @id @default(cuid())
@@ -163,64 +165,97 @@ model FlightPlan {
   status      PlanStatus  @default(DRAFT)
   flightRules FlightRules @default(VFR) @map("flight_rules")
 
-  // Origin aerodrome (snapshot)
+  // ── OPERATIONAL CORE ─────────────────────────────────────
+  // These fields define the flight plan itself. They must be
+  // stable, auditable, and sufficient to reproduce the plan.
+
+  // Aerodromes
   originIcao        String  @map("origin_icao")
   originName        String  @map("origin_name")
   originElevationFt Int?    @map("origin_elevation_ft")
-  originRunwayInUse String? @map("origin_runway_in_use")
-  originMetarRaw    String? @map("origin_metar_raw")
-
-  // Destination aerodrome (snapshot)
   destinationIcao        String  @map("destination_icao")
   destinationName        String  @map("destination_name")
   destinationElevationFt Int?    @map("destination_elevation_ft")
-  destinationRunwayInUse String? @map("destination_runway_in_use")
-  destinationMetarRaw    String? @map("destination_metar_raw")
-
-  // Alternate aerodrome (optional, snapshot)
   alternateIcao        String? @map("alternate_icao")
   alternateName        String? @map("alternate_name")
   alternateElevationFt Int?    @map("alternate_elevation_ft")
-  alternateRunwayInUse String? @map("alternate_runway_in_use")
-  alternateMetarRaw    String? @map("alternate_metar_raw")
 
-  // Aircraft (snapshot)
+  // Aircraft identification
   aircraftType     String? @map("aircraft_type")
   aircraftName     String? @map("aircraft_name")
+  callsign         String?
+  registration     String?
+
+  // Aircraft performance
   emptyWeightKg    Float?  @map("empty_weight_kg")
   takeoffWeightKg  Float?  @map("takeoff_weight_kg")
   mtowKg           Float?  @map("mtow_kg")
   fuelCapacityL    Float?  @map("fuel_capacity_l")
   fuelBurnLph      Float?  @map("fuel_burn_lph")
   aircraftStations Json?   @map("aircraft_stations")
-  callsign         String?
-  registration     String?
-  simbriefOfpId    String? @map("simbrief_ofp_id")
+  cruiseSpeedKts   Int?    @map("cruise_speed_kts")
+
+  // Equipment (ICAO Item 10)
+  equipmentCode    String? @map("equipment_code")
+  surveillanceCode String? @map("surveillance_code")
 
   // Route
-  routeText     String? @map("route_text")
-  cruiseLevel   String? @map("cruise_level")
-  plannedAltitude Int?   @map("planned_altitude") // feet (IFR)
-  remarks       String?
-  todMinutes    Int?    @map("tod_minutes")
-  todDistanceNm Float?  @map("tod_distance_nm")
+  routeText       String? @map("route_text")
+  cruiseLevel     String? @map("cruise_level")
+  plannedAltitude Int?    @map("planned_altitude")
+  totalDistanceNm Float?  @map("total_distance_nm")
+  remarks         String?
+
+  // Time
+  plannedDepartureUtc DateTime? @map("planned_departure_utc")
+  estimatedElapsedMin Int?      @map("estimated_elapsed_min")
+  estimatedArrivalUtc DateTime? @map("estimated_arrival_utc")
 
   // Fuel / endurance
   fuelConsumptionPerHour Float? @map("fuel_consumption_per_hour")
   fuelCurrentTotal       Float? @map("fuel_current_total")
-  fuelReserveMinutes     Int?   @map("fuel_reserve_minutes") // 30 or 45
+  fuelReserveMinutes     Int?   @map("fuel_reserve_minutes")
   fuelRequiredTotal      Float? @map("fuel_required_total")
   fuelPerWing            Float? @map("fuel_per_wing")
   enduranceMinutes       Int?   @map("endurance_minutes")
 
-  // Wind / performance (computed from weather data)
+  // Supplementary (ICAO Item 19)
+  personsOnBoard        Int?    @map("persons_on_board")
+  pilotInCommand        String? @map("pilot_in_command")
+  aircraftColorMarkings String? @map("aircraft_color_markings")
+
+  // ── ENRICHMENTS ──────────────────────────────────────────
+  // Computed, snapshot, or display data. Not part of the
+  // formal plan — supports briefing, map, and validation UX.
+
+  // Aerodrome snapshots (weather at save time)
+  originRunwayInUse String? @map("origin_runway_in_use")
+  originMetarRaw    String? @map("origin_metar_raw")
+  destinationRunwayInUse String? @map("destination_runway_in_use")
+  destinationMetarRaw    String? @map("destination_metar_raw")
+  alternateRunwayInUse String? @map("alternate_runway_in_use")
+  alternateMetarRaw    String? @map("alternate_metar_raw")
+
+  // Wind / performance (computed from weather)
   avgWindSpeed     Int? @map("avg_wind_speed")
   avgWindDirection Int? @map("avg_wind_direction")
   groundSpeed      Int? @map("ground_speed")
 
+  // TOC/TOD (computed from performance profile)
+  todMinutes    Int?    @map("tod_minutes")
+  todDistanceNm Float?  @map("tod_distance_nm")
+
+  // External references
+  simbriefOfpId    String? @map("simbrief_ofp_id")
+
+  // Assessment basis (reproducibility)
+  weatherBasis String? @map("weather_basis")
+
+  // ── METADATA ─────────────────────────────────────────────
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at") // soft delete
+  deletedAt DateTime? @map("deleted_at")
 
   user             User                    @relation(fields: [userId], references: [id])
   routes           FlightPlanRoute[]

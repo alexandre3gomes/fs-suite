@@ -47,7 +47,6 @@ export interface RouteSafetyResponse {
 const METAR_API_URL = 'https://aviationweather.gov/api/data/metar';
 const TAF_API_URL = 'https://aviationweather.gov/api/data/taf';
 const NOAA_TEXT_URL = 'https://tgftp.nws.noaa.gov/data/observations/metar/stations';
-const NOAA_STALE_THRESHOLD_MS = 3_600_000; // 1 hour
 const REQUEST_TIMEOUT_MS = 8000;
 const ISIGMET_API_URL = 'https://aviationweather.gov/api/data/isigmet?format=geojson';
 const AIRSIGMET_API_URL = 'https://aviationweather.gov/api/data/airsigmet?format=geojson';
@@ -148,13 +147,12 @@ export class WeatherService {
     const own = new Map<string, string>();
     const missing: string[] = [];
 
-    // 1) Cache
+    // 1) Cache (Redis TTL handles freshness; obs age is user-facing info, not discard criteria)
     for (const icao of normalized) {
       const cached = await client.get(`metar:${icao}`).catch(() => null);
       if (cached) {
         const parsed = JSON.parse(cached) as ParsedMetar;
-        const obsAge = Date.now() - new Date(parsed.observationTime).getTime();
-        if (obsAge <= NOAA_STALE_THRESHOLD_MS && parsed.flightCategory) {
+        if (parsed.flightCategory) {
           own.set(icao, parsed.flightCategory);
           continue;
         }
@@ -262,13 +260,7 @@ export class WeatherService {
     for (const icao of normalized) {
       const cached = await client.get(`metar:${icao}`).catch(() => null);
       if (cached) {
-        const parsed = JSON.parse(cached) as ParsedMetar;
-        const obsAge = Date.now() - new Date(parsed.observationTime).getTime();
-        if (obsAge > NOAA_STALE_THRESHOLD_MS) {
-          missing.push(icao);
-        } else {
-          results.push(parsed);
-        }
+        results.push(JSON.parse(cached) as ParsedMetar);
       } else {
         missing.push(icao);
       }
@@ -684,9 +676,13 @@ export class WeatherService {
     takeoffWeightKg: number | null;
     mtowKg: number | null;
     todDistanceNm: number | null;
+    totalDistanceNm: number | null;
     groundSpeed: number | null;
     enduranceMinutes: number | null;
     fuelReserveMinutes: number | null;
+    plannedDepartureUtc: Date | null;
+    estimatedElapsedMin: number | null;
+    estimatedArrivalUtc: Date | null;
     routes?: { latitude: number | null; longitude: number | null; sequence: number }[];
     cruiseSpeedKts?: number | null;
     fuelBurnLph?: number | null;
@@ -716,15 +712,25 @@ export class WeatherService {
     const tafs: Record<string, ParsedTaf> = {};
     for (const t of tafList) tafs[t.icaoId] = t;
 
-    const nowSec = Math.floor(Date.now() / 1000);
-    const nowMs = nowSec * 1000;
-    const totalDistanceNm = plan.todDistanceNm ?? 0;
+    // Use persisted departure time if available, otherwise fall back to now
+    const depEpochSec = plan.plannedDepartureUtc
+      ? Math.floor(plan.plannedDepartureUtc.getTime() / 1000)
+      : Math.floor(Date.now() / 1000);
+    const depMs = depEpochSec * 1000;
+
+    // Use persisted total distance (real route distance), NOT todDistanceNm
+    const totalDistanceNm = plan.totalDistanceNm ?? 0;
     const cruiseSpeedKts = plan.groundSpeed ?? null;
     const enduranceMin = plan.enduranceMinutes ?? 0;
-    const tripTimeSec =
-      cruiseSpeedKts && totalDistanceNm > 0
-        ? Math.round((totalDistanceNm / cruiseSpeedKts) * 3600)
-        : null;
+
+    // Use persisted ETE/ETA if available, otherwise compute from speed+distance
+    const arrEpochSec = plan.estimatedArrivalUtc
+      ? Math.floor(plan.estimatedArrivalUtc.getTime() / 1000)
+      : (plan.estimatedElapsedMin
+        ? depEpochSec + plan.estimatedElapsedMin * 60
+        : (cruiseSpeedKts && totalDistanceNm > 0
+          ? depEpochSec + Math.round((totalDistanceNm / cruiseSpeedKts) * 3600)
+          : null));
 
     const reserveMin = plan.fuelReserveMinutes ?? 30;
     const fuelOnBoard = plan.fuelCurrentTotal ?? 0;
@@ -735,7 +741,7 @@ export class WeatherService {
       .filter((f) => {
         const from = new Date(f.properties.validFrom).getTime();
         const to = new Date(f.properties.validTo).getTime();
-        return nowMs >= from && nowMs < to && f.geometry != null;
+        return depMs >= from && depMs < to && f.geometry != null;
       })
       .map((f) => ({ geometry: f.geometry, properties: f.properties }));
 
@@ -752,8 +758,11 @@ export class WeatherService {
       cruiseSpeedKts,
       enduranceMin,
       flightCondition: reserveMin >= 45 ? 'night' : 'day',
-      departureEpochSec: nowSec,
-      arrivalEpochSec: tripTimeSec ? nowSec + tripTimeSec : null,
+      departureEpochSec: depEpochSec,
+      arrivalEpochSec: arrEpochSec,
+      alternateArrivalEpochSec: arrEpochSec && cruiseSpeedKts && plan.todDistanceNm
+        ? arrEpochSec + Math.round((plan.todDistanceNm / cruiseSpeedKts) * 3600)
+        : null,
       metars,
       tafs,
       routeWaypoints: routeWaypoints.length >= 2 ? routeWaypoints : undefined,
@@ -769,7 +778,7 @@ export class WeatherService {
 
     if (routeWaypoints.length >= 2 && cruiseAltFt && tas && tas > 0) {
       try {
-        const winds = await this.getWindsAloft(routeWaypoints, cruiseAltFt, nowSec);
+        const winds = await this.getWindsAloft(routeWaypoints, cruiseAltFt, depEpochSec);
         performanceAdjustments = this.computePerformanceAdjustments(
           routeWaypoints, winds, tas, totalDistanceNm, fuelBurnLph ?? null,
         );
@@ -834,6 +843,16 @@ export class WeatherService {
     if (destinationIcao && arrSec) {
       const wxItems: ValidationItem[] = [];
       checkAerodrome(destinationIcao, metars[destinationIcao] ?? null, tafs[destinationIcao] ?? null, arrSec, 'dest', wxItems);
+      for (const wi of wxItems) {
+        items.push({ id: wi.id, severity: wi.severity, message: wi.message, action: wi.action, source: wi.source });
+      }
+    }
+    if (alternateIcao && arrSec) {
+      const altArrSec = cruiseSpeedKts && totalDistanceNm > 0
+        ? arrSec + Math.round((totalDistanceNm * 0.3 / cruiseSpeedKts) * 3600)
+        : arrSec;
+      const wxItems: ValidationItem[] = [];
+      checkAerodrome(alternateIcao, metars[alternateIcao] ?? null, tafs[alternateIcao] ?? null, altArrSec, 'alternate', wxItems);
       for (const wi of wxItems) {
         items.push({ id: wi.id, severity: wi.severity, message: wi.message, action: wi.action, source: wi.source });
       }
@@ -1122,8 +1141,8 @@ export class WeatherService {
     if (!dateMatch) return null;
     const obsTime = new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T${dateMatch[4]}:${dateMatch[5]}:00Z`);
 
-    // Reject stale observations (older than 3 hours)
-    if (Date.now() - obsTime.getTime() > 3 * NOAA_STALE_THRESHOLD_MS) return null;
+    // Reject impossibly old observations (older than 24 hours)
+    if (Date.now() - obsTime.getTime() > 24 * 3_600_000) return null;
 
     return this.parseRawMetar(icao, rawMetar, obsTime.toISOString());
   }
@@ -1362,5 +1381,77 @@ export class WeatherService {
       variableWindDir,
       remarks,
     };
+  }
+
+  private owmQueue: (() => void)[] = [];
+  private owmActive = 0;
+  private static readonly OWM_MAX_CONCURRENT = 2;
+
+  private async owmThrottled<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.owmActive >= WeatherService.OWM_MAX_CONCURRENT) {
+      await new Promise<void>((resolve) => this.owmQueue.push(resolve));
+    }
+    this.owmActive++;
+    try {
+      return await fn();
+    } finally {
+      this.owmActive--;
+      this.owmQueue.shift()?.();
+    }
+  }
+
+  async getPrecipitationTile(z: number, x: number, y: number): Promise<Buffer | null> {
+    const apiKey = this.config.get<string>('OWM_API_KEY');
+    if (!apiKey) return null;
+
+    const cacheKey = `owm:precip:${z}:${x}:${y}`;
+    const client = this.redis.getClient();
+
+    const cached = await client.get(cacheKey);
+    if (cached) return Buffer.from(cached, 'base64');
+
+    return this.owmThrottled(async () => {
+      const rechecked = await client.get(cacheKey);
+      if (rechecked) return Buffer.from(rechecked, 'base64');
+
+      const resp = await fetch(
+        `https://tile.openweathermap.org/map/precipitation_new/${z}/${x}/${y}.png?appid=${apiKey}`,
+      );
+      if (!resp.ok) return null;
+
+      const raw = Buffer.from(await resp.arrayBuffer());
+      const buffer = await this.recolorPrecipTile(raw);
+      await client.set(cacheKey, buffer.toString('base64'), { EX: 600 });
+      return buffer;
+    });
+  }
+
+  private async recolorPrecipTile(png: Buffer): Promise<Buffer> {
+    const sharp = (await import('sharp')).default;
+    const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3]!;
+      if (a < 8) { data[i + 3] = 0; continue; }
+
+      const r = data[i]!; const g = data[i + 1]!; const b = data[i + 2]!;
+      const intensity = Math.min(1, (r * 0.15 + g * 0.15 + b * 0.7) * (a / 255) / 100);
+      const [nr, ng, nb, na] = WeatherService.precipColor(intensity);
+      data[i] = nr; data[i + 1] = ng; data[i + 2] = nb; data[i + 3] = na;
+    }
+
+    return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+  }
+
+  private static precipColor(t: number): [number, number, number, number] {
+    if (t < 0.01) return [0, 0, 0, 0];
+    const a = Math.round(80 + t * 175);
+    if (t < 0.15) return [120, 200, 255, a];   // light blue
+    if (t < 0.30) return [30, 160, 255, a];    // blue
+    if (t < 0.45) return [0, 210, 80, a];      // green
+    if (t < 0.60) return [255, 240, 0, a];     // yellow
+    if (t < 0.75) return [255, 160, 0, a];     // orange
+    if (t < 0.90) return [255, 40, 0, a];      // red
+    return [180, 0, 200, a];                    // magenta
   }
 }
