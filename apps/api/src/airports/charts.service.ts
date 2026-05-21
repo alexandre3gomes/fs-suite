@@ -18,8 +18,10 @@ export interface AerodromeChart {
 export interface ChartSearchResult {
   icao: string;
   charts: AerodromeChart[];
-  /** Links to external pages where the user can browse charts */
-  externalLinks: { label: string; url: string }[];
+  /** Links to the authority that supplied the charts */
+  sourceLinks: { label: string; url: string }[];
+  /** Additional chart sources (ChartFox, SkyVector, etc.) */
+  moreLinks: { label: string; url: string }[];
 }
 
 // --------------- ICAO prefix → region mapping ---------------
@@ -259,7 +261,8 @@ async function fetchBrazilCharts(icao: string, svc: ChartsService): Promise<Aero
       const name = match[2]!.trim();
       if (!name || seen.has(chartUrl)) continue;
       seen.add(chartUrl);
-      charts.push({ type: classifyBrazilChart(name), name, url: chartUrl, source: 'DECEA AISWEB' });
+      const fixedUrl = chartUrl.replace('aisweb.decea.gov.br', 'aisweb.decea.mil.br');
+      charts.push({ type: classifyBrazilChart(name), name, url: fixedUrl, source: 'DECEA AISWEB' });
     }
     return sortCharts(charts);
   } catch (err) {
@@ -722,7 +725,7 @@ export class ChartsService {
   async searchCharts(icao: string): Promise<ChartSearchResult> {
     const normalized = icao.toUpperCase().trim();
     if (normalized.length < 3 || normalized.length > 4) {
-      return { icao: normalized, charts: [], externalLinks: [] };
+      return { icao: normalized, charts: [], sourceLinks: [], moreLinks: [] };
     }
 
     const cacheKey = `charts:${normalized}`;
@@ -739,8 +742,9 @@ export class ChartsService {
       this.log.warn(`Chart fetch failed for ${normalized}: ${err}`);
     }
 
-    const externalLinks = [...(region ? region.links(normalized) : []), ...globalLinks(normalized)];
-    const result: ChartSearchResult = { icao: normalized, charts, externalLinks };
+    const sourceLinks = region ? region.links(normalized) : [];
+    const moreLinks = globalLinks(normalized);
+    const result: ChartSearchResult = { icao: normalized, charts, sourceLinks, moreLinks };
     if (charts.length > 0) {
       await client.setEx(cacheKey, CACHE_TTL, JSON.stringify(result)).catch(() => {});
     }

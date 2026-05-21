@@ -68,8 +68,14 @@ export class AirportsController {
   @ApiOperation({ summary: 'Proxy a chart PDF to allow inline display (strips Content-Disposition: attachment)' })
   @ApiQuery({ name: 'url', required: true })
   async chartProxy(@Query('url') url: string, @Res() res: Response): Promise<void> {
+    try { return await this._chartProxy(url, res); } catch (err) {
+      this.logger.error(`chart-proxy error: ${(err as Error).stack ?? err}`);
+      if (!res.headersSent) res.status(502).json({ error: (err as Error).message });
+    }
+  }
+
+  private async _chartProxy(url: string, res: Response): Promise<void> {
     const ALLOWED_HOSTS = [
-      'aisweb.decea.gov.br',
       'aisweb.decea.mil.br',
       'aeronav.faa.gov',
       'aip.enaire.es',
@@ -133,7 +139,6 @@ export class AirportsController {
     const shouldCache = this.r2.isEnabled() && isPdf && upstreamLength < MAX_CACHE_SIZE;
 
     if (shouldCache) {
-      // Buffer and cache
       const chunks: Buffer[] = [];
       const nodeStream = Readable.fromWeb(upstream.body as never);
       for await (const chunk of nodeStream) {
@@ -154,22 +159,22 @@ export class AirportsController {
       }
     }
 
-    // Stream directly (R2 disabled, non-PDF, or too large)
+    // Buffer and send directly (R2 disabled, non-PDF, or too large)
+    const chunks: Buffer[] = [];
+    const nodeStream = Readable.fromWeb(upstream.body as never);
+    for await (const chunk of nodeStream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
+    }
+    const buffer = Buffer.concat(chunks);
+
     this.setPdfHeaders(res);
     const etag = upstream.headers.get('etag');
     const lastMod = upstream.headers.get('last-modified');
     if (etag) res.setHeader('ETag', etag);
     if (lastMod) res.setHeader('Last-Modified', lastMod);
     res.setHeader('Cache-Control', 'public, no-cache');
-    if (upstreamLength) res.setHeader('Content-Length', upstreamLength);
-
-    const nodeStream = Readable.fromWeb(upstream.body as never);
-    try {
-      await pipeline(nodeStream, res);
-    } catch {
-      if (!res.headersSent) res.status(502).end();
-      else res.end();
-    }
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
   }
 
   private setPdfHeaders(res: Response): void {
@@ -194,7 +199,7 @@ export class AirportsController {
       throw new BadRequestException('Invalid URL');
     }
 
-    if (!['geoaisweb.decea.mil.br', 'geoaisweb.decea.gov.br'].includes(parsedUrl.hostname)) {
+    if (!['geoaisweb.decea.mil.br'].includes(parsedUrl.hostname)) {
       throw new BadRequestException('Only DECEA GeoServer URLs are allowed');
     }
 

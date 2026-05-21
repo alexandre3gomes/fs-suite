@@ -7,6 +7,7 @@ import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text,
 
 import { getChecklistsForAircraft } from '../../data/checklistCatalog';
 import { useAircraftCatalog } from '../../hooks/useAircraftCatalog';
+import { trackFlightPlanSaved, trackAiValidation, trackPdfExported } from '../../services/analytics';
 import { apiClient, API_URL } from '../../services/api.client';
 import type { AiValidationResult } from '../../services/pdf-export';
 import { buildFlightPlanDoc, exportFlightPlanWithAttachments } from '../../services/pdf-export';
@@ -883,6 +884,9 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
   // Auto-select altitude per segment when corridor restricts range or on first load
   useEffect(() => {
+    const blocked = new Set(cruiseAltClearance?.filter((c) => c.blocked).map((c) => c.altitude));
+    const pickBest = (alts: number[]) => alts.find((a) => !blocked.has(a)) ?? alts[0];
+
     if (routeSegments.length === 0 && cruiseSuggestion) {
       // IFR or no segments — legacy auto-select
       if (corridorCompAlt != null) {
@@ -893,7 +897,8 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           const validInRange = cruiseSuggestion.altitudes.filter(
             (a) => a >= corridorAltRange.min && a <= corridorAltRange.max,
           );
-          setCruiseLevel(toFL(validInRange[0] ?? Math.round((corridorAltRange.min + corridorAltRange.max) / 2 / 100) * 100));
+          const best = pickBest(validInRange);
+          setCruiseLevel(toFL(best ?? Math.round((corridorAltRange.min + corridorAltRange.max) / 2 / 100) * 100));
         }
       }
       return;
@@ -904,10 +909,10 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     for (const seg of routeSegments) {
       if (updated[seg.id] && seg.suggestedAltitudes.length > 0) {
         const ft = parseCruiseLevelFt(updated[seg.id]!);
-        if (ft && seg.suggestedAltitudes.includes(ft)) continue;
+        if (ft && seg.suggestedAltitudes.includes(ft) && !blocked.has(ft)) continue;
       }
       if (seg.suggestedAltitudes.length > 0) {
-        updated[seg.id] = toFL(seg.suggestedAltitudes[0]!);
+        updated[seg.id] = toFL(pickBest(seg.suggestedAltitudes)!);
         changed = true;
       }
     }
@@ -918,7 +923,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
         setCruiseLevel(updated[primary.id]!);
       }
     }
-  }, [routeSegments, corridorAltRange, corridorCompAlt, cruiseSuggestion]);
+  }, [routeSegments, corridorAltRange, corridorCompAlt, cruiseSuggestion, cruiseAltClearance]);
 
   // Sync cruiseLevel from segment levels (use first segment's level for ICAO Field 15)
   useEffect(() => {
@@ -1364,6 +1369,11 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           }))
         : undefined,
     };
+    trackFlightPlanSaved({
+      flightRules: data.flightRules ?? 'VFR',
+      origin: data.originIcao ?? '',
+      destination: data.destinationIcao ?? '',
+    });
     void onSave(savePayload as VfrPlanData);
   };
 
@@ -1422,6 +1432,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
         }
       }
 
+      trackPdfExported({ origin: data.originIcao ?? '', destination: data.destinationIcao ?? '' });
       const aiData = exportIncludeAiAnalysis && validationResult ? validationResult : undefined;
       const hasAttachments = exportIncludeCharts || exportIncludeChecklist;
       if (!hasAttachments) {
@@ -1495,10 +1506,17 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     setValidationError(null);
     setValidationResult(null);
     try {
+      const { aircraftStations: _drop, ...aiPayload } = data;
       const result = await apiClient.post<AiValidationResult>(
-        '/ai-validation/validate', data,
+        '/ai-validation/validate', aiPayload,
       );
       setValidationResult(result);
+      trackAiValidation({
+        origin: data.originIcao ?? '',
+        destination: data.destinationIcao ?? '',
+        status: result.overallStatus,
+        provider: result.meta?.provider,
+      });
     } catch (err: unknown) {
       const status = (err as { status?: number }).status;
       if (status === 402) {

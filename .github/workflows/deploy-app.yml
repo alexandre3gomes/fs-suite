@@ -39,6 +39,7 @@ jobs:
         run: cd apps/app && npx expo export --platform web
         env:
           EXPO_PUBLIC_API_URL: https://api.fs-suite.com
+          EXPO_PUBLIC_POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
 
       - name: Create Cloudflare Pages project (if needed)
         run: npx wrangler pages project create fs-suite-app --production-branch=main || true

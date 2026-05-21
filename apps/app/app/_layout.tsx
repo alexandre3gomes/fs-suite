@@ -11,6 +11,7 @@ import type { ErrorInfo, ReactNode } from 'react';
 import { Text, View } from 'react-native';
 
 import { restoreLanguage } from '../src/i18n';
+import { initAnalytics } from '../src/services/analytics';
 import { refreshAccessToken } from '../src/services/auth.service';
 import { restoreUnits } from '../src/stores/units.store';
 
@@ -81,6 +82,8 @@ function RootLayout(): JSX.Element | null {
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
+
+    initAnalytics();
 
     // Restore persisted language + attempt silent token refresh
     Promise.all([restoreLanguage(), restoreUnits(), refreshAccessToken().catch(() => undefined)])

@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 
 import { useAuthStore } from '../stores/auth.store';
 
+import { identifyUser, resetAnalytics } from './analytics';
 import { apiClient, API_URL } from './api.client';
 
 const GOOGLE_AUTH_URL = API_URL.replace(/192\.168\.\d+\.\d+/, 'localhost');
@@ -91,6 +92,7 @@ async function exchangeAuthCodeNative(code: string): Promise<void> {
 
   const user = await apiClient.get<UserProfile>('/users/me');
   setUser(user);
+  identifyUser(user);
 }
 
 export async function exchangeAuthCode(code: string): Promise<void> {
@@ -101,6 +103,7 @@ export async function exchangeAuthCode(code: string): Promise<void> {
 
   const user = await apiClient.get<UserProfile>('/users/me');
   setUser(user);
+  identifyUser(user);
 }
 
 export async function refreshAccessToken(): Promise<string | null> {
@@ -118,8 +121,9 @@ export async function refreshAccessToken(): Promise<string | null> {
       body,
     );
 
-    const { setTokens } = useAuthStore.getState();
+    const { setTokens, user } = useAuthStore.getState();
     setTokens(accessToken);
+    if (user) identifyUser(user);
 
     if (refreshToken && Platform.OS !== 'web') {
       await SecureStore.setItemAsync(SECURE_STORE_REFRESH_KEY, refreshToken);
@@ -149,5 +153,6 @@ export async function signOut(): Promise<void> {
     Sentry.captureException(err, { level: 'warning', tags: { context: 'logout' } });
   } finally {
     useAuthStore.getState().clear();
+    resetAnalytics();
   }
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
+import { trackChartViewed } from '../../services/analytics';
 import { API_URL, apiClient } from '../../services/api.client';
 
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
@@ -18,7 +19,8 @@ interface AerodromeChart {
 interface ChartSearchResult {
   icao: string;
   charts: AerodromeChart[];
-  externalLinks: { label: string; url: string }[];
+  sourceLinks: { label: string; url: string }[];
+  moreLinks: { label: string; url: string }[];
 }
 
 interface Props {
@@ -80,6 +82,7 @@ export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
   // Render inline iframe with selected chart PDF
   useEffect(() => {
     if (Platform.OS !== 'web' || !iframeRef.current || !selectedChart) return;
+    trackChartViewed({ icao, chartType: selectedChart.type, source: selectedChart.source });
     const doc = getDoc();
     if (!doc) return;
     const el = iframeRef.current as unknown as DomElement;
@@ -300,14 +303,34 @@ export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
         <Text className="mb-2 text-xs text-muted-foreground">{t('vfr.noChartsFound')}</Text>
       )}
 
-      {/* ---- External links (open in new tab) ---- */}
-      {data.externalLinks.length > 0 ? (
+      {/* ---- Source links ---- */}
+      {data.sourceLinks.length > 0 ? (
         <View className="mt-2">
           <Text className="mb-1 text-[10px] font-semibold text-muted-foreground">
             {t('vfr.chartSources')}
           </Text>
           <View className="flex-row flex-wrap gap-1.5">
-            {data.externalLinks.map((link, idx) => (
+            {data.sourceLinks.map((link, idx) => (
+              <Pressable
+                key={idx}
+                onPress={() => openUrl(link.url)}
+                className="rounded-sm border border-border bg-surface px-2 py-1 active:bg-muted"
+              >
+                <Text className="text-[10px] font-medium text-primary">{link.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {/* ---- More charts ---- */}
+      {data.moreLinks.length > 0 ? (
+        <View className="mt-1.5">
+          <Text className="mb-1 text-[10px] font-semibold text-muted-foreground">
+            {t('vfr.chartMore')}
+          </Text>
+          <View className="flex-row flex-wrap gap-1.5">
+            {data.moreLinks.map((link, idx) => (
               <Pressable
                 key={idx}
                 onPress={() => openUrl(link.url)}
