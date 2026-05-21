@@ -124,6 +124,8 @@ export interface PlanRouteLeg {
   magneticDeclination: number;
   magneticCourse: number;
   suggestedAltitudes: number[];
+  timeMin?: number;
+  groundSpeedKts?: number;
 }
 
 export interface VfrPlanData {
@@ -1268,7 +1270,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       simbriefOfpId: simbriefOfpId || undefined,
       visualReferences: initialData?.visualReferences,
       routeWaypoints: routeWaypoints.length > 0 ? routeWaypoints.map((wp) => ({ lat: wp.lat, lng: wp.lng, name: wp.name })) : undefined,
-      routeLegs: routeLegs.length > 0 ? routeLegs.map((leg) => ({
+      routeLegs: routeLegs.length > 0 ? routeLegs.map((leg, i) => ({
         from: leg.from.name,
         to: leg.to.name,
         distanceNm: leg.distanceNm,
@@ -1276,6 +1278,8 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
         magneticDeclination: leg.magneticDeclination,
         magneticCourse: leg.magneticCourse,
         suggestedAltitudes: leg.suggestedAltitudes,
+        timeMin: enrichedLegs[i]?.timeMin,
+        groundSpeedKts: enrichedLegs[i]?.groundSpeedKts,
       })) : undefined,
       totalDistanceNm: totalDistanceNm || undefined,
       tripMinutes: tripMinutes || undefined,

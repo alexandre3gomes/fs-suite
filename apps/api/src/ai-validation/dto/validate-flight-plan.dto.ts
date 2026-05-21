@@ -17,6 +17,8 @@ class RouteLegDto {
   @IsNumber() magneticDeclination!: number;
   @IsNumber() magneticCourse!: number;
   @IsOptional() @IsArray() suggestedAltitudes?: number[];
+  @IsOptional() @IsNumber() timeMin?: number;
+  @IsOptional() @IsNumber() groundSpeedKts?: number;
 }
 
 class VisualReferenceDto {

@@ -173,6 +173,8 @@ export class AiValidationService {
         magneticCourse: Math.round(leg.magneticCourse),
         magneticDeclination: +leg.magneticDeclination.toFixed(1),
         suggestedAltitudesFt: leg.suggestedAltitudes ?? [],
+        eteMinutes: leg.timeMin != null ? Math.round(leg.timeMin) : null,
+        groundSpeedKts: leg.groundSpeedKts != null ? Math.round(leg.groundSpeedKts) : null,
       }));
     }
 

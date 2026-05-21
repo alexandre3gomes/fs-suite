@@ -390,6 +390,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
       leg.suggestedAltitudes.slice(0, 2).map((a) =>
         hasIfr ? `FL${String(Math.round(a / 100)).padStart(3, '0')}` : a.toLocaleString(),
       ).join(', '),
+      leg.timeMin != null ? formatMinutes(leg.timeMin) : '—',
     ]);
 
     // Total row
@@ -400,12 +401,13 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
       '',
       '',
       '',
-      plan.tripMinutes ? `ETE ${formatMinutes(plan.tripMinutes)}` : '',
+      '',
+      plan.tripMinutes ? formatMinutes(plan.tripMinutes) : '',
     ]);
 
     autoTable(doc, {
       startY: y,
-      head: [['#', 'Leg', 'NM', 'TC', 'VAR', 'MC', 'Alt']],
+      head: [['#', 'Leg', 'NM', 'TC', 'VAR', 'MC', 'Alt', 'ETE']],
       body: legRows,
       theme: 'grid',
       headStyles: { fillColor: COLORS.headerBg, textColor: COLORS.headerText, fontStyle: 'bold', fontSize: 7 },
@@ -414,11 +416,12 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
       columnStyles: {
         0: { cellWidth: 8, halign: 'center' },
         1: { cellWidth: 'auto' },
-        2: { cellWidth: 16, halign: 'center' },
-        3: { cellWidth: 16, halign: 'center' },
-        4: { cellWidth: 16, halign: 'center' },
-        5: { cellWidth: 16, halign: 'center' },
-        6: { cellWidth: 30, halign: 'center' },
+        2: { cellWidth: 14, halign: 'center' },
+        3: { cellWidth: 14, halign: 'center' },
+        4: { cellWidth: 14, halign: 'center' },
+        5: { cellWidth: 14, halign: 'center' },
+        6: { cellWidth: 26, halign: 'center' },
+        7: { cellWidth: 16, halign: 'center' },
       },
       margin: { left: 14, right: 14 },
       didParseCell: (data) => {
