@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { setLanguage, type SupportedLocale } from '../../../src/i18n';
+import { setFeatureContext, trackAction, trackFailure, trackSuccess, categorizeError } from '../../../src/services/analytics';
 import { apiClient } from '../../../src/services/api.client';
 import { signInWithDev, signInWithGoogle } from '../../../src/services/auth.service';
 import { useAuthStore } from '../../../src/stores/auth.store';
@@ -122,12 +123,17 @@ export default function LoginScreen(): JSX.Element {
   const ctaRef = useRef<View>(null);
   const isWide = width >= 768;
 
+  useEffect(() => { setFeatureContext('auth'); return () => setFeatureContext(null); }, []);
+
   useEffect(() => {
     let retryTimer: ReturnType<typeof setTimeout>;
     const fetchProviders = (): void => {
       apiClient
         .get<{ providers: string[] }>('/auth/providers')
-        .then((res) => setProviders(res.providers))
+        .then((res) => {
+          setProviders(res.providers);
+          trackAction('auth_providers_loaded', { provider_count: res.providers.length });
+        })
         .catch(() => { retryTimer = setTimeout(fetchProviders, 3000); });
     };
     fetchProviders();
@@ -140,11 +146,29 @@ export default function LoginScreen(): JSX.Element {
 
   const handleGoogleSignIn = async (): Promise<void> => {
     setLoading('google');
-    try { await signInWithGoogle(); } finally { setLoading(null); }
+    trackAction('auth_sign_in_started', { provider: 'google' });
+    try {
+      await signInWithGoogle();
+      trackSuccess('auth_sign_in_completed', { provider: 'google' });
+    } catch (err) {
+      const { errorType, statusCode } = categorizeError(err);
+      trackFailure('auth_sign_in_failed', errorType, { provider: 'google', status_code: statusCode });
+    } finally {
+      setLoading(null);
+    }
   };
   const handleDevSignIn = async (): Promise<void> => {
     setLoading('dev');
-    try { await signInWithDev(); } finally { setLoading(null); }
+    trackAction('auth_sign_in_started', { provider: 'dev' });
+    try {
+      await signInWithDev();
+      trackSuccess('auth_sign_in_completed', { provider: 'dev' });
+    } catch (err) {
+      const { errorType, statusCode } = categorizeError(err);
+      trackFailure('auth_sign_in_failed', errorType, { provider: 'dev', status_code: statusCode });
+    } finally {
+      setLoading(null);
+    }
   };
 
   const scrollToCta = (): void => {

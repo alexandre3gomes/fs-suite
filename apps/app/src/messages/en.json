@@ -340,6 +340,12 @@
     "maxLabel": "max"
   },
   "profile": {
+    "privacy": "Privacy",
+    "privacyDescription": "Control how your usage data is handled.",
+    "analyticsToggle": "Usage analytics",
+    "analyticsToggleDescription": "We collect anonymous events to understand usage and prioritize improvements. We do not send raw METAR text, free-form input, or personal names in events.",
+    "analyticsOn": "On",
+    "analyticsOff": "Off",
     "integrations": "Integrations",
     "simbriefDescription": "Connect your SimBrief account to generate and import IFR flight plans directly.",
     "units": "Units",

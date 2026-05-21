@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { trackAction, setFeatureContext } from '../../../src/services/analytics';
 import { apiClient } from '../../../src/services/api.client';
 
 interface FlightPlanSummary {
@@ -30,12 +31,14 @@ export default function VfrPlansListScreen() {
     try {
       const data = await apiClient.get<FlightPlanSummary[]>('/flight-plans');
       setPlans(data);
+      trackAction('flight_plan_list_viewed', { plan_count: data.length, is_empty: data.length === 0 });
     } catch {
       setPlans([]);
     }
     setLoading(false);
   }, []);
 
+  useEffect(() => { setFeatureContext('flight_plans'); return () => setFeatureContext(null); }, []);
   useEffect(() => { void fetchPlans(); }, [fetchPlans]);
 
   return (
@@ -50,7 +53,10 @@ export default function VfrPlansListScreen() {
             {/* New plan button */}
             <Pressable
               className="mb-4 rounded-card border-2 border-dashed border-primary/30 bg-primary/5 p-4 active:opacity-80 md:p-6"
-              onPress={() => router.push('/(auth)/flight-plans/new')}
+              onPress={() => {
+                trackAction('cta_clicked', { cta: 'new_flight_plan', from: 'flight_plans_list' });
+                router.push('/(auth)/flight-plans/new');
+              }}
             >
               <Text className="text-center text-base font-bold text-primary md:text-lg">
                 + {t('dashboard.newPlan')}
@@ -69,7 +75,15 @@ export default function VfrPlansListScreen() {
                   <Pressable
                     key={plan.id}
                     className="mb-3 rounded-card border border-border bg-surface p-4 active:opacity-80 md:mb-0 md:w-[calc(50%-8px)] md:p-5"
-                    onPress={() => router.push(`/(auth)/flight-plans/${plan.id}`)}
+                    onPress={() => {
+                      trackAction('flight_plan_opened', {
+                        plan_id: plan.id,
+                        status: plan.status,
+                        flight_rules: plan.flightRules,
+                        from: 'flight_plans_list',
+                      });
+                      router.push(`/(auth)/flight-plans/${plan.id}`);
+                    }}
                   >
                     <View className="flex-row items-center justify-between">
                       <View className="flex-row items-center gap-2">

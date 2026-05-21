@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, Text, View } from 'react-native';
 import { Dropdown } from 'react-native-element-dropdown';
 
+import { trackAction, trackSuccess, trackFailure, categorizeError } from '../../services/analytics';
 import { apiClient } from '../../services/api.client';
 
 import { openExternal } from './dom-types';
@@ -112,6 +113,13 @@ export function SimBriefPanel({ originIcao, destinationIcao, alternateIcao, call
       Alert.alert(t('common.error'), t('vfr.simbriefNeedPilotId'));
       return;
     }
+    trackAction('simbrief_dispatch_opened', {
+      origin_icao: originIcao,
+      destination_icao: destinationIcao,
+      has_alternate: !!alternateIcao,
+      has_aircraft: !!selectedAircraft,
+      has_callsign: !!callsign,
+    });
 
     const params = new URLSearchParams();
     params.set('orig', originIcao);
@@ -139,11 +147,19 @@ export function SimBriefPanel({ originIcao, destinationIcao, alternateIcao, call
       return;
     }
     setImporting(true);
+    trackAction('simbrief_import_requested');
     try {
       const data = await apiClient.get<SimBriefOfpData>('/integrations/simbrief/ofp');
       onImport(data);
+      trackSuccess('simbrief_import_succeeded', {
+        origin_icao: data.originIcao,
+        destination_icao: data.destinationIcao,
+        has_alternate: !!data.alternateIcao,
+      });
       Alert.alert(t('vfr.simbrief'), t('vfr.simbriefImported'));
     } catch (err: unknown) {
+      const { errorType, statusCode } = categorizeError(err);
+      trackFailure('simbrief_import_failed', errorType, { status_code: statusCode });
       const message = err instanceof Error ? err.message : 'Could not import OFP.';
       Alert.alert(t('common.error'), message);
     }

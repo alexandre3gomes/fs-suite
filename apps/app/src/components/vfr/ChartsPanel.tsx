@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
-import { trackChartViewed } from '../../services/analytics';
+import { trackAction } from '../../services/analytics';
 import { API_URL, apiClient } from '../../services/api.client';
 
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
@@ -82,7 +82,7 @@ export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
   // Render inline iframe with selected chart PDF
   useEffect(() => {
     if (Platform.OS !== 'web' || !iframeRef.current || !selectedChart) return;
-    trackChartViewed({ icao, chartType: selectedChart.type, source: selectedChart.source });
+    trackAction('chart_viewed', { icao, chart_type: selectedChart.type, source: selectedChart.source });
     const doc = getDoc();
     if (!doc) return;
     const el = iframeRef.current as unknown as DomElement;

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Alert, Animated, Platform, Text, View } from 'react-native';
 
 import { VfrPlanForm, type VfrPlanData } from '../../../src/components/vfr/VfrPlanForm';
+import { trackAction, trackSuccess, trackFailure, categorizeError, setFeatureContext } from '../../../src/services/analytics';
 import { apiClient } from '../../../src/services/api.client';
 
 function SaveToast({ visible, message }: { visible: boolean; message: string }) {
@@ -88,14 +89,30 @@ export default function EditVfrPlanScreen() {
     })();
   }, [id, router]);
 
+  useEffect(() => { setFeatureContext('vfr_planning', 'edit'); return () => setFeatureContext(null); }, []);
+
   const handleSave = useCallback(async (data: VfrPlanData) => {
     setSaving(true);
+    trackAction('flight_plan_save_requested', {
+      plan_mode: 'edit',
+      plan_id: id,
+      flight_rules: data.flightRules,
+      origin_icao: data.originIcao,
+      destination_icao: data.destinationIcao,
+      has_alternate: !!data.alternateIcao,
+      has_route: (data.routeWaypoints?.length ?? 0) > 0,
+      has_simbrief: !!data.simbriefOfpId,
+      aircraft_type: data.aircraftType,
+    });
     try {
       await apiClient.patch(`/flight-plans/${id}`, data);
+      trackSuccess('flight_plan_updated', { plan_id: id, flight_rules: data.flightRules });
       setSaving(false);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
     } catch (err: unknown) {
+      const { errorType, statusCode } = categorizeError(err);
+      trackFailure('flight_plan_save_failed', errorType, { plan_mode: 'edit', plan_id: id, status_code: statusCode });
       const e = err as Record<string, Record<string, Record<string, unknown>>>;
       const msg = e?.response?.data?.message ?? (err instanceof Error ? err.message : t('common.error'));
       const text = Array.isArray(msg) ? msg.join('\n') : String(msg);
@@ -110,10 +127,15 @@ export default function EditVfrPlanScreen() {
 
   const handleDelete = useCallback(() => {
     const doDelete = async () => {
+      trackAction('flight_plan_delete_requested', { plan_id: id });
       try {
         await apiClient.delete(`/flight-plans/${id}`);
+        trackSuccess('flight_plan_deleted', { plan_id: id });
         router.replace('/(auth)/flight-plans');
-      } catch { /* ignore */ }
+      } catch (err) {
+        const { errorType, statusCode } = categorizeError(err);
+        trackFailure('flight_plan_delete_failed', errorType, { plan_id: id, status_code: statusCode });
+      }
     };
 
     if (Platform.OS === 'web') {

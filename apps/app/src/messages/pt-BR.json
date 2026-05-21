@@ -340,6 +340,12 @@
     "maxLabel": "máx"
   },
   "profile": {
+    "privacy": "Privacidade",
+    "privacyDescription": "Controle como seus dados de uso são tratados.",
+    "analyticsToggle": "Análise de uso",
+    "analyticsToggleDescription": "Coletamos eventos anônimos para entender o uso e priorizar melhorias. Não enviamos conteúdo livre, METAR cru ou nomes pessoais nos eventos.",
+    "analyticsOn": "Ativada",
+    "analyticsOff": "Desativada",
     "integrations": "Integrações",
     "simbriefDescription": "Conecte sua conta SimBrief para gerar e importar planos de voo IFR diretamente.",
     "units": "Unidades",

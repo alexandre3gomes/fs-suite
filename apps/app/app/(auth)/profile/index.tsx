@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
+import { isOptedOut, setFeatureContext, setOptOut, trackAction, trackFailure, trackSuccess, categorizeError } from '../../../src/services/analytics';
 import { apiClient } from '../../../src/services/api.client';
 import {
   useUnitsStore,
@@ -60,6 +61,17 @@ export default function ProfileScreen() {
   const { t } = useTranslation();
   const { user } = useCurrentUser();
 
+  useEffect(() => { setFeatureContext('profile'); return () => setFeatureContext(null); }, []);
+
+  // Analytics opt-out
+  const [analyticsOptedOut, setAnalyticsOptedOut] = useState(isOptedOut());
+  const handleToggleAnalytics = useCallback(async () => {
+    const next = !analyticsOptedOut;
+    await setOptOut(next);
+    setAnalyticsOptedOut(next);
+    if (!next) trackAction('analytics_opt_in');
+  }, [analyticsOptedOut]);
+
   // SimBrief connection
   const [simbriefPilotId, setSimbriefPilotId] = useState('');
   const [simbriefLoading, setSimbriefLoading] = useState(true);
@@ -83,9 +95,12 @@ export default function ProfileScreen() {
     setSimbriefSaving(true);
     try {
       await apiClient.patch('/integrations/simbrief/connection', { pilotId: id });
+      trackSuccess('simbrief_pilot_id_saved');
       setSimbriefSaved(true);
       setTimeout(() => setSimbriefSaved(false), 2000);
-    } catch {
+    } catch (err) {
+      const { errorType, statusCode } = categorizeError(err);
+      trackFailure('simbrief_pilot_id_save_failed', errorType, { status_code: statusCode });
       Alert.alert(t('common.error'), 'Could not save SimBrief pilot ID.');
     }
     setSimbriefSaving(false);
@@ -121,12 +136,15 @@ export default function ProfileScreen() {
     setAiSaving(true);
     try {
       await apiClient.patch('/integrations/ai-validation/connection', { provider: aiProvider, apiKey: key });
+      trackSuccess('ai_key_saved', { provider: aiProvider });
       setAiSaved(true);
       setAiHasKey(true);
       setAiConnectedProvider(aiProvider);
       setAiApiKey('');
       setTimeout(() => setAiSaved(false), 2000);
-    } catch {
+    } catch (err) {
+      const { errorType, statusCode } = categorizeError(err);
+      trackFailure('ai_key_save_failed', errorType, { provider: aiProvider, status_code: statusCode });
       Alert.alert(t('common.error'), 'Could not save API key.');
     }
     setAiSaving(false);
@@ -135,6 +153,7 @@ export default function ProfileScreen() {
   const handleDeleteAiKey = useCallback(async () => {
     try {
       await apiClient.delete('/integrations/ai-validation/connection');
+      trackSuccess('ai_key_deleted');
       setAiHasKey(false);
       setAiConnectedProvider(null);
       setAiApiKey('');
@@ -159,6 +178,26 @@ export default function ProfileScreen() {
 
           {/* Units */}
           <UnitsSection />
+
+          {/* Privacy */}
+          <View className="border-b border-border px-4 py-5 md:px-6">
+            <Text className="text-base font-bold text-foreground">{t('profile.privacy')}</Text>
+            <Text className="mt-1 text-xs text-muted-foreground">{t('profile.privacyDescription')}</Text>
+            <View className="mt-3 flex-row items-center justify-between rounded-md border border-border bg-surface-muted px-4 py-3">
+              <View className="flex-1 pr-3">
+                <Text className="text-sm font-semibold text-foreground">{t('profile.analyticsToggle')}</Text>
+                <Text className="mt-1 text-xs text-muted-foreground">{t('profile.analyticsToggleDescription')}</Text>
+              </View>
+              <Pressable
+                onPress={() => { void handleToggleAnalytics(); }}
+                className={`rounded-md border px-3 py-1.5 ${analyticsOptedOut ? 'border-border' : 'border-primary bg-primary/10'}`}
+              >
+                <Text className={`text-xs font-medium ${analyticsOptedOut ? 'text-foreground' : 'text-primary'}`}>
+                  {analyticsOptedOut ? t('profile.analyticsOff') : t('profile.analyticsOn')}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
 
           {/* Integrations */}
           <View className="border-b border-border px-4 py-5 md:px-6">

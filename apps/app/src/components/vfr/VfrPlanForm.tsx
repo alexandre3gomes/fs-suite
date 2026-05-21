@@ -7,7 +7,7 @@ import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text,
 
 import { getChecklistsForAircraft } from '../../data/checklistCatalog';
 import { useAircraftCatalog } from '../../hooks/useAircraftCatalog';
-import { trackFlightPlanSaved, trackAiValidation, trackPdfExported } from '../../services/analytics';
+import { trackAction, trackSuccess, trackFailure, categorizeError } from '../../services/analytics';
 import { apiClient, API_URL } from '../../services/api.client';
 import type { AiValidationResult } from '../../services/pdf-export';
 import { buildFlightPlanDoc, exportFlightPlanWithAttachments } from '../../services/pdf-export';
@@ -1369,11 +1369,6 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           }))
         : undefined,
     };
-    trackFlightPlanSaved({
-      flightRules: data.flightRules ?? 'VFR',
-      origin: data.originIcao ?? '',
-      destination: data.destinationIcao ?? '',
-    });
     void onSave(savePayload as VfrPlanData);
   };
 
@@ -1394,6 +1389,10 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
       return;
     }
+    trackAction('export_modal_opened', {
+      origin_icao: data.originIcao,
+      destination_icao: data.destinationIcao,
+    });
     setShowExportModal(true);
   };
 
@@ -1432,13 +1431,22 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
         }
       }
 
-      trackPdfExported({ origin: data.originIcao ?? '', destination: data.destinationIcao ?? '' });
       const aiData = exportIncludeAiAnalysis && validationResult ? validationResult : undefined;
       const hasAttachments = exportIncludeCharts || exportIncludeChecklist;
+      const exportProps = {
+        origin_icao: data.originIcao,
+        destination_icao: data.destinationIcao,
+        includes_charts: exportIncludeCharts,
+        includes_checklist: exportIncludeChecklist,
+        includes_ai: exportIncludeAiAnalysis,
+        has_map_image: !!mapImageDataUrl,
+      };
+      trackAction('export_requested', exportProps);
       if (!hasAttachments) {
         const doc = buildFlightPlanDoc(data, mapImageDataUrl, aiData, planViability);
         const filename = `flight-plan_${data.originIcao}-${data.destinationIcao}_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.pdf`;
         doc.save(filename);
+        trackSuccess('export_completed', { ...exportProps, attachment_count: 0 });
         setShowExportModal(false);
         return;
       }
@@ -1466,7 +1474,10 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       }
 
       await exportFlightPlanWithAttachments(data, { chartUrls, checklistUrl }, mapImageDataUrl, aiData, planViability);
+      trackSuccess('export_completed', { ...exportProps, attachment_count: chartUrls.length + (checklistUrl ? 1 : 0) });
     } catch (err) {
+      const { errorType, statusCode } = categorizeError(err);
+      trackFailure('export_failed', errorType, { status_code: statusCode });
       console.error('PDF export error:', err);
       if (Platform.OS === 'web') {
         (globalThis as unknown as { alert: (msg: string) => void }).alert(
@@ -1500,11 +1511,17 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     const data = buildPlanData();
     if (!data) {
       Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
+      trackFailure('ai_validation_blocked_missing_inputs', 'validation');
       return;
     }
     setValidating(true);
     setValidationError(null);
     setValidationResult(null);
+    trackAction('ai_validation_requested', {
+      origin_icao: data.originIcao,
+      destination_icao: data.destinationIcao,
+      flight_rules: data.flightRules,
+    });
     try {
       const aiPayload = { ...data };
       delete aiPayload.aircraftStations;
@@ -1512,13 +1529,19 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
         '/ai-validation/validate', aiPayload,
       );
       setValidationResult(result);
-      trackAiValidation({
-        origin: data.originIcao ?? '',
-        destination: data.destinationIcao ?? '',
-        status: result.overallStatus,
+      trackSuccess('ai_validation_succeeded', {
+        origin_icao: data.originIcao,
+        destination_icao: data.destinationIcao,
+        overall_status: result.overallStatus,
         provider: result.meta?.provider,
+        has_byok: result.meta?.byok ?? false,
       });
     } catch (err: unknown) {
+      const { errorType, statusCode } = categorizeError(err);
+      trackFailure('ai_validation_failed', errorType, {
+        status_code: statusCode,
+        rate_limited: statusCode === 429,
+      });
       const status = (err as { status?: number }).status;
       if (status === 402) {
         setValidationError(t('vfr.aiValidationKeyError'));
@@ -1546,6 +1569,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const aiReady = aiMissingItems.length === 0;
 
   const handleAiValidate = () => {
+    trackAction('ai_validation_opened', { has_previous_result: !!validationResult });
     setShowValidationModal(true);
     if (!validationResult) {
       void requestAiValidation();

@@ -3,7 +3,7 @@ import '@/i18n';
 
 import * as Sentry from '@sentry/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import i18n from 'i18next';
 import { Component, useEffect, useRef, useState } from 'react';
@@ -11,8 +11,9 @@ import type { ErrorInfo, ReactNode } from 'react';
 import { Text, View } from 'react-native';
 
 import { restoreLanguage } from '../src/i18n';
-import { initAnalytics } from '../src/services/analytics';
+import { initAnalytics, trackScreenView, setSessionContext } from '../src/services/analytics';
 import { refreshAccessToken } from '../src/services/auth.service';
+import { useAuthStore } from '../src/stores/auth.store';
 import { restoreUnits } from '../src/stores/units.store';
 
 Sentry.init({
@@ -75,6 +76,16 @@ const queryClient = new QueryClient({
   },
 });
 
+function ScreenTracker(): null {
+  const pathname = usePathname();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  useEffect(() => {
+    setSessionContext({ authenticated: isAuthenticated });
+    if (pathname) trackScreenView(pathname);
+  }, [pathname, isAuthenticated]);
+  return null;
+}
+
 function RootLayout(): JSX.Element | null {
   const [ready, setReady] = useState(false);
   const initialized = useRef(false);
@@ -83,7 +94,7 @@ function RootLayout(): JSX.Element | null {
     if (initialized.current) return;
     initialized.current = true;
 
-    initAnalytics();
+    void initAnalytics();
 
     // Restore persisted language + attempt silent token refresh
     Promise.all([restoreLanguage(), restoreUnits(), refreshAccessToken().catch(() => undefined)])
@@ -98,6 +109,7 @@ function RootLayout(): JSX.Element | null {
   return (
     <AppErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <ScreenTracker />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="(public)" />

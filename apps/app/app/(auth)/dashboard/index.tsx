@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
+import { trackAction } from '../../../src/services/analytics';
 
 export default function DashboardScreen() {
   const { t } = useTranslation();
@@ -26,7 +27,10 @@ export default function DashboardScreen() {
         </Text>
 
         <Card className="active:opacity-80">
-          <Pressable onPress={() => router.push('/(auth)/flight-plans')}>
+          <Pressable onPress={() => {
+            trackAction('cta_clicked', { cta: 'flight_planning', from: 'dashboard' });
+            router.push('/(auth)/flight-plans');
+          }}>
             <CardContent className="md:px-8 md:py-6">
               <Text className="text-base font-bold md:text-lg">
                 {t('dashboard.flightPlanning')}
