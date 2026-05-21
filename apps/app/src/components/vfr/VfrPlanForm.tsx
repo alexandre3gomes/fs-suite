@@ -1506,7 +1506,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     setValidationError(null);
     setValidationResult(null);
     try {
-      const { aircraftStations: _drop, ...aiPayload } = data;
+      const { aircraftStations: _, ...aiPayload } = data;
       const result = await apiClient.post<AiValidationResult>(
         '/ai-validation/validate', aiPayload,
       );
