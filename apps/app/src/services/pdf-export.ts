@@ -50,9 +50,17 @@ function fmtKg(kg: number) {
 }
 
 function formatMinutes(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
+  const total = Math.round(min);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
   return h > 0 ? `${h}h${m.toString().padStart(2, '0')}min` : `${m}min`;
+}
+
+function formatLegTime(min: number): string {
+  const totalSec = Math.round(min * 60);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 function sectionTitle(doc: jsPDF, text: string, y: number): number {
@@ -390,7 +398,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
       leg.suggestedAltitudes.slice(0, 2).map((a) =>
         hasIfr ? `FL${String(Math.round(a / 100)).padStart(3, '0')}` : a.toLocaleString(),
       ).join(', '),
-      leg.timeMin != null ? formatMinutes(leg.timeMin) : '—',
+      leg.timeMin != null ? formatLegTime(leg.timeMin) : '—',
     ]);
 
     // Total row
