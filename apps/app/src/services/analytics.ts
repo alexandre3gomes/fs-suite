@@ -4,7 +4,7 @@ let posthog: PostHog | null = null;
 
 export function initAnalytics(): PostHog | undefined {
   const key = process.env['EXPO_PUBLIC_POSTHOG_KEY'];
-  if (!key || process.env['NODE_ENV'] !== 'production') return undefined;
+  if (!key || __DEV__) return undefined;
 
   posthog = new PostHog(key, {
     host: 'https://us.i.posthog.com',
