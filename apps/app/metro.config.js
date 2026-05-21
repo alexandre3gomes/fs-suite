@@ -34,7 +34,17 @@ for (const name of singletons) {
   singletonPaths[name] = fs.realpathSync(path.dirname(entry));
 }
 
+// Resolve Node.js "exports" subpaths that Metro doesn't support natively
+const posthogCorePath = path.dirname(require.resolve('@posthog/core', { paths: [workspaceRoot] }));
+const subpathExports = {
+  '@posthog/core/surveys': path.join(posthogCorePath, 'surveys', 'index.js'),
+  '@posthog/core/testing': path.join(posthogCorePath, 'testing', 'index.js'),
+};
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (subpathExports[moduleName]) {
+    return { type: 'sourceFile', filePath: subpathExports[moduleName] };
+  }
   for (const name of singletons) {
     if (moduleName === name || moduleName.startsWith(name + '/')) {
       const suffix = moduleName === name ? '' : moduleName.slice(name.length);
