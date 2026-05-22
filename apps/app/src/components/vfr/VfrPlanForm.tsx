@@ -25,7 +25,7 @@ import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
 import { TafDisplay, type ParsedTaf } from './TafDisplay';
 import { VfrPlanLayout } from './VfrPlanLayout';
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
-import { type RouteWaypoint, type AltitudeTransition, type RouteSegment, type TocTodPosition, type EnrichedLeg, type AircraftPerformance, type ClimbDescentPlan, buildVfrRouteText, parseVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getPerformanceCategory, calculateDefaultTpaFt, segmentRouteLegs, calculateTocDistance, calculateTodFromTpa, interpolatePositionOnRoute, enrichRouteLegs, computeClimbDescentPlan } from './vfrNavigation';
+import { type RouteWaypoint, type AltitudeTransition, type RouteSegment, type TocTodPosition, type EnrichedLeg, type AircraftPerformance, type ClimbDescentPlan, type LegAltConstraint, buildVfrRouteText, parseVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getPerformanceCategory, calculateDefaultTpaFt, segmentRouteLegs, calculateTocDistance, calculateTodFromTpa, interpolatePositionOnRoute, enrichRouteLegs, computeClimbDescentPlan, computeAltitudeProfile } from './vfrNavigation';
 import { defaultDepartureTime, toDatetimeLocalValue, fromDatetimeLocalValue, formatZulu, isNightFlight, validateVfrPlan, type PlanViability } from './weatherTimeUtils';
 
 function SimpleMarkdown({ text, italic }: { text: string; italic?: boolean }) {
@@ -447,6 +447,32 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const [corridorAltRange, setCorridorAltRange] = useState<{ min: number; max: number } | null>(null);
   const [corridorCompAlt, setCorridorCompAlt] = useState<number | null>(null);
 
+  // Fetch per-leg REA altitude constraints when route changes
+  useEffect(() => {
+    if (!origin || !destination || routeWaypoints.length === 0) {
+      setReaLegAltitudes([]);
+      return;
+    }
+    const allWps: { lat: number; lon: number; name: string }[] = [
+      { lat: origin.latitude, lon: origin.longitude, name: origin.icao },
+      ...routeWaypoints.map((w) => ({ lat: w.lat, lon: w.lng, name: w.name })),
+      { lat: destination.latitude, lon: destination.longitude, name: destination.icao },
+    ];
+    const wpsStr = allWps.map((w) => `${w.lat}:${w.lon}`).join(',');
+    apiClient
+      .get<{ legs: { altComp: number | null; altMin: number; altMax: number; from: string }[] }>(`/rea/navigate/altitudes?waypoints=${encodeURIComponent(wpsStr)}`)
+      .then((data) => {
+        const legs: LegAltConstraint[] = data.legs.map((l, i) => ({
+          altComp: l.altComp,
+          altMin: l.altMin,
+          altMax: l.altMax,
+          fromName: allWps[i]?.name ?? l.from,
+        }));
+        setReaLegAltitudes(legs);
+      })
+      .catch(() => setReaLegAltitudes([]));
+  }, [origin, destination, routeWaypoints]);
+
   // METAR state
   const [metars, setMetars] = useState<Record<string, ParsedMetar>>({});
   const [metarLoading, setMetarLoading] = useState(false);
@@ -483,6 +509,12 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   // Manual altitude transitions defined by the pilot for longer flights
   // (multi-corridor, terrain changes, etc.). Each entry: at waypoint X, change to altitude Y ft.
   const [altitudeChanges, setAltitudeChanges] = useState<{ atWaypoint: string; toAltFt: number }[]>(initialData?.altitudeChanges ?? []);
+  // Tracks whether altitudeChanges came from the auto-profile (so we can update them on route changes).
+  // Set to false on initial load when the plan has saved manual data, to preserve user choices.
+  const [altChangesAuto, setAltChangesAuto] = useState<boolean>(!initialData?.altitudeChanges && !initialData?.cruiseLevel);
+
+  // REA per-leg altitude constraints from the backend
+  const [reaLegAltitudes, setReaLegAltitudes] = useState<LegAltConstraint[]>([]);
 
   // Route
   const [routeText, setRouteText] = useState(initialData?.routeText ?? '');
@@ -1041,6 +1073,28 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     return filterAltitudesByCloudClearance(cruiseSuggestion.altitudes, originMetar.clouds, elev);
   }, [cruiseSuggestion, hasIfr, origin, metars]);
 
+  // Auto-computed altitude profile based on REA per-leg constraints.
+  // Returns the optimal single altitude (when possible) or base + transitions for multi-altitude flights.
+  const autoAltitudeProfile = useMemo(() => {
+    if (reaLegAltitudes.length === 0) return null;
+    const fallback = cruiseSuggestion?.altitudes[0] ?? 3500;
+    return computeAltitudeProfile(reaLegAltitudes, fallback);
+  }, [reaLegAltitudes, cruiseSuggestion]);
+
+  // Apply auto profile when REA altitudes change AND user hasn't manually overridden
+  useEffect(() => {
+    if (!autoAltitudeProfile || !altChangesAuto) return;
+    const newLevel = toFL(autoAltitudeProfile.baseCruiseFt);
+    if (cruiseLevel !== newLevel) setCruiseLevel(newLevel);
+    // Only update transitions if they differ from auto (to avoid render loop)
+    const equal = altitudeChanges.length === autoAltitudeProfile.transitions.length
+      && altitudeChanges.every((t, i) =>
+        t.atWaypoint === autoAltitudeProfile.transitions[i]?.atWaypoint
+        && t.toAltFt === autoAltitudeProfile.transitions[i]?.toAltFt,
+      );
+    if (!equal) setAltitudeChanges(autoAltitudeProfile.transitions);
+  }, [autoAltitudeProfile, altChangesAuto]);
+
   // Unified cruise altitude options — single list for the whole route.
   // Real VFR rule: one cruise altitude for the route. Per-segment splits only
   // happen via explicit pilot-defined transitions (Camada 2).
@@ -1300,28 +1354,22 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   // Remarks (Item 18)
   const [userRemarks, setUserRemarks] = useState('');
 
+  // Altitude transitions for ICAO Item 18 RMK — derived from altitudeChanges (user-defined or auto-suggested from REA)
   const altitudeTransitions = useMemo((): AltitudeTransition[] => {
-    if (!followedCorridorName || routeSegments.length < 2) return [];
+    if (altitudeChanges.length === 0) return [];
+    const baseFt = parseCruiseLevelFt(cruiseLevel);
+    if (!baseFt) return [];
 
     const transitions: AltitudeTransition[] = [];
-    for (let i = 0; i < routeSegments.length - 1; i++) {
-      const from = routeSegments[i]!;
-      const to = routeSegments[i + 1]!;
-      const fromFl = segmentLevels[from.id];
-      const toFl = segmentLevels[to.id];
-      const fromAlt = fromFl ? parseCruiseLevelFt(fromFl) : null;
-      const toAlt = toFl ? parseCruiseLevelFt(toFl) : null;
-      if (fromAlt && toAlt && fromAlt !== toAlt) {
-        const lastLegOfFrom = from.legs[from.legs.length - 1];
-        transitions.push({
-          fix: lastLegOfFrom?.to.name ?? '',
-          fromAlt,
-          toAlt,
-        });
+    let prevAlt = baseFt;
+    for (const ch of altitudeChanges) {
+      if (ch.toAltFt !== prevAlt) {
+        transitions.push({ fix: ch.atWaypoint, fromAlt: prevAlt, toAlt: ch.toAltFt });
+        prevAlt = ch.toAltFt;
       }
     }
     return transitions;
-  }, [followedCorridorName, routeSegments, segmentLevels]);
+  }, [altitudeChanges, cruiseLevel]);
 
   const autoRemarks = useMemo(() => {
     return buildItem18({
@@ -2617,7 +2665,18 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             For longer flights with terrain/corridor changes, use explicit
             altitude transitions (Camada 2 — coming soon). */}
         <View className="mt-3">
-          <Text className="mb-1 text-xs font-medium text-foreground">{t('vfr.cruiseLevel')}</Text>
+          <View className="mb-1 flex-row items-center gap-2">
+            <Text className="text-xs font-medium text-foreground">{t('vfr.cruiseLevel')}</Text>
+            {autoAltitudeProfile && altChangesAuto ? (
+              <View className="rounded-sm bg-primary/10 px-1.5 py-0.5">
+                <Text className="text-[9px] font-medium text-primary">{t('vfr.altAutoSuggested')}</Text>
+              </View>
+            ) : autoAltitudeProfile && !altChangesAuto ? (
+              <Pressable onPress={() => setAltChangesAuto(true)} className="rounded-sm bg-primary/10 px-1.5 py-0.5">
+                <Text className="text-[9px] font-medium text-primary">{t('vfr.altRestoreAuto')}</Text>
+              </Pressable>
+            ) : null}
+          </View>
           {cruiseSuggestion && cruiseOptions.length > 0 ? (
             <>
               <Text className="mb-1.5 text-[10px] text-muted-foreground">
@@ -2639,6 +2698,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
                         onPress={() => {
                           const nextLevel = isSelected ? '' : fl;
                           setCruiseLevel(nextLevel);
+                          setAltChangesAuto(false);
                           // Propagate to all segments so the leg table reflects the single altitude
                           const next: Record<string, string> = {};
                           for (const seg of routeSegments) next[seg.id] = nextLevel;
@@ -2716,7 +2776,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           <AltitudeTransitionsEditor
             waypoints={routeWaypoints.map((w) => w.name)}
             transitions={altitudeChanges}
-            onChange={setAltitudeChanges}
+            onChange={(next) => { setAltitudeChanges(next); setAltChangesAuto(false); }}
             t={t}
           />
         ) : null}

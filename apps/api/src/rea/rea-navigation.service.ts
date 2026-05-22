@@ -72,6 +72,23 @@ export interface ValidateRouteResponse {
   violations: RouteViolation[];
 }
 
+export interface LegAltitudeConstraint {
+  legIndex: number;
+  from: string;
+  to: string;
+  corridorName: string | null;
+  /** Compulsory altitude (ft MSL) — when set, only this altitude is valid */
+  altComp: number | null;
+  /** Minimum altitude (ft MSL); 0 means no minimum */
+  altMin: number;
+  /** Maximum altitude (ft MSL); 0 means no maximum */
+  altMax: number;
+}
+
+export interface RouteAltitudesResponse {
+  legs: LegAltitudeConstraint[];
+}
+
 // ---- Constants ----
 
 const GRAPH_MEMORY_TTL_MS = 3600_000; // 1 hour
@@ -221,6 +238,49 @@ export class ReaNavigationService {
     }
 
     return { valid: violations.filter((v) => v.severity === 'error').length === 0, violations };
+  }
+
+  /**
+   * For each leg of the route, return the REA altitude constraints (altMin/altMax/altComp)
+   * if the leg matches an edge in the REA graph. Returns one entry per leg.
+   * Legs that don't match any REA edge get all-zero/null constraints.
+   *
+   * This allows the client to plan a multi-altitude profile when the corridor
+   * has different altitude ranges per segment.
+   */
+  async getRouteAltitudes(
+    waypoints: { lat: number; lon: number }[],
+  ): Promise<RouteAltitudesResponse> {
+    if (waypoints.length < 2) return { legs: [] };
+
+    const origin = waypoints[0]!;
+    const dest = waypoints[waypoints.length - 1]!;
+    const graph = await this.getOrBuildGraph(origin, dest);
+    const legs: LegAltitudeConstraint[] = [];
+
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const wpA = waypoints[i]!;
+      const wpB = waypoints[i + 1]!;
+      const nodeA = this.snapToGraph(wpA.lat, wpA.lon, graph);
+      const nodeB = this.snapToGraph(wpB.lat, wpB.lon, graph);
+
+      let edge = nodeA && nodeB ? this.findEdge(graph, nodeA.key, nodeB.key) : null;
+      if (!edge && nodeA && nodeB) {
+        edge = this.findEdge(graph, nodeB.key, nodeA.key);
+      }
+
+      legs.push({
+        legIndex: i,
+        from: nodeA?.nome ?? `${wpA.lat.toFixed(4)},${wpA.lon.toFixed(4)}`,
+        to: nodeB?.nome ?? `${wpB.lat.toFixed(4)},${wpB.lon.toFixed(4)}`,
+        corridorName: edge?.corridorName ?? null,
+        altComp: edge?.altComp ?? null,
+        altMin: edge?.altMin ?? 0,
+        altMax: edge?.altMax ?? 0,
+      });
+    }
+
+    return { legs };
   }
 
   // ---- AIRAC lifecycle ----

@@ -178,6 +178,106 @@ export function getPerformanceCategory(cruiseSpeedKts: number): string {
   return 'E';
 }
 
+// ---------- REA per-leg altitude profile ----------
+
+export interface LegAltConstraint {
+  altComp: number | null;
+  altMin: number;
+  altMax: number;
+  fromName?: string;
+}
+
+export interface AltitudeProfile {
+  baseCruiseFt: number;
+  transitions: { atWaypoint: string; toAltFt: number }[];
+}
+
+type AltRange = { min: number; max: number } | null;
+
+function legToRange(leg: LegAltConstraint): AltRange {
+  if (leg.altComp != null) return { min: leg.altComp, max: leg.altComp };
+  if (leg.altMin > 0 || leg.altMax > 0) {
+    return {
+      min: leg.altMin > 0 ? leg.altMin : 0,
+      max: leg.altMax > 0 ? leg.altMax : 99999,
+    };
+  }
+  return null;
+}
+
+function intersectRanges(a: AltRange, b: AltRange): AltRange | 'empty' {
+  if (a == null) return b;
+  if (b == null) return a;
+  const min = Math.max(a.min, b.min);
+  const max = Math.min(a.max, b.max);
+  if (min > max) return 'empty';
+  return { min, max };
+}
+
+/**
+ * Compute the optimal single-altitude profile (or minimum-transitions multi-altitude
+ * profile) for a route given per-leg REA altitude constraints.
+ *
+ * Algorithm:
+ * 1. Walk legs forward, maintaining the running intersection of altitude ranges.
+ * 2. When intersection becomes empty, close the current group and start a new one.
+ * 3. For each group, pick the lowest altitude that satisfies the intersection.
+ * 4. Generate a transition at the FROM waypoint of each subsequent group.
+ *
+ * Unconstrained legs (no REA edge) inherit the surrounding group's altitude.
+ */
+export function computeAltitudeProfile(
+  legs: LegAltConstraint[],
+  fallbackAltFt: number,
+): AltitudeProfile {
+  if (legs.length === 0) return { baseCruiseFt: fallbackAltFt, transitions: [] };
+
+  // Build groups of consecutive compatible legs
+  type Group = { startLeg: number; range: AltRange };
+  const groups: Group[] = [];
+  let currentRange: AltRange = null;
+  let groupStartLeg = 0;
+
+  for (let i = 0; i < legs.length; i++) {
+    const r = legToRange(legs[i]!);
+    if (i === 0) {
+      currentRange = r;
+      continue;
+    }
+    const merged = intersectRanges(currentRange, r);
+    if (merged === 'empty') {
+      groups.push({ startLeg: groupStartLeg, range: currentRange });
+      groupStartLeg = i;
+      currentRange = r;
+    } else {
+      currentRange = merged;
+    }
+  }
+  groups.push({ startLeg: groupStartLeg, range: currentRange });
+
+  // Pick altitudes
+  let prevAlt = groups[0]!.range ? groups[0]!.range.min : fallbackAltFt;
+  const transitions: { atWaypoint: string; toAltFt: number }[] = [];
+  for (let i = 1; i < groups.length; i++) {
+    const g = groups[i]!;
+    let groupAlt: number;
+    if (g.range == null) {
+      groupAlt = prevAlt; // Unconstrained, keep previous
+    } else if (g.range.min <= prevAlt && prevAlt <= g.range.max) {
+      groupAlt = prevAlt;
+    } else {
+      groupAlt = g.range.min;
+    }
+    if (groupAlt !== prevAlt) {
+      const wpName = legs[g.startLeg]?.fromName;
+      if (wpName) transitions.push({ atWaypoint: wpName, toAltFt: groupAlt });
+      prevAlt = groupAlt;
+    }
+  }
+
+  return { baseCruiseFt: groups[0]!.range ? groups[0]!.range.min : fallbackAltFt, transitions };
+}
+
 /**
  * Default TPA (Traffic Pattern Altitude) by aircraft performance category.
  * Standard VFR pattern altitudes — pilot should override with the value
@@ -205,8 +305,11 @@ export interface AltitudeTransition {
  *   DOF/ PER/ RMK/  (RMK is always last)
  *
  * REA corridor info is not a standard ICAO indicator — it goes under RMK/.
- * Altitude transitions between semicircular-rule segments and corridor segments
- * are described as: CLB/[alt] ABV [fix] or DES/[alt] ABV [fix]
+ *
+ * Altitude transitions (multi-altitude VFR) are described in RMK as:
+ *   "ALT [alt1] ATE [fix1] CHG [alt2]" or similar.
+ * Cruising Level (Item 15) carries the INITIAL altitude after TOC — additional
+ * altitudes after route changes belong in Item 18.
  */
 export function buildItem18(opts: {
   corridorName?: string | null;
@@ -233,16 +336,21 @@ export function buildItem18(opts: {
   const rmkParts: string[] = [];
   if (opts.corridorName) {
     const clean = opts.corridorName.toUpperCase().replace(/^REA[\s-]*/i, '').trim();
-    const corridorAlt = opts.corridorCompAlt ?? (opts.corridorAltRange
-      ? `${opts.corridorAltRange.min}/${opts.corridorAltRange.max}`
-      : null);
-    rmkParts.push(`REA ${clean}${corridorAlt != null ? ` ALT ${corridorAlt}` : ''}`);
+    rmkParts.push(`REA ${clean}`);
   }
+  // Multi-altitude transitions — declare each climb/descent at a fix.
+  // ICAO format: CLB/DES <fromAlt>FT/<toAlt>FT ABV <fix>
   if (opts.altitudeTransitions && opts.altitudeTransitions.length > 0) {
     for (const t of opts.altitudeTransitions) {
       const dir = t.toAlt > t.fromAlt ? 'CLB' : 'DES';
       rmkParts.push(`${dir} ${t.fromAlt}FT/${t.toAlt}FT ABV ${t.fix}`);
     }
+  } else if (opts.corridorName) {
+    // Single-altitude corridor: include the compulsory/range altitude
+    const corridorAlt = opts.corridorCompAlt ?? (opts.corridorAltRange
+      ? `${opts.corridorAltRange.min}/${opts.corridorAltRange.max}`
+      : null);
+    if (corridorAlt != null) rmkParts[rmkParts.length - 1] = `REA ${opts.corridorName.toUpperCase().replace(/^REA[\s-]*/i, '').trim()} ALT ${corridorAlt}`;
   }
   if (opts.userRemarks?.trim()) {
     rmkParts.push(opts.userRemarks.trim());

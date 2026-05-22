@@ -4,6 +4,7 @@ import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 import {
+  type RouteAltitudesResponse,
   type SuggestRouteResponse,
   type ValidateRouteResponse,
   ReaNavigationService,
@@ -76,6 +77,14 @@ export class ReaController {
   ): Promise<ValidateRouteResponse> {
     const waypoints = this.parseWaypoints(waypointsStr);
     return this.reaNav.validateRoute(waypoints, altitude ? Number(altitude) : undefined);
+  }
+
+  @Get('navigate/altitudes')
+  @ApiOperation({ summary: 'Get per-leg REA altitude constraints (altComp/altMin/altMax)' })
+  @ApiQuery({ name: 'waypoints', description: 'Comma-separated lat:lon pairs', required: true })
+  async routeAltitudes(@Query('waypoints') waypointsStr: string): Promise<RouteAltitudesResponse> {
+    const waypoints = this.parseWaypoints(waypointsStr);
+    return this.reaNav.getRouteAltitudes(waypoints);
   }
 
   private parseWaypoints(str: string): { lat: number; lon: number }[] {

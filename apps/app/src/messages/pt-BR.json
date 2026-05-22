@@ -42,6 +42,8 @@
     "tpaDefaultHint": "padrão (Cat {{category}})",
     "tpaCustomHint": "valor da VAC",
     "tpaResetDefault": "usar padrão",
+    "altAutoSuggested": "Sugestão automática REA",
+    "altRestoreAuto": "Restaurar sugestão automática",
     "altitudeChanges": "Mudanças de altitude na rota",
     "altitudeChangesNone": "(nenhuma)",
     "altitudeChangesCount": "({{count}})",
