@@ -35,6 +35,7 @@
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.7",
     "fast-xml-parser": "^5.8.0",
+    "geomagnetism": "^0.2.0",
     "helmet": "^8.0.0",
     "nestjs-pino": "^4.6.1",
     "passport": "^0.7.0",

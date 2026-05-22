@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { PDFDocument } from 'pdf-lib';
 
 import type { VfrPlanData } from '../components/vfr/VfrPlanForm';
+import type { ClimbDescentPlan } from '../components/vfr/vfrNavigation';
 import type { PlanViability } from '../components/vfr/weatherTimeUtils';
 
 export interface AiValidationResult {
@@ -265,7 +266,7 @@ function labelValue(doc: jsPDF, label: string, value: string, x: number, y: numb
   doc.text(value, x + w, y);
 }
 
-export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, aiValidation?: AiValidationResult, viability?: PlanViability): jsPDF {
+export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, aiValidation?: AiValidationResult, viability?: PlanViability, climbDescentPlan?: ClimbDescentPlan): jsPDF {
   const doc = new jsPDF('p', 'mm', 'a4');
   const now = new Date();
   const hasIfr = plan.flightRules === 'IFR' || plan.flightRules === 'VFR_IFR' || plan.flightRules === 'IFR_VFR';
@@ -388,18 +389,24 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
     y = checkPage(doc, y, 20 + plan.routeLegs.length * 6);
     y = sectionTitle(doc, 'NAVIGATION LOG', y);
 
-    const legRows = plan.routeLegs.map((leg, i) => [
-      String(i + 1),
-      `${leg.from} > ${leg.to}`,
-      leg.distanceNm.toFixed(1),
-      `${leg.trueCourse.toFixed(0)}°`,
-      `${leg.magneticDeclination >= 0 ? '+' : ''}${leg.magneticDeclination.toFixed(0)}°`,
-      `${leg.magneticCourse.toFixed(0)}°`,
-      leg.suggestedAltitudes.slice(0, 2).map((a) =>
-        hasIfr ? `FL${String(Math.round(a / 100)).padStart(3, '0')}` : a.toLocaleString(),
-      ).join(', '),
-      leg.timeMin != null ? formatLegTime(leg.timeMin) : '—',
-    ]);
+    const legRows = plan.routeLegs.map((leg, i) => {
+      const mh = leg.magneticHeading != null ? `${Math.round(leg.magneticHeading)}°` : `${leg.magneticCourse.toFixed(0)}°`;
+      const gs = leg.groundSpeedKts != null ? String(Math.round(leg.groundSpeedKts)) : '—';
+      const alt = leg.selectedAltitudeFt != null
+        ? (hasIfr
+            ? `FL${String(Math.round(leg.selectedAltitudeFt / 100)).padStart(3, '0')}`
+            : leg.selectedAltitudeFt.toLocaleString())
+        : '—';
+      return [
+        String(i + 1),
+        `${leg.from} > ${leg.to}`,
+        leg.distanceNm.toFixed(1),
+        mh,
+        gs,
+        alt,
+        leg.timeMin != null ? formatLegTime(leg.timeMin) : '—',
+      ];
+    });
 
     // Total row
     legRows.push([
@@ -409,36 +416,82 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
       '',
       '',
       '',
-      '',
       plan.tripMinutes ? formatMinutes(plan.tripMinutes) : '',
     ]);
 
     autoTable(doc, {
       startY: y,
-      head: [['#', 'Leg', 'NM', 'TC', 'VAR', 'MC', 'Alt', 'ETE']],
+      head: [['#', 'Leg', 'NM', 'MH', 'GS', 'Alt', 'ETE']],
       body: legRows,
       theme: 'grid',
-      headStyles: { fillColor: COLORS.headerBg, textColor: COLORS.headerText, fontStyle: 'bold', fontSize: 7 },
+      headStyles: { fillColor: COLORS.headerBg, textColor: COLORS.headerText, fontStyle: 'bold', fontSize: 7, halign: 'center' },
       bodyStyles: { fontSize: 8, textColor: COLORS.text },
       alternateRowStyles: { fillColor: COLORS.altRow },
       columnStyles: {
         0: { cellWidth: 8, halign: 'center' },
         1: { cellWidth: 'auto' },
-        2: { cellWidth: 14, halign: 'center' },
-        3: { cellWidth: 14, halign: 'center' },
-        4: { cellWidth: 14, halign: 'center' },
-        5: { cellWidth: 14, halign: 'center' },
-        6: { cellWidth: 26, halign: 'center' },
-        7: { cellWidth: 16, halign: 'center' },
+        2: { cellWidth: 16, halign: 'center' },
+        3: { cellWidth: 16, halign: 'center' },
+        4: { cellWidth: 16, halign: 'center' },
+        5: { cellWidth: 26, halign: 'center' },
+        6: { cellWidth: 20, halign: 'center' },
       },
       margin: { left: 14, right: 14 },
       didParseCell: (data) => {
+        if (data.section === 'head' && data.column.index === 1) {
+          data.cell.styles.halign = 'left';
+        }
         if (data.section === 'body' && data.row.index === legRows.length - 1) {
           data.cell.styles.fontStyle = 'bold';
         }
       },
     });
     y = tableEndY(doc) + 6;
+  }
+
+  // ─── CLIMB & DESCENT PROFILE ───
+  if (climbDescentPlan && (climbDescentPlan.toc || climbDescentPlan.tod)) {
+    y = checkPage(doc, y, 35);
+    y = sectionTitle(doc, 'CLIMB & DESCENT PROFILE', y);
+    doc.setFontSize(9);
+    doc.setTextColor(...COLORS.text);
+
+    if (climbDescentPlan.toc) {
+      const toc = climbDescentPlan.toc;
+      doc.setFont('helvetica', 'bold');
+      doc.text('TOC (Top of Climb)', 14, y);
+      y += 5;
+      doc.setFont('helvetica', 'normal');
+      doc.text(
+        `After ${toc.fromWaypoint}, fly ${formatLegTime(toc.timeFromWaypointMin)} on MH ${toc.headingMag}°, then start climb.`,
+        14, y,
+      );
+      y += 5;
+      doc.text(
+        `Rate ${toc.verticalRateFpm} fpm · climb ${formatLegTime(toc.durationMin)} to ${toc.targetAltFt.toLocaleString()} ft`,
+        14, y,
+      );
+      y += 7;
+    }
+
+    if (climbDescentPlan.tod) {
+      const tod = climbDescentPlan.tod;
+      doc.setFont('helvetica', 'bold');
+      doc.text('TOD (Top of Descent)', 14, y);
+      y += 5;
+      doc.setFont('helvetica', 'normal');
+      doc.text(
+        `After ${tod.fromWaypoint}, fly ${formatLegTime(tod.timeFromWaypointMin)} on MH ${tod.headingMag}°, then start descent.`,
+        14, y,
+      );
+      y += 5;
+      doc.text(
+        `Rate ${tod.verticalRateFpm} fpm · descend ${formatLegTime(tod.durationMin)} to TPA ${tod.targetAltFt.toLocaleString()} ft · level off before ${tod.nextWaypoint}`,
+        14, y,
+      );
+      y += 7;
+    }
+    y += 2;
   }
 
   // ─── NAVIGATION MAP ───
@@ -836,8 +889,9 @@ export async function exportFlightPlanWithAttachments(
   mapImageDataUrl?: string,
   aiValidation?: AiValidationResult,
   viability?: PlanViability,
+  climbDescentPlan?: ClimbDescentPlan,
 ): Promise<void> {
-  const doc = buildFlightPlanDoc(plan, mapImageDataUrl, aiValidation, viability);
+  const doc = buildFlightPlanDoc(plan, mapImageDataUrl, aiValidation, viability, climbDescentPlan);
   const mainBytes = doc.output('arraybuffer');
 
   const merged = await PDFDocument.create();

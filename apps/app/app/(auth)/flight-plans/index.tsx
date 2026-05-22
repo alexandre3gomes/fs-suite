@@ -1,5 +1,5 @@
 import { Spinner } from '@fs-suite/ui';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -39,7 +39,9 @@ export default function VfrPlansListScreen() {
   }, []);
 
   useEffect(() => { setFeatureContext('flight_plans'); return () => setFeatureContext(null); }, []);
-  useEffect(() => { void fetchPlans(); }, [fetchPlans]);
+
+  // Refetch whenever the screen gains focus (e.g., after coming back from editor)
+  useFocusEffect(useCallback(() => { void fetchPlans(); }, [fetchPlans]));
 
   return (
     <View className="flex-1 bg-background">

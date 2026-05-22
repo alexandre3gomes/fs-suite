@@ -74,6 +74,9 @@ importers:
       fast-xml-parser:
         specifier: ^5.8.0
         version: 5.8.0
+      geomagnetism:
+        specifier: ^0.2.0
+        version: 0.2.0
       helmet:
         specifier: ^8.0.0
         version: 8.1.0

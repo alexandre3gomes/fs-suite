@@ -72,6 +72,8 @@ export class ValidateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() destinationRunwayInUse?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() destinationMetarRaw?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() destinationTafRaw?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() destinationTpaFt?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() destinationTpaSource?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() alternateIcao?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() alternateName?: string;

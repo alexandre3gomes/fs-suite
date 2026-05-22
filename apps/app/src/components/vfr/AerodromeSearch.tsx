@@ -71,27 +71,24 @@ export function AerodromeSearch({ label, value, onSelect, onClear }: Props) {
 
   return (
     <View className="mb-3">
-      <Text className="mb-1 text-xs font-medium text-muted-foreground">{label}</Text>
-      <View className="relative">
-        <TextInput
-          value={displayValue}
-          onChangeText={setQuery}
-          onFocus={() => { setFocused(true); setQuery(value ? value.icao : ''); }}
-          onBlur={() => setTimeout(() => setFocused(false), 200)}
-          onSubmitEditing={() => { const first = results[0]; if (first) handleSelect(first); }}
-          placeholder={t('vfr.searchAerodrome')}
-          placeholderTextColor="#9ca3af"
-          className="w-full rounded-button border border-border bg-input px-3 py-2 text-sm text-foreground"
-        />
+      <View className="mb-1 flex-row items-center justify-between">
+        <Text className="text-xs font-medium text-muted-foreground">{label}</Text>
         {value && !focused ? (
-          <Pressable
-            className="absolute right-2 top-0 bottom-0 items-center justify-center px-1"
-            onPress={handleClear}
-          >
-            <Text className="text-muted-foreground">✕</Text>
+          <Pressable onPress={handleClear} className="px-1 py-0.5">
+            <Text className="text-[10px] font-medium text-destructive">{t('common.clear')}</Text>
           </Pressable>
         ) : null}
       </View>
+      <TextInput
+        value={displayValue}
+        onChangeText={setQuery}
+        onFocus={() => { setFocused(true); setQuery(value ? value.icao : ''); }}
+        onBlur={() => setTimeout(() => setFocused(false), 200)}
+        onSubmitEditing={() => { const first = results[0]; if (first) handleSelect(first); }}
+        placeholder={t('vfr.searchAerodrome')}
+        placeholderTextColor="#9ca3af"
+        className="w-full rounded-button border border-border bg-input px-3 py-2 text-sm text-foreground"
+      />
 
       {focused && (results.length > 0 || loading) ? (
         <View className="mt-1 overflow-hidden rounded-card border border-border bg-surface" style={{ maxHeight: 200 }}>

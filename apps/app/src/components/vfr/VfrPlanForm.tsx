@@ -25,7 +25,7 @@ import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
 import { TafDisplay, type ParsedTaf } from './TafDisplay';
 import { VfrPlanLayout } from './VfrPlanLayout';
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
-import { type RouteWaypoint, type AltitudeTransition, type RouteSegment, type TocTodPosition, type EnrichedLeg, type AircraftPerformance, buildVfrRouteText, parseVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getPerformanceCategory, segmentRouteLegs, calculateTocDistance, calculateTodFromDestination, interpolatePositionOnRoute, enrichRouteLegs } from './vfrNavigation';
+import { type RouteWaypoint, type AltitudeTransition, type RouteSegment, type TocTodPosition, type EnrichedLeg, type AircraftPerformance, type ClimbDescentPlan, buildVfrRouteText, parseVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getPerformanceCategory, calculateDefaultTpaFt, segmentRouteLegs, calculateTocDistance, calculateTodFromTpa, interpolatePositionOnRoute, enrichRouteLegs, computeClimbDescentPlan } from './vfrNavigation';
 import { defaultDepartureTime, toDatetimeLocalValue, fromDatetimeLocalValue, formatZulu, isNightFlight, validateVfrPlan, type PlanViability } from './weatherTimeUtils';
 
 function SimpleMarkdown({ text, italic }: { text: string; italic?: boolean }) {
@@ -126,6 +126,8 @@ export interface PlanRouteLeg {
   suggestedAltitudes: number[];
   timeMin?: number;
   groundSpeedKts?: number;
+  magneticHeading?: number;
+  selectedAltitudeFt?: number;
 }
 
 export interface VfrPlanData {
@@ -145,6 +147,9 @@ export interface VfrPlanData {
   destinationTafRaw?: string;
   destinationLatitude?: number;
   destinationLongitude?: number;
+  destinationTpaFt?: number;
+  destinationTpaSource?: 'default' | 'custom';
+  altitudeChanges?: { atWaypoint: string; toAltFt: number }[];
   alternateIcao?: string;
   alternateName?: string;
   alternateElevationFt?: number;
@@ -217,6 +222,132 @@ interface Props {
   onSave: (data: VfrPlanData) => Promise<void>;
   saving: boolean;
   onDelete?: () => void;
+}
+
+function formatLegMmSs(min: number): string {
+  const totalSec = Math.round(min * 60);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function AltitudeTransitionsEditor({
+  waypoints,
+  transitions,
+  onChange,
+  t,
+}: {
+  waypoints: string[];
+  transitions: { atWaypoint: string; toAltFt: number }[];
+  onChange: (next: { atWaypoint: string; toAltFt: number }[]) => void;
+  t: (k: string, opts?: Record<string, unknown>) => string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [newWp, setNewWp] = useState<string>('');
+  const [newAlt, setNewAlt] = useState<string>('');
+
+  const usedWaypoints = new Set(transitions.map((t) => t.atWaypoint));
+  const availableWaypoints = waypoints.filter((w) => !usedWaypoints.has(w));
+
+  const handleAdd = () => {
+    const alt = parseInt(newAlt, 10);
+    if (!newWp || !alt || isNaN(alt)) return;
+    const wpOrder = new Map(waypoints.map((w, i) => [w, i] as const));
+    const next = [...transitions, { atWaypoint: newWp, toAltFt: alt }]
+      .sort((a, b) => (wpOrder.get(a.atWaypoint) ?? 0) - (wpOrder.get(b.atWaypoint) ?? 0));
+    onChange(next);
+    setNewWp('');
+    setNewAlt('');
+  };
+
+  return (
+    <View className="mt-3 border-t border-border pt-3">
+      <Pressable onPress={() => setExpanded((v) => !v)} className="flex-row items-center gap-2">
+        <Text className="text-xs font-medium text-foreground">{t('vfr.altitudeChanges')}</Text>
+        <Text className="text-[10px] text-muted-foreground">
+          {transitions.length > 0 ? t('vfr.altitudeChangesCount', { count: transitions.length }) : t('vfr.altitudeChangesNone')}
+        </Text>
+        <Text className="ml-auto text-xs text-primary">{expanded ? '▲' : '▼'}</Text>
+      </Pressable>
+
+      {expanded ? (
+        <View className="mt-2 gap-2">
+          {transitions.map((tr, idx) => (
+            <View key={`${tr.atWaypoint}-${idx}`} className="flex-row items-center gap-2 rounded-sm border border-border bg-surface px-3 py-2">
+              <Text className="flex-1 text-xs text-foreground">
+                {t('vfr.altitudeChangeRow', { waypoint: tr.atWaypoint, alt: tr.toAltFt.toLocaleString() })}
+              </Text>
+              <Pressable onPress={() => onChange(transitions.filter((_, i) => i !== idx))} className="px-2 py-0.5">
+                <Text className="text-[10px] font-medium text-destructive">{t('common.delete')}</Text>
+              </Pressable>
+            </View>
+          ))}
+
+          {availableWaypoints.length > 0 ? (
+            <View className="flex-row items-center gap-2 rounded-sm border border-dashed border-border bg-surface-muted px-3 py-2">
+              <View className="flex-1">
+                <Text className="mb-1 text-[10px] text-muted-foreground">{t('vfr.altitudeChangeAtWaypoint')}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View className="flex-row gap-1">
+                    {availableWaypoints.map((w) => (
+                      <Pressable
+                        key={w}
+                        onPress={() => setNewWp(w)}
+                        className={`rounded-sm border px-2 py-1 ${newWp === w ? 'border-primary bg-primary/10' : 'border-border bg-surface'}`}
+                      >
+                        <Text className={`text-[10px] ${newWp === w ? 'font-bold text-primary' : 'text-foreground'}`}>{w}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+              <View>
+                <Text className="mb-1 text-[10px] text-muted-foreground">{t('vfr.altitudeChangeNewAlt')}</Text>
+                <TextInput
+                  value={newAlt}
+                  onChangeText={(v) => setNewAlt(v.replace(/[^0-9]/g, ''))}
+                  placeholder="3500"
+                  keyboardType="numeric"
+                  className="w-24 rounded-sm border border-border bg-surface px-2 py-1 text-xs text-foreground"
+                />
+              </View>
+              <Pressable
+                onPress={handleAdd}
+                disabled={!newWp || !newAlt}
+                className={`self-end rounded-sm px-3 py-1.5 ${(!newWp || !newAlt) ? 'bg-muted' : 'bg-primary'}`}
+              >
+                <Text className={`text-[10px] font-medium ${(!newWp || !newAlt) ? 'text-muted-foreground' : 'text-primary-foreground'}`}>
+                  {t('vfr.altitudeChangeAdd')}
+                </Text>
+              </Pressable>
+            </View>
+          ) : transitions.length === 0 ? (
+            <Text className="text-[10px] text-muted-foreground">{t('vfr.altitudeChangesNoWaypoints')}</Text>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function InfoTooltip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View className="flex-row items-center gap-1.5">
+      <Pressable
+        onPress={() => setOpen((v) => !v)}
+        hitSlop={8}
+        accessibilityLabel={text}
+      >
+        <Text className="text-[10px] text-muted-foreground">ⓘ</Text>
+      </Pressable>
+      {open ? (
+        <Pressable onPress={() => setOpen(false)} className="rounded-sm bg-primary/5 px-2 py-0.5">
+          <Text className="text-[11px] text-muted-foreground">{text}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
 }
 
 // ---------- SVG Icon helpers (web only, uses ref to set innerHTML) ----------
@@ -345,6 +476,13 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const [originRunway, setOriginRunway] = useState('');
   const [destRunway, setDestRunway] = useState('');
   const [altRunway, setAltRunway] = useState('');
+
+  // Destination TPA (Traffic Pattern Altitude) — editable, defaults computed by aircraft category
+  const [destTpaCustomFt, setDestTpaCustomFt] = useState<number | null>(initialData?.destinationTpaSource === 'custom' ? initialData?.destinationTpaFt ?? null : null);
+
+  // Manual altitude transitions defined by the pilot for longer flights
+  // (multi-corridor, terrain changes, etc.). Each entry: at waypoint X, change to altitude Y ft.
+  const [altitudeChanges, setAltitudeChanges] = useState<{ atWaypoint: string; toAltFt: number }[]>(initialData?.altitudeChanges ?? []);
 
   // Route
   const [routeText, setRouteText] = useState(initialData?.routeText ?? '');
@@ -876,6 +1014,25 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     [routeLegs, followedCorridorName, corridorAltRange, corridorCompAlt, origin?.icao, hasIfr],
   );
 
+  // Per-leg selected altitude based on cruise + manual altitude transitions.
+  // Each transition kicks in at its waypoint: the leg starting at that waypoint
+  // and all subsequent legs (until another transition) use the new altitude.
+  const legSelectedAltFt = useMemo<(number | undefined)[]>(() => {
+    const out = new Array<number | undefined>(routeLegs.length).fill(undefined);
+    const cruiseFt = parseCruiseLevelFt(cruiseLevel);
+    const transitionsByWp = new Map<string, number>();
+    for (const tr of altitudeChanges) transitionsByWp.set(tr.atWaypoint, tr.toAltFt);
+
+    let currentAlt: number | undefined = cruiseFt ?? undefined;
+    for (let i = 0; i < routeLegs.length; i++) {
+      const leg = routeLegs[i]!;
+      const transition = transitionsByWp.get(leg.from.name);
+      if (transition != null) currentAlt = transition;
+      out[i] = currentAlt;
+    }
+    return out;
+  }, [routeLegs, cruiseLevel, altitudeChanges]);
+
   const cruiseAltClearance: AltitudeClearance[] | null = useMemo(() => {
     if (!cruiseSuggestion || hasIfr) return null;
     const originMetar = origin ? metars[origin.icao] : undefined;
@@ -884,48 +1041,53 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     return filterAltitudesByCloudClearance(cruiseSuggestion.altitudes, originMetar.clouds, elev);
   }, [cruiseSuggestion, hasIfr, origin, metars]);
 
-  // Auto-select altitude per segment when corridor restricts range or on first load
+  // Unified cruise altitude options — single list for the whole route.
+  // Real VFR rule: one cruise altitude for the route. Per-segment splits only
+  // happen via explicit pilot-defined transitions (Camada 2).
+  const cruiseOptions = useMemo<number[]>(() => {
+    if (!cruiseSuggestion) return [];
+    // Corridor compulsory altitude wins (no alternatives)
+    const corridorSeg = routeSegments.find((s) => s.type === 'corridor');
+    const compAlt = corridorSeg?.corridorCompAlt ?? null;
+    if (compAlt != null) return [compAlt];
+
+    let opts = cruiseSuggestion.altitudes;
+    if (hasIfr) opts = opts.filter((a) => a >= 2000 && a <= 25000);
+    // Corridor range filter (when corridor has min/max but no comp alt)
+    const range = corridorSeg?.corridorAltRange;
+    if (range) opts = opts.filter((a) => a >= range.min && a <= range.max);
+    return opts;
+  }, [cruiseSuggestion, routeSegments, hasIfr]);
+
+  // Auto-select a single cruise altitude for the whole route on first load
+  // or when constraints change. Real VFR rule: one altitude for the route.
+  // Picks the first non-cloud-blocked option from cruiseOptions; preserves the
+  // user's current selection if still valid.
   useEffect(() => {
+    if (cruiseOptions.length === 0) return;
     const blocked = new Set(cruiseAltClearance?.filter((c) => c.blocked).map((c) => c.altitude));
-    const pickBest = (alts: number[]) => alts.find((a) => !blocked.has(a)) ?? alts[0];
+    const currentFt = parseCruiseLevelFt(cruiseLevel);
+    const currentValid = currentFt != null && cruiseOptions.includes(currentFt) && !blocked.has(currentFt);
 
-    if (routeSegments.length === 0 && cruiseSuggestion) {
-      // IFR or no segments — legacy auto-select
-      if (corridorCompAlt != null) {
-        setCruiseLevel(toFL(corridorCompAlt));
-      } else if (corridorAltRange) {
-        const currentFt = parseCruiseLevelFt(cruiseLevel);
-        if (!currentFt || currentFt < corridorAltRange.min || currentFt > corridorAltRange.max) {
-          const validInRange = cruiseSuggestion.altitudes.filter(
-            (a) => a >= corridorAltRange.min && a <= corridorAltRange.max,
-          );
-          const best = pickBest(validInRange);
-          setCruiseLevel(toFL(best ?? Math.round((corridorAltRange.min + corridorAltRange.max) / 2 / 100) * 100));
-        }
-      }
-      return;
-    }
+    const targetFt = currentValid
+      ? currentFt!
+      : (cruiseOptions.find((a) => !blocked.has(a)) ?? cruiseOptions[0]!);
+    const targetFL = toFL(targetFt);
 
-    const updated = { ...segmentLevels };
-    let changed = false;
-    for (const seg of routeSegments) {
-      if (updated[seg.id] && seg.suggestedAltitudes.length > 0) {
-        const ft = parseCruiseLevelFt(updated[seg.id]!);
-        if (ft && seg.suggestedAltitudes.includes(ft) && !blocked.has(ft)) continue;
-      }
-      if (seg.suggestedAltitudes.length > 0) {
-        updated[seg.id] = toFL(pickBest(seg.suggestedAltitudes)!);
-        changed = true;
-      }
+    if (!currentValid && cruiseLevel !== targetFL) {
+      setCruiseLevel(targetFL);
     }
-    if (changed) {
-      setSegmentLevels(updated);
-      const primary = routeSegments[0];
-      if (primary && updated[primary.id]) {
-        setCruiseLevel(updated[primary.id]!);
+    // Propagate to all segments — single-altitude profile
+    if (routeSegments.length > 0) {
+      const next: Record<string, string> = {};
+      let changed = false;
+      for (const seg of routeSegments) {
+        next[seg.id] = currentValid ? toFL(currentFt!) : targetFL;
+        if (segmentLevels[seg.id] !== next[seg.id]) changed = true;
       }
+      if (changed) setSegmentLevels(next);
     }
-  }, [routeSegments, corridorAltRange, corridorCompAlt, cruiseSuggestion, cruiseAltClearance]);
+  }, [cruiseOptions, cruiseAltClearance, routeSegments, cruiseLevel]);
 
   // Sync cruiseLevel from segment levels (use first segment's level for ICAO Field 15)
   useEffect(() => {
@@ -977,6 +1139,20 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     return calculateTodDistance(altFt, destination.elevation);
   }, [hasIfr, cruiseLevel, destination?.elevation]);
 
+  const performanceCategory = useMemo(
+    () => selectedAircraft?.cruiseSpeedKts != null ? getPerformanceCategory(selectedAircraft.cruiseSpeedKts) : null,
+    [selectedAircraft],
+  );
+
+  // Effective destination TPA: custom value if set, otherwise computed by category + elevation
+  const destTpaDefaultFt = useMemo<number | null>(() => {
+    if (!destination?.elevation || !performanceCategory) return null;
+    return calculateDefaultTpaFt(destination.elevation, performanceCategory);
+  }, [destination?.elevation, performanceCategory]);
+
+  const destTpaFt = destTpaCustomFt ?? destTpaDefaultFt;
+  const destTpaSource: 'default' | 'custom' = destTpaCustomFt != null ? 'custom' : 'default';
+
   // TOC / TOD positions on the route for map markers
   const tocTodPositions: TocTodPosition[] = useMemo(() => {
     if (!selectedAircraft || !origin || !destination || routeLegs.length === 0) return [];
@@ -997,7 +1173,8 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       if (pos) results.push({ ...pos, distanceFromOriginNm: tocNm, label: 'TOC' });
     }
 
-    const todNm = calculateTodFromDestination(altFt, destination.elevation ?? 0);
+    const targetTpa = destTpaFt ?? (destination.elevation ?? 0);
+    const todNm = calculateTodFromTpa(altFt, targetTpa, 500, selectedAircraft.cruiseSpeedKts ?? 100, 2);
     const todFromOrigin = totalDistNm - todNm;
     if (todNm > 0 && todFromOrigin > 0 && todFromOrigin < totalDistNm) {
       const pos = interpolatePositionOnRoute(routePoints, todFromOrigin);
@@ -1005,7 +1182,26 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     }
 
     return results;
-  }, [selectedAircraft, origin, destination, routeLegs, cruiseLevel, routeWaypoints]);
+  }, [selectedAircraft, origin, destination, routeLegs, cruiseLevel, routeWaypoints, destTpaFt]);
+
+  // Climb / Descent plan anchored to visual references (waypoint + time)
+  const climbDescentPlan: ClimbDescentPlan = useMemo(() => {
+    if (!aircraftPerf || enrichedLegs.length === 0 || !origin) return {};
+    const altFt = parseCruiseLevelFt(cruiseLevel);
+    if (!altFt) return {};
+    const tpa = destTpaFt ?? (destination?.elevation ?? 0);
+    return computeClimbDescentPlan(
+      enrichedLegs,
+      origin.elevation ?? 0,
+      tpa,
+      altFt,
+      aircraftPerf.climbRateFpm,
+      aircraftPerf.climbSpeedKts,
+      500,
+      2,
+      altitudeChanges,
+    );
+  }, [aircraftPerf, enrichedLegs, origin, destination, cruiseLevel, destTpaFt, altitudeChanges]);
 
   // REA detection
   interface ReaDetectionRegion {
@@ -1103,10 +1299,6 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
   // Remarks (Item 18)
   const [userRemarks, setUserRemarks] = useState('');
-  const performanceCategory = useMemo(
-    () => selectedAircraft?.cruiseSpeedKts != null ? getPerformanceCategory(selectedAircraft.cruiseSpeedKts) : null,
-    [selectedAircraft],
-  );
 
   const altitudeTransitions = useMemo((): AltitudeTransition[] => {
     if (!followedCorridorName || routeSegments.length < 2) return [];
@@ -1219,6 +1411,9 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       destinationRunwayInUse: destRunway || undefined,
       destinationMetarRaw: metars[destination.icao]?.raw,
       destinationTafRaw: tafs[destination.icao]?.raw,
+      destinationTpaFt: destTpaFt ?? undefined,
+      destinationTpaSource: destTpaFt != null ? destTpaSource : undefined,
+      altitudeChanges: altitudeChanges.length > 0 ? altitudeChanges : undefined,
       alternateIcao: alternate?.icao,
       alternateName: alternate?.name,
       alternateElevationFt: alternate?.elevation ?? undefined,
@@ -1280,6 +1475,8 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
         suggestedAltitudes: leg.suggestedAltitudes,
         timeMin: enrichedLegs[i]?.timeMin,
         groundSpeedKts: enrichedLegs[i]?.groundSpeedKts,
+        magneticHeading: enrichedLegs[i]?.magneticHeading,
+        selectedAltitudeFt: legSelectedAltFt[i],
       })) : undefined,
       totalDistanceNm: totalDistanceNm || undefined,
       tripMinutes: tripMinutes || undefined,
@@ -1325,6 +1522,9 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       destinationElevationFt: data.destinationElevationFt,
       destinationRunwayInUse: data.destinationRunwayInUse,
       destinationMetarRaw: data.destinationMetarRaw,
+      destinationTpaFt: data.destinationTpaFt,
+      destinationTpaSource: data.destinationTpaSource,
+      altitudeChanges: data.altitudeChanges,
       alternateIcao: data.alternateIcao,
       alternateName: data.alternateName,
       alternateElevationFt: data.alternateElevationFt,
@@ -1447,7 +1647,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       };
       trackAction('export_requested', exportProps);
       if (!hasAttachments) {
-        const doc = buildFlightPlanDoc(data, mapImageDataUrl, aiData, planViability);
+        const doc = buildFlightPlanDoc(data, mapImageDataUrl, aiData, planViability, climbDescentPlan);
         const filename = `flight-plan_${data.originIcao}-${data.destinationIcao}_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.pdf`;
         doc.save(filename);
         trackSuccess('export_completed', { ...exportProps, attachment_count: 0 });
@@ -1477,7 +1677,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
         }
       }
 
-      await exportFlightPlanWithAttachments(data, { chartUrls, checklistUrl }, mapImageDataUrl, aiData, planViability);
+      await exportFlightPlanWithAttachments(data, { chartUrls, checklistUrl }, mapImageDataUrl, aiData, planViability, climbDescentPlan);
       trackSuccess('export_completed', { ...exportProps, attachment_count: chartUrls.length + (checklistUrl ? 1 : 0) });
     } catch (err) {
       const { errorType, statusCode } = categorizeError(err);
@@ -1759,7 +1959,6 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             t={t}
           />
         ) : null}
-
         <AerodromeSearch
           label={`${t('vfr.alternate')} (${t('common.optional')})`}
           value={alternate}
@@ -2218,21 +2417,16 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
               <Text className="w-6 text-[10px] font-bold text-muted-foreground">#</Text>
               <Text style={{ width: 110 }} className="text-[10px] font-bold text-muted-foreground">Leg</Text>
               <Text style={{ width: 45 }} className="text-center text-[10px] font-bold text-muted-foreground">NM</Text>
-              <Text style={{ width: 38 }} className="text-center text-[10px] font-bold text-muted-foreground">MC</Text>
-              <Text style={{ width: 38 }} className="text-center text-[10px] font-bold text-muted-foreground">MH</Text>
-              <Text style={{ width: 38 }} className="text-center text-[10px] font-bold text-muted-foreground">GS</Text>
-              <Text style={{ width: 42 }} className="text-center text-[10px] font-bold text-muted-foreground">ETE</Text>
-              <Text style={{ width: 42 }} className="text-center text-[10px] font-bold text-muted-foreground">ETA</Text>
-              <Text style={{ width: 38 }} className="text-center text-[10px] font-bold text-muted-foreground">TC</Text>
-              <Text style={{ width: 38 }} className="text-center text-[10px] font-bold text-muted-foreground">VAR</Text>
-              <Text style={{ width: 80 }} className="text-center text-[10px] font-bold text-muted-foreground">{t('vfr.suggestedAlt')}</Text>
+              <Text style={{ width: 42 }} className="text-center text-[10px] font-bold text-muted-foreground">MH</Text>
+              <Text style={{ width: 42 }} className="text-center text-[10px] font-bold text-muted-foreground">GS</Text>
+              <Text style={{ width: 90 }} className="text-center text-[10px] font-bold text-muted-foreground">{t('vfr.suggestedAlt')}</Text>
+              <Text style={{ width: 50 }} className="text-center text-[10px] font-bold text-muted-foreground">ETE</Text>
               <Text style={{ width: 28 }} className="text-center text-[10px] font-bold text-muted-foreground">Ref</Text>
             </View>
             {/* Rows */}
             {routeLegs.map((leg, idx) => {
               const el = enrichedLegs[idx];
-              const ete = el ? (el.timeMin < 1 ? '<1' : Math.round(el.timeMin).toString()) : '—';
-              const eta = el ? `${Math.floor(el.cumulativeTimeMin / 60)}:${String(el.cumulativeTimeMin % 60).padStart(2, '0')}` : '—';
+              const ete = el ? formatLegMmSs(el.timeMin) : '—';
               const phaseColor = el?.phase === 'climb' ? '#f59e0b' : el?.phase === 'descent' ? '#8b5cf6' : undefined;
               return (
               <View key={idx}>
@@ -2244,18 +2438,16 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
                     {leg.from.name} → {leg.to.name}
                   </Text>
                   <Text style={{ width: 45 }} className="text-center text-[10px] text-foreground">{leg.distanceNm.toFixed(1)}</Text>
-                  <Text style={{ width: 38 }} className="text-center text-[10px] text-foreground">{leg.magneticCourse.toFixed(0)}°</Text>
-                  <Text style={{ width: 38 }} className="text-center text-[10px] text-foreground">{el ? `${el.magneticHeading}°` : '—'}</Text>
-                  <Text style={{ width: 38 }} className="text-center text-[10px] font-medium text-foreground">{el ? el.groundSpeedKts : '—'}</Text>
-                  <Text style={{ width: 42 }} className="text-center text-[10px] font-medium text-foreground">{ete}</Text>
-                  <Text style={{ width: 42 }} className="text-center text-[10px] text-muted-foreground">{eta}</Text>
-                  <Text style={{ width: 38 }} className="text-center text-[10px] text-muted-foreground">{leg.trueCourse.toFixed(0)}°</Text>
-                  <Text style={{ width: 38 }} className="text-center text-[10px] text-muted-foreground">{leg.magneticDeclination.toFixed(0)}°</Text>
-                  <Text style={{ width: 80 }} className="text-center text-[10px] text-foreground">
-                    {leg.suggestedAltitudes.slice(0, 3).map((a) =>
-                      hasIfr ? `FL${String(Math.round(a / 100)).padStart(3, '0')}` : a.toLocaleString()
-                    ).join(', ')}
+                  <Text style={{ width: 42 }} className="text-center text-[10px] text-foreground">{el ? `${el.magneticHeading}°` : '—'}</Text>
+                  <Text style={{ width: 42 }} className="text-center text-[10px] font-medium text-foreground">{el ? el.groundSpeedKts : '—'}</Text>
+                  <Text style={{ width: 90 }} className="text-center text-[10px] text-foreground">
+                    {legSelectedAltFt[idx] != null
+                      ? (hasIfr
+                          ? `FL${String(Math.round(legSelectedAltFt[idx]! / 100)).padStart(3, '0')}`
+                          : legSelectedAltFt[idx]!.toLocaleString())
+                      : '—'}
                   </Text>
+                  <Text style={{ width: 50 }} className="text-center text-[10px] font-medium text-foreground">{ete}</Text>
                   <Pressable
                     onPress={() => setExpandedLegRef(expandedLegRef === idx ? null : idx)}
                     style={{ width: 28 }}
@@ -2280,35 +2472,87 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
               <Text className="w-6 text-[10px] font-bold text-foreground" />
               <Text style={{ width: 110 }} className="text-[10px] font-bold text-foreground">{t('vfr.totalDistance')}</Text>
               <Text style={{ width: 45 }} className="text-center text-[10px] font-bold text-foreground">{totalDistanceNm.toFixed(1)}</Text>
-              <Text style={{ width: 38 }} />
-              <Text style={{ width: 38 }} />
-              <Text style={{ width: 38 }} />
-              <Text style={{ width: 42 }} className="text-center text-[10px] font-bold text-foreground">
-                {enrichedLegs.length > 0 ? `${Math.round(enrichedLegs[enrichedLegs.length - 1]!.cumulativeTimeMin)}'` : ''}
-              </Text>
               <Text style={{ width: 42 }} />
-              <Text style={{ width: 38 }} />
-              <Text style={{ width: 38 }} />
-              <Text style={{ width: 80 }} />
+              <Text style={{ width: 42 }} />
+              <Text style={{ width: 90 }} />
+              <Text style={{ width: 50 }} className="text-center text-[10px] font-bold text-foreground">
+                {enrichedLegs.length > 0 ? formatLegMmSs(enrichedLegs[enrichedLegs.length - 1]!.cumulativeTimeMin) : ''}
+              </Text>
               <Text style={{ width: 28 }} />
             </View>
           </View>
           </ScrollView>
-          {tocTodPositions.length > 0 && selectedAircraft ? (
-            <View className="mt-1.5 flex-row gap-3">
-              {tocTodPositions.map((tp) => {
-                const timeMin = selectedAircraft.cruiseSpeedKts != null && selectedAircraft.cruiseSpeedKts > 0
-                  ? Math.round(tp.distanceFromOriginNm / selectedAircraft.cruiseSpeedKts * 60)
-                  : 0;
+          {(climbDescentPlan.toc || climbDescentPlan.tod || (climbDescentPlan.transitions?.length ?? 0) > 0) ? (
+            <View className="mt-3 gap-2">
+              {climbDescentPlan.toc ? (
+                <View className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2">
+                  <View className="mb-1 flex-row items-center gap-1.5">
+                    <View className="h-2 w-2 rounded-full bg-amber-500" />
+                    <Text className="text-[11px] font-bold text-amber-700">{t('vfr.tocPlan')}</Text>
+                  </View>
+                  <Text className="text-[11px] text-foreground">
+                    {t('vfr.tocInstructions', {
+                      from: climbDescentPlan.toc.fromWaypoint,
+                      time: formatLegMmSs(climbDescentPlan.toc.timeFromWaypointMin),
+                      heading: climbDescentPlan.toc.headingMag,
+                    })}
+                  </Text>
+                  <Text className="mt-1 text-[10px] text-muted-foreground">
+                    {t('vfr.tocClimbDetails', {
+                      rate: climbDescentPlan.toc.verticalRateFpm,
+                      duration: formatLegMmSs(climbDescentPlan.toc.durationMin),
+                      target: climbDescentPlan.toc.targetAltFt.toLocaleString(),
+                    })}
+                  </Text>
+                </View>
+              ) : null}
+              {(climbDescentPlan.transitions ?? []).map((tr, idx) => {
+                const isClimb = tr.kind === 'transition-climb';
                 return (
-                  <View key={tp.label} className="flex-row items-center gap-1">
-                    <View className={`h-2 w-2 rounded-full ${tp.label === 'TOC' ? 'bg-green-600' : 'bg-red-600'}`} />
-                    <Text className="text-[10px] font-medium text-muted-foreground">
-                      {tp.label}: {tp.distanceFromOriginNm.toFixed(1)} NM ({timeMin} min)
+                  <View key={`${tr.fromWaypoint}-${idx}`} className={`rounded-md border px-3 py-2 ${isClimb ? 'border-amber-500/40 bg-amber-500/5' : 'border-violet-500/40 bg-violet-500/5'}`}>
+                    <View className="mb-1 flex-row items-center gap-1.5">
+                      <View className={`h-2 w-2 rounded-full ${isClimb ? 'bg-amber-500' : 'bg-violet-500'}`} />
+                      <Text className={`text-[11px] font-bold ${isClimb ? 'text-amber-700' : 'text-violet-700'}`}>
+                        {t(isClimb ? 'vfr.transitionClimb' : 'vfr.transitionDescent')}
+                      </Text>
+                    </View>
+                    <Text className="text-[11px] text-foreground">
+                      {t('vfr.transitionInstructions', { at: tr.fromWaypoint })}
+                    </Text>
+                    <Text className="mt-1 text-[10px] text-muted-foreground">
+                      {t('vfr.transitionDetails', {
+                        rate: tr.verticalRateFpm,
+                        duration: formatLegMmSs(tr.durationMin),
+                        from: tr.fromAltFt?.toLocaleString() ?? '—',
+                        target: tr.targetAltFt.toLocaleString(),
+                      })}
                     </Text>
                   </View>
                 );
               })}
+              {climbDescentPlan.tod ? (
+                <View className="rounded-md border border-violet-500/40 bg-violet-500/5 px-3 py-2">
+                  <View className="mb-1 flex-row items-center gap-1.5">
+                    <View className="h-2 w-2 rounded-full bg-violet-500" />
+                    <Text className="text-[11px] font-bold text-violet-700">{t('vfr.todPlan')}</Text>
+                  </View>
+                  <Text className="text-[11px] text-foreground">
+                    {t('vfr.todInstructions', {
+                      from: climbDescentPlan.tod.fromWaypoint,
+                      time: formatLegMmSs(climbDescentPlan.tod.timeFromWaypointMin),
+                      heading: climbDescentPlan.tod.headingMag,
+                    })}
+                  </Text>
+                  <Text className="mt-1 text-[10px] text-muted-foreground">
+                    {t('vfr.todDescentDetails', {
+                      rate: climbDescentPlan.tod.verticalRateFpm,
+                      duration: formatLegMmSs(climbDescentPlan.tod.durationMin),
+                      target: climbDescentPlan.tod.targetAltFt.toLocaleString(),
+                      next: climbDescentPlan.tod.nextWaypoint,
+                    })}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -2332,88 +2576,59 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             {t('vfr.mixedRouteHint')}
           </Text>
         ) : null}
-        {/* Cruise Level selector — per segment when VFR with corridor, single otherwise */}
-        <View className="mt-3">
-          <Text className="mb-1 text-xs font-medium text-foreground">{t('vfr.cruiseLevel')}</Text>
-          {routeSegments.length > 1 ? (
-            <View className="gap-3">
-              {routeSegments.map((seg) => {
-                const segLabel = seg.type === 'corridor'
-                  ? t('vfr.corridorSegment', { name: followedCorridorName ?? '' })
-                  : t('vfr.freeSegment');
-                const selectedFL = segmentLevels[seg.id] ?? '';
-                return (
-                  <View key={seg.id}>
-                    <Text className="mb-1 text-[10px] font-semibold text-muted-foreground uppercase">
-                      {segLabel} · {seg.totalDistanceNm.toFixed(0)} NM · MC {seg.averageMC}°
-                    </Text>
-                    {seg.corridorAltRange ? (
-                      <Text className="mb-1 text-[10px] text-green-700">
-                        {t('vfr.reaAltRange', { min: seg.corridorAltRange.min, max: seg.corridorAltRange.max })}
-                      </Text>
-                    ) : null}
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      <View className="flex-row gap-1.5">
-                        {seg.suggestedAltitudes.map((alt, altIdx) => {
-                          const fl = toFL(alt);
-                          const isSelected = selectedFL === fl;
-                          const isSuggested = altIdx === 0;
-                          const blocked = cruiseAltClearance?.find((c) => c.altitude === alt)?.blocked ?? false;
-                          return (
-                            <Pressable
-                              key={alt}
-                              onPress={() => {
-                                const next = { ...segmentLevels, [seg.id]: isSelected ? '' : fl };
-                                setSegmentLevels(next);
-                                if (seg.id === routeSegments[0]!.id) {
-                                  setCruiseLevel(isSelected ? '' : fl);
-                                }
-                              }}
-                              className={`rounded-sm border px-2.5 py-1.5 ${
-                                isSelected
-                                  ? 'border-primary bg-primary/10'
-                                  : blocked
-                                    ? 'border-destructive/40 bg-destructive/5'
-                                    : isSuggested
-                                      ? 'border-primary/40 bg-primary/5'
-                                      : 'border-border bg-surface'
-                              }`}
-                            >
-                              <Text className={`text-[11px] font-bold ${
-                                isSelected ? 'text-primary' : blocked ? 'text-destructive/60' : 'text-foreground'
-                              }`}>
-                                {blocked ? `⛅ ${fl}` : fl}
-                              </Text>
-                              <Text className={`text-[9px] ${blocked ? 'text-destructive/50' : isSuggested && !isSelected ? 'text-primary/70' : 'text-muted-foreground'}`}>
-                                {isSuggested ? `★ ${alt.toLocaleString()} ft` : `${alt.toLocaleString()} ft`}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </ScrollView>
-                  </View>
-                );
-              })}
-              {cruiseAltClearance?.some((c) => c.blocked) ? (
-                <Text className="text-[10px] text-destructive/70">
-                  {'⛅'} {t('vfr.cloudClearanceWarning')}
-                </Text>
+        {/* Destination TPA — lower bound for final descent target */}
+        {destination && destTpaFt != null ? (
+          <View className="mt-3">
+            <View className="mb-1 flex-row items-center gap-1.5">
+              <Text className="text-xs font-medium text-foreground">{t('vfr.tpa')}</Text>
+              <InfoTooltip text={t('info.tpa')} />
+            </View>
+            <View className="flex-row items-center gap-2">
+              <TextInput
+                value={destTpaCustomFt != null ? String(destTpaCustomFt) : ''}
+                placeholder={destTpaDefaultFt != null ? String(destTpaDefaultFt) : ''}
+                onChangeText={(v) => {
+                  const cleaned = v.replace(/[^0-9]/g, '');
+                  if (cleaned === '') { setDestTpaCustomFt(null); return; }
+                  const n = parseInt(cleaned, 10);
+                  if (!isNaN(n)) setDestTpaCustomFt(n);
+                }}
+                keyboardType="numeric"
+                className="rounded-sm border border-border bg-surface px-2 py-1 text-xs text-foreground"
+                style={{ minWidth: 80 }}
+              />
+              <Text className="text-[10px] text-muted-foreground">ft</Text>
+              <Text className="text-[10px] text-muted-foreground">
+                {destTpaSource === 'default'
+                  ? t('vfr.tpaDefaultHint', { category: performanceCategory ?? '' })
+                  : t('vfr.tpaCustomHint')}
+              </Text>
+              {destTpaSource === 'custom' ? (
+                <Pressable onPress={() => setDestTpaCustomFt(null)} className="ml-auto rounded-sm px-2 py-0.5 active:bg-muted">
+                  <Text className="text-[10px] text-primary">{t('vfr.tpaResetDefault')}</Text>
+                </Pressable>
               ) : null}
             </View>
-          ) : cruiseSuggestion && cruiseSuggestion.altitudes.length > 0 ? (
+          </View>
+        ) : null}
+
+        {/* Cruise Level — single altitude for the whole route. Different altitudes
+            per segment are not legitimate in VFR (cloud conditions are the same).
+            For longer flights with terrain/corridor changes, use explicit
+            altitude transitions (Camada 2 — coming soon). */}
+        <View className="mt-3">
+          <Text className="mb-1 text-xs font-medium text-foreground">{t('vfr.cruiseLevel')}</Text>
+          {cruiseSuggestion && cruiseOptions.length > 0 ? (
             <>
               <Text className="mb-1.5 text-[10px] text-muted-foreground">
                 {t('vfr.avgMagCourse')}: {cruiseSuggestion.averageMC}°
                 {hasVfr && ruleInfo ? ` · ${t(`vfr.rule.${ruleInfo.name}`)}` : ''}
                 {hasIfr ? ` · ${t('vfr.ifrRule')}` : ''}
+                {followedCorridorName ? ` · ${t('vfr.corridorSegment', { name: followedCorridorName })}` : ''}
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View className="flex-row gap-1.5">
-                  {(routeSegments.length === 1 ? routeSegments[0]!.suggestedAltitudes : cruiseSuggestion.altitudes
-                    .filter((a) => hasIfr ? a >= 2000 && a <= 25000 : true)
-                    .filter((a) => corridorCompAlt != null ? a === corridorCompAlt : corridorAltRange ? a >= corridorAltRange.min && a <= corridorAltRange.max : true)
-                  ).map((alt, altIdx) => {
+                  {cruiseOptions.map((alt, altIdx) => {
                     const fl = toFL(alt);
                     const isSelected = cruiseLevel === fl;
                     const isSuggested = altIdx === 0;
@@ -2422,10 +2637,12 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
                       <Pressable
                         key={alt}
                         onPress={() => {
-                          setCruiseLevel(isSelected ? '' : fl);
-                          if (routeSegments.length === 1) {
-                            setSegmentLevels({ [routeSegments[0]!.id]: isSelected ? '' : fl });
-                          }
+                          const nextLevel = isSelected ? '' : fl;
+                          setCruiseLevel(nextLevel);
+                          // Propagate to all segments so the leg table reflects the single altitude
+                          const next: Record<string, string> = {};
+                          for (const seg of routeSegments) next[seg.id] = nextLevel;
+                          setSegmentLevels(next);
                         }}
                         className={`rounded-sm border px-2.5 py-1.5 ${
                           isSelected
@@ -2493,6 +2710,16 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             </View>
           ) : null}
         </View>
+
+        {/* Manual altitude transitions — for longer flights with terrain/corridor changes */}
+        {routeWaypoints.length > 0 ? (
+          <AltitudeTransitionsEditor
+            waypoints={routeWaypoints.map((w) => w.name)}
+            transitions={altitudeChanges}
+            onChange={setAltitudeChanges}
+            t={t}
+          />
+        ) : null}
 
         {hasIfr ? (
           <View className="mt-3">

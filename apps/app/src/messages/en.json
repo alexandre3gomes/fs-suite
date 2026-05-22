@@ -10,7 +10,8 @@
     "delete": "Delete",
     "back": "Back",
     "optional": "optional",
-    "noResults": "No results"
+    "noResults": "No results",
+    "clear": "Clear"
   },
   "login": {
     "signInButton": "Sign in with Google",
@@ -37,6 +38,28 @@
     "noPlansYet": "No flight plans yet. Create your first plan!"
   },
   "vfr": {
+    "tpa": "Destination TPA",
+    "tpaDefaultHint": "default (Cat {{category}})",
+    "tpaCustomHint": "from VAC",
+    "tpaResetDefault": "use default",
+    "altitudeChanges": "Altitude changes on route",
+    "altitudeChangesNone": "(none)",
+    "altitudeChangesCount": "({{count}})",
+    "altitudeChangeAtWaypoint": "At waypoint",
+    "altitudeChangeNewAlt": "New altitude (ft)",
+    "altitudeChangeAdd": "Add",
+    "altitudeChangeRow": "At {{waypoint}}, change to {{alt}} ft",
+    "altitudeChangesNoWaypoints": "All waypoints already have a change configured.",
+    "tocPlan": "Climb plan (TOC)",
+    "tocInstructions": "After {{from}}, fly {{time}} on MH {{heading}}°, then start climb.",
+    "tocClimbDetails": "Rate {{rate}} fpm · climb {{duration}} to {{target}} ft",
+    "transitionClimb": "Altitude change (climb)",
+    "transitionDescent": "Altitude change (descent)",
+    "transitionInstructions": "Over {{at}}, start the maneuver immediately.",
+    "transitionDetails": "Rate {{rate}} fpm · {{duration}} · {{from}} ft → {{target}} ft",
+    "todPlan": "Descent plan (TOD)",
+    "todInstructions": "After {{from}}, fly {{time}} on MH {{heading}}°, then start descent.",
+    "todDescentDetails": "Rate {{rate}} fpm · descend {{duration}} to TPA {{target}} ft · level off before {{next}}",
     "newPlan": "New Flight Plan",
     "editPlan": "Edit Flight Plan",
     "myPlans": "My Flight Plans",
@@ -311,7 +334,8 @@
     "fuel": "Fuel per RBAC 91.151: trip (origin→dest) + alternate (dest→alt) + contingency (% of trip) + reserve (30 min day / 45 min night at cruise). The suggested value is auto-calculated — you can override it.",
     "routeVfr": "VFR route: direct (DCT) between visual reference points. Cruise altitudes follow the semicircular rule (+500 ft). TOD expressed in minutes before destination.",
     "routeIfr": "IFR route: SID → Airways → STAR. Cruise levels follow the semicircular rule (full thousands). TOD expressed as distance (NM) from destination using the 3:1 rule.",
-    "routeMixed": "Mixed flight plan: indicate the change point in the route where flight rules transition. Both VFR and IFR altitude rules apply to their respective segments."
+    "routeMixed": "Mixed flight plan: indicate the change point in the route where flight rules transition. Both VFR and IFR altitude rules apply to their respective segments.",
+    "tpa": "Traffic pattern arrival"
   },
   "aircraft": {
     "selectAircraft": "Aircraft",

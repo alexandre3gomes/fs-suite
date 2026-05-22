@@ -61,6 +61,9 @@ export class CreateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() destinationElevationFt?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() destinationRunwayInUse?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() destinationMetarRaw?: string;
+  @ApiPropertyOptional() @IsOptional() @IsInt() destinationTpaFt?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() destinationTpaSource?: string;
+  @ApiPropertyOptional() @IsOptional() altitudeChanges?: { atWaypoint: string; toAltFt: number }[];
 
   // Alternate (optional)
   @ApiPropertyOptional() @IsOptional() @IsString() alternateIcao?: string;

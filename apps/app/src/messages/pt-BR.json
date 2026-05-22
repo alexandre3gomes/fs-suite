@@ -10,7 +10,8 @@
     "delete": "Excluir",
     "back": "Voltar",
     "optional": "opcional",
-    "noResults": "Nenhum resultado"
+    "noResults": "Nenhum resultado",
+    "clear": "Limpar"
   },
   "login": {
     "signInButton": "Entrar com Google",
@@ -37,6 +38,28 @@
     "noPlansYet": "Nenhum plano de voo ainda. Crie seu primeiro plano!"
   },
   "vfr": {
+    "tpa": "TPA destino",
+    "tpaDefaultHint": "padrão (Cat {{category}})",
+    "tpaCustomHint": "valor da VAC",
+    "tpaResetDefault": "usar padrão",
+    "altitudeChanges": "Mudanças de altitude na rota",
+    "altitudeChangesNone": "(nenhuma)",
+    "altitudeChangesCount": "({{count}})",
+    "altitudeChangeAtWaypoint": "No waypoint",
+    "altitudeChangeNewAlt": "Nova altitude (ft)",
+    "altitudeChangeAdd": "Adicionar",
+    "altitudeChangeRow": "Em {{waypoint}}, mude para {{alt}} ft",
+    "altitudeChangesNoWaypoints": "Todos os waypoints já têm uma mudança configurada.",
+    "tocPlan": "Plano de subida (TOC)",
+    "tocInstructions": "Após {{from}}, voe {{time}} em MH {{heading}}°, então inicie subida.",
+    "tocClimbDetails": "Razão {{rate}} fpm · {{duration}} de subida até {{target}} ft",
+    "transitionClimb": "Mudança de altitude (subida)",
+    "transitionDescent": "Mudança de altitude (descida)",
+    "transitionInstructions": "Ao cruzar {{at}}, inicie a manobra imediatamente.",
+    "transitionDetails": "Razão {{rate}} fpm · {{duration}} · {{from}} ft → {{target}} ft",
+    "todPlan": "Plano de descida (TOD)",
+    "todInstructions": "Após {{from}}, voe {{time}} em MH {{heading}}°, então inicie descida.",
+    "todDescentDetails": "Razão {{rate}} fpm · {{duration}} de descida até TPA {{target}} ft · nivele antes de {{next}}",
     "newPlan": "Novo Plano de Voo",
     "editPlan": "Editar Plano de Voo",
     "myPlans": "Meus Planos de Voo",
@@ -311,7 +334,8 @@
     "fuel": "Combustível conforme RBAC 91.151: rota (origem→destino) + alternado (destino→alt) + contingência (% da rota) + reserva (30 min diurno / 45 min noturno em cruzeiro). O valor sugerido é calculado automaticamente — você pode alterá-lo.",
     "routeVfr": "Rota VFR: direto (DCT) entre pontos de referência visual. Altitudes de cruzeiro seguem a regra semicircular (+500 ft). TOD expresso em minutos antes do destino.",
     "routeIfr": "Rota IFR: SID → Aerovias → STAR. Níveis de cruzeiro seguem a regra semicircular (milhares completos). TOD expresso em distância (NM) do destino usando a regra 3:1.",
-    "routeMixed": "Plano de voo misto: indique o ponto de mudança na rota onde a regra de voo muda. As regras de altitude VFR e IFR se aplicam aos respectivos segmentos."
+    "routeMixed": "Plano de voo misto: indique o ponto de mudança na rota onde a regra de voo muda. As regras de altitude VFR e IFR se aplicam aos respectivos segmentos.",
+    "tpa": "Padrão de tráfego de chegada"
   },
   "aircraft": {
     "selectAircraft": "Aeronave",

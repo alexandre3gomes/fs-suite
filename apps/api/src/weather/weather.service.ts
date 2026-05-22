@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import { haversineNm as geoHaversineNm, initialBearing } from '../common/geo.utils';
 import { cruiseLevelToFeet, windTriangle } from '../common/wind.utils';
 import { PrismaService } from '../prisma/prisma.service';
+import { ReaNavigationService } from '../rea/rea-navigation.service';
 import { RedisService } from '../redis/redis.service';
 
 import { decodeMetarToPtBr } from './metar-decoder';
@@ -135,6 +136,7 @@ export class WeatherService {
     private readonly redis: RedisService,
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly reaNavigation: ReaNavigationService,
   ) {}
 
   async getFlightCategories(icaos: string[]): Promise<FlightCategoryResult[]> {
@@ -683,9 +685,11 @@ export class WeatherService {
     plannedDepartureUtc: Date | null;
     estimatedElapsedMin: number | null;
     estimatedArrivalUtc: Date | null;
-    routes?: { latitude: number | null; longitude: number | null; sequence: number }[];
+    routes?: { latitude: number | null; longitude: number | null; sequence: number; waypointIdent: string }[];
     cruiseSpeedKts?: number | null;
     fuelBurnLph?: number | null;
+    originElevationFt?: number | null;
+    altitudeChanges?: unknown;
   }): Promise<SafetyAssessment> {
     const icaos = [plan.originIcao, plan.destinationIcao, plan.alternateIcao].filter(
       (v): v is string => v != null,
@@ -696,7 +700,7 @@ export class WeatherService {
       .filter((r): r is typeof r & { latitude: number; longitude: number } =>
         r.latitude != null && r.longitude != null,
       )
-      .map((r) => ({ lat: r.latitude, lon: r.longitude }));
+      .map((r) => ({ lat: r.latitude, lon: r.longitude, name: r.waypointIdent }));
 
     const fetchSigmets = routeWaypoints.length >= 2;
 
@@ -768,9 +772,37 @@ export class WeatherService {
       routeWaypoints: routeWaypoints.length >= 2 ? routeWaypoints : undefined,
       sigmets: validSigmets.length > 0 ? validSigmets : undefined,
       cruiseAltitudeFt: cruiseAltFt,
+      originElevationFt: plan.originElevationFt ?? null,
+      altitudeChanges: Array.isArray(plan.altitudeChanges)
+        ? (plan.altitudeChanges as { atWaypoint: string; toAltFt: number }[])
+        : undefined,
     };
 
     const assessment = assessSafety(params);
+
+    // REA corridor altitude compliance (when route crosses REA corridors)
+    if (routeWaypoints.length >= 2 && cruiseAltFt) {
+      try {
+        const reaCheck = await this.reaNavigation.validateRoute(routeWaypoints, cruiseAltFt);
+        for (const v of reaCheck.violations) {
+          if (v.severity === 'error') {
+            assessment.items.push({
+              id: `rea-violation-${v.legIndex}`,
+              severity: 'blocking',
+              message: `REA ${v.from} → ${v.to}: ${v.message}`,
+              source: 'AIC pertinente / DECEA REA',
+            });
+          }
+        }
+        // Re-evaluate status after potentially adding blocking items
+        const hasBlocking = assessment.items.some((i) => i.severity === 'blocking');
+        if (hasBlocking && assessment.status !== 'not-viable') {
+          assessment.status = 'not-viable';
+        }
+      } catch (err) {
+        this.logger.warn(`REA validation failed: ${err}`);
+      }
+    }
 
     let performanceAdjustments: PerformanceAdjustments | undefined;
     const tas = plan.cruiseSpeedKts ?? cruiseSpeedKts;

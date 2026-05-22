@@ -1,6 +1,6 @@
 import type { ParsedMetar, ParsedTaf, SigmetFeatureProperties, TafForecastPeriod } from '@fs-suite/types';
 
-import { routeIntersectsPolygon, segmentIntersectsPolygon } from '../common/geo.utils';
+import { haversineNm, magneticCourse, routeIntersectsPolygon, segmentIntersectsPolygon } from '../common/geo.utils';
 import { cruiseLevelToFeet } from '../common/wind.utils';
 
 const METAR_VALIDITY_SEC = 5400; // 90 minutes
@@ -57,9 +57,11 @@ export interface SafetyCheckParams {
   alternateArrivalEpochSec?: number | null;
   metars: Record<string, ParsedMetar>;
   tafs: Record<string, ParsedTaf>;
-  routeWaypoints?: { lat: number; lon: number }[];
+  routeWaypoints?: { lat: number; lon: number; name?: string }[];
   sigmets?: SigmetFeature[];
   cruiseAltitudeFt?: number | null;
+  originElevationFt?: number | null;
+  altitudeChanges?: { atWaypoint: string; toAltFt: number }[];
 }
 
 function isMetarValidAt(metar: ParsedMetar, targetEpochSec: number): boolean {
@@ -358,6 +360,120 @@ export function checkAerodrome(
   }
 }
 
+/**
+ * Validate VFR semicircular rule for each leg of the route.
+ * ICA 100-12 §3.6 — applies only ABOVE 3000 ft AGL.
+ *
+ * - Magnetic course 000°–179° → odd thousands + 500 ft (3500, 5500, 7500, ...)
+ * - Magnetic course 180°–359° → even thousands + 500 ft (4500, 6500, 8500, ...)
+ *
+ * Returns one ValidationItem per non-compliant leg.
+ */
+export function checkSemicircularCompliance(
+  cruiseAltFt: number,
+  legs: { fromLat: number; fromLon: number; toLat: number; toLon: number; fromName?: string; toName?: string }[],
+  originElevFt: number,
+): ValidationItem[] {
+  const items: ValidationItem[] = [];
+  // Semicircular applies only above 3000 ft AGL above origin
+  if (cruiseAltFt < originElevFt + 3000) return items;
+
+  const remainder = cruiseAltFt % 1000;
+  if (remainder !== 500) {
+    // Full thousands are IFR-only; VFR uses thousands + 500
+    items.push({
+      id: 'cruise-not-vfr-level',
+      severity: 'actionable',
+      message: `Nível ${cruiseAltFt.toLocaleString()} ft não é VFR — VFR requer milhares + 500 ft (ex: 4500, 6500).`,
+      action: 'Selecione um nível VFR (ímpar+500 ou par+500 conforme rumo).',
+      source: 'ICA 100-12 §3.6',
+    });
+    return items;
+  }
+
+  const altThousands = Math.floor(cruiseAltFt / 1000);
+  const expectedOdd = altThousands % 2 === 1; // odd thousands are eastbound
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i]!;
+    const mc = Math.round(magneticCourse(leg.fromLat, leg.fromLon, leg.toLat, leg.toLon));
+    const isEastbound = mc < 180; // 0-179 → odd+500
+    const matches = (isEastbound && expectedOdd) || (!isEastbound && !expectedOdd);
+    if (!matches) {
+      const expectedRange = isEastbound ? 'ímpar + 500' : 'par + 500';
+      const legLabel = leg.fromName && leg.toName ? `${leg.fromName} → ${leg.toName}` : `Perna ${i + 1}`;
+      items.push({
+        id: `semicircular-${i}`,
+        severity: 'actionable',
+        message: `${legLabel} (MC ${mc}°): nível ${cruiseAltFt.toLocaleString()} ft viola regra hemisférica — esperado ${expectedRange}.`,
+        action: `Para MC ${mc}°, use nível ${expectedRange} (ex: ${isEastbound ? '3500/5500/7500' : '4500/6500/8500'}).`,
+        source: 'ICA 100-12 §3.6',
+      });
+    }
+  }
+  return items;
+}
+
+/**
+ * Validate that each manual altitude transition can be completed within the
+ * available leg distance, given typical aircraft climb/descent rates.
+ *
+ * Climb assumed at 700 fpm (small piston). Descent at 500 fpm comfortable VFR.
+ * If the climb/descent distance exceeds the leg starting at the transition
+ * waypoint, returns an actionable item.
+ */
+export function checkTransitionFeasibility(
+  waypoints: { lat: number; lon: number; name?: string }[],
+  transitions: { atWaypoint: string; toAltFt: number }[],
+  cruiseAltFt: number,
+  groundSpeedKts: number,
+  climbRateFpm = 700,
+  descentRateFpm = 500,
+): ValidationItem[] {
+  const items: ValidationItem[] = [];
+  if (waypoints.length < 2 || transitions.length === 0 || groundSpeedKts <= 0) return items;
+
+  // Build waypoint index by name
+  const wpIndex = new Map<string, number>();
+  for (let i = 0; i < waypoints.length; i++) {
+    const name = waypoints[i]!.name;
+    if (name) wpIndex.set(name, i);
+  }
+
+  // Sort transitions by their position in the route
+  const sorted = [...transitions]
+    .filter((t) => wpIndex.has(t.atWaypoint))
+    .sort((a, b) => (wpIndex.get(a.atWaypoint) ?? 0) - (wpIndex.get(b.atWaypoint) ?? 0));
+
+  let currentAlt = cruiseAltFt;
+  for (const tr of sorted) {
+    const idx = wpIndex.get(tr.atWaypoint)!;
+    // Available distance: from this waypoint to the next
+    if (idx >= waypoints.length - 1) continue;
+    const a = waypoints[idx]!;
+    const b = waypoints[idx + 1]!;
+    const availableNm = haversineNm(a.lat, a.lon, b.lat, b.lon);
+
+    const diff = tr.toAltFt - currentAlt;
+    const rate = diff > 0 ? climbRateFpm : descentRateFpm;
+    const requiredMin = Math.abs(diff) / rate;
+    const requiredNm = (requiredMin / 60) * groundSpeedKts;
+
+    if (requiredNm > availableNm) {
+      const dirLabel = diff > 0 ? 'subida' : 'descida';
+      items.push({
+        id: `transition-${tr.atWaypoint}`,
+        severity: 'actionable',
+        message: `Transição em ${tr.atWaypoint} (${dirLabel} ${Math.abs(diff).toLocaleString()} ft): requer ${requiredNm.toFixed(1)} NM mas a perna seguinte tem ${availableNm.toFixed(1)} NM.`,
+        action: 'Considere iniciar a manobra antes ou reduzir a diferença de altitude.',
+        source: 'Performance da aeronave',
+      });
+    }
+    currentAlt = tr.toAltFt;
+  }
+
+  return items;
+}
+
 export function assessSafety(params: SafetyCheckParams): SafetyAssessment {
   const items: ValidationItem[] = [];
 
@@ -465,6 +581,34 @@ export function assessSafety(params: SafetyCheckParams): SafetyAssessment {
         });
       }
     }
+  }
+
+  // Semicircular rule (VFR, per leg, only above 3000 ft AGL)
+  if (params.cruiseAltitudeFt && params.routeWaypoints && params.routeWaypoints.length >= 2) {
+    const legs: { fromLat: number; fromLon: number; toLat: number; toLon: number; fromName?: string; toName?: string }[] = [];
+    for (let i = 0; i < params.routeWaypoints.length - 1; i++) {
+      const a = params.routeWaypoints[i]!;
+      const b = params.routeWaypoints[i + 1]!;
+      legs.push({ fromLat: a.lat, fromLon: a.lon, toLat: b.lat, toLon: b.lon, fromName: a.name, toName: b.name });
+    }
+    const semiItems = checkSemicircularCompliance(
+      params.cruiseAltitudeFt,
+      legs,
+      params.originElevationFt ?? 0,
+    );
+    items.push(...semiItems);
+  }
+
+  // Manual altitude transitions — feasibility with performance
+  if (params.altitudeChanges && params.altitudeChanges.length > 0
+      && params.cruiseAltitudeFt && params.routeWaypoints && params.cruiseSpeedKts) {
+    const transItems = checkTransitionFeasibility(
+      params.routeWaypoints,
+      params.altitudeChanges,
+      params.cruiseAltitudeFt,
+      params.cruiseSpeedKts,
+    );
+    items.push(...transItems);
   }
 
   // Determine overall status

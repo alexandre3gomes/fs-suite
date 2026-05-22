@@ -1,6 +1,35 @@
+import geomagnetism from 'geomagnetism';
+
 const R_NM = 3440.065;
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
+
+/**
+ * Magnetic declination at a point (degrees, positive east).
+ * Uses WMM via geomagnetism package. Returns 0 on failure (so cardinal-only fallback).
+ */
+export function magneticDeclination(lat: number, lon: number, date: Date = new Date()): number {
+  try {
+    const model = geomagnetism.model(date);
+    const point = model.point([lat, lon]);
+    return point.decl;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Magnetic course from (lat1, lon1) to (lat2, lon2) — bearing corrected for declination
+ * at the midpoint of the leg. Returns degrees 0-360.
+ */
+export function magneticCourse(lat1: number, lon1: number, lat2: number, lon2: number, date?: Date): number {
+  const tc = initialBearing(lat1, lon1, lat2, lon2);
+  const midLat = (lat1 + lat2) / 2;
+  const midLon = (lon1 + lon2) / 2;
+  const decl = magneticDeclination(midLat, midLon, date);
+  // MC = TC - declination (positive east means MC < TC for east declination)
+  return ((tc - decl) % 360 + 360) % 360;
+}
 
 export function haversineNm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const dLat = (lat2 - lat1) * DEG_TO_RAD;

@@ -178,6 +178,19 @@ export function getPerformanceCategory(cruiseSpeedKts: number): string {
   return 'E';
 }
 
+/**
+ * Default TPA (Traffic Pattern Altitude) by aircraft performance category.
+ * Standard VFR pattern altitudes — pilot should override with the value
+ * published in the destination's VAC chart when available.
+ *
+ * - Cat A, B (most VFR pistons): 1000 ft AGL
+ * - Cat C, D, E (turboprops/jets): 1500 ft AGL
+ */
+export function calculateDefaultTpaFt(elevationFt: number, perfCategory: string): number {
+  const aglFt = perfCategory === 'A' || perfCategory === 'B' ? 1000 : 1500;
+  return Math.round((elevationFt + aglFt) / 100) * 100;
+}
+
 export interface AltitudeTransition {
   fix: string;
   fromAlt: number;
@@ -571,6 +584,196 @@ export interface TocTodPosition {
   label: 'TOC' | 'TOD';
 }
 
+/**
+ * VFR climb/descent plan anchored to visual references along the route.
+ * The pilot navigates by waypoints + time (dead reckoning), so the start
+ * of climb or descent is expressed as: "after [waypoint], fly [time]
+ * minutes on heading [mag] then start climbing/descending".
+ *
+ * - `toc` = initial climb from origin to first cruise altitude
+ * - `tod` = final descent from last cruise altitude to TPA
+ * - `transitions` = manual altitude changes mid-route (pilot-defined)
+ */
+export interface ClimbDescentPlan {
+  toc?: ClimbDescentPoint;
+  tod?: ClimbDescentPoint;
+  transitions?: ClimbDescentPoint[];
+}
+
+export interface ClimbDescentPoint {
+  /** Kind of maneuver: initial climb, intermediate transition, or final descent */
+  kind?: 'initial-climb' | 'transition-climb' | 'transition-descent' | 'final-descent';
+  /** Index of the leg in routeLegs containing the maneuver start */
+  legIndex: number;
+  /** Waypoint the pilot uses as anchor (start of the leg containing the point) */
+  fromWaypoint: string;
+  /** Next waypoint visible after the maneuver (end of the leg) */
+  nextWaypoint: string;
+  /** Distance from the anchoring waypoint to maneuver start along this leg, in NM */
+  distanceFromWaypointNm: number;
+  /** Time from anchor to maneuver start at leg's ground speed, in minutes */
+  timeFromWaypointMin: number;
+  /** Magnetic heading to fly during this transit (from the leg) */
+  headingMag: number;
+  /** Altitude before maneuver (current cruise) */
+  fromAltFt?: number;
+  /** Altitude target after maneuver */
+  targetAltFt: number;
+  /** Vertical rate to use (fpm) */
+  verticalRateFpm: number;
+  /** Total maneuver duration in minutes */
+  durationMin: number;
+}
+
+/**
+ * Build a climb/descent plan anchored to route waypoints.
+ *
+ * @param legs            enriched route legs (with timeMin and groundSpeedKts)
+ * @param originElevFt    origin elevation MSL
+ * @param tpaFt           destination TPA MSL (target of descent)
+ * @param cruiseAltFt     planned cruise altitude
+ * @param climbRateFpm    aircraft climb rate
+ * @param climbSpeedKts   climb true airspeed
+ * @param descentRateFpm  comfortable descent rate (default 500 fpm)
+ * @param tpaBufferNm     stabilization buffer added to TOD distance (default 2 NM)
+ */
+export function computeClimbDescentPlan(
+  legs: EnrichedLeg[],
+  originElevFt: number,
+  tpaFt: number,
+  cruiseAltFt: number,
+  climbRateFpm: number,
+  climbSpeedKts: number,
+  descentRateFpm = 500,
+  tpaBufferNm = 2,
+  transitions: { atWaypoint: string; toAltFt: number }[] = [],
+): ClimbDescentPlan {
+  if (legs.length === 0 || cruiseAltFt <= 0) return {};
+
+  const totalNm = legs.reduce((s, l) => s + l.distanceNm, 0);
+  const plan: ClimbDescentPlan = {};
+
+  // ----- TOC (initial climb from origin to first cruise altitude) -----
+  // Note: first cruise altitude = base cruise OR first transition's altitude (if it's
+  // before the natural TOC distance). For now, assume the pilot climbs to base
+  // cruise first, then transitions take effect at their waypoints.
+  const climbGainFt = cruiseAltFt - originElevFt;
+  if (climbGainFt > 0 && climbRateFpm > 0) {
+    const climbTimeMin = climbGainFt / climbRateFpm;
+    const climbNm = (climbTimeMin / 60) * climbSpeedKts;
+    if (climbNm > 0 && climbNm < totalNm) {
+      const located = locateOnLegs(legs, climbNm);
+      if (located) {
+        const leg = legs[located.legIndex]!;
+        plan.toc = {
+          kind: 'initial-climb',
+          legIndex: located.legIndex,
+          fromWaypoint: leg.from.name,
+          nextWaypoint: leg.to.name,
+          distanceFromWaypointNm: Math.round(located.distanceIntoLegNm * 10) / 10,
+          timeFromWaypointMin: round1(located.distanceIntoLegNm / leg.groundSpeedKts * 60),
+          headingMag: leg.magneticHeading,
+          fromAltFt: originElevFt,
+          targetAltFt: cruiseAltFt,
+          verticalRateFpm: climbRateFpm,
+          durationMin: round1(climbTimeMin),
+        };
+      }
+    }
+  }
+
+  // ----- Intermediate altitude transitions (pilot-defined) -----
+  if (transitions.length > 0) {
+    const wpToIndex = new Map<string, number>();
+    for (let i = 0; i < legs.length; i++) wpToIndex.set(legs[i]!.from.name, i);
+    // Also include destination as a possible waypoint (end of last leg)
+    const lastLeg = legs[legs.length - 1]!;
+    wpToIndex.set(lastLeg.to.name, legs.length);
+
+    let currentAlt = cruiseAltFt;
+    const sortedTransitions = [...transitions]
+      .filter((t) => wpToIndex.has(t.atWaypoint))
+      .sort((a, b) => (wpToIndex.get(a.atWaypoint) ?? 0) - (wpToIndex.get(b.atWaypoint) ?? 0));
+
+    const transitionPoints: ClimbDescentPoint[] = [];
+    for (const tr of sortedTransitions) {
+      const legIdx = wpToIndex.get(tr.atWaypoint)!;
+      const leg = legs[Math.min(legIdx, legs.length - 1)]!;
+      const diff = tr.toAltFt - currentAlt;
+      if (diff === 0) continue;
+      const isClimb = diff > 0;
+      const rate = isClimb ? climbRateFpm : descentRateFpm;
+      const durationMin = Math.abs(diff) / rate;
+      transitionPoints.push({
+        kind: isClimb ? 'transition-climb' : 'transition-descent',
+        legIndex: legIdx,
+        fromWaypoint: tr.atWaypoint,
+        nextWaypoint: leg.to.name,
+        distanceFromWaypointNm: 0,
+        timeFromWaypointMin: 0,
+        headingMag: leg.magneticHeading,
+        fromAltFt: currentAlt,
+        targetAltFt: tr.toAltFt,
+        verticalRateFpm: rate,
+        durationMin: round1(durationMin),
+      });
+      currentAlt = tr.toAltFt;
+    }
+    if (transitionPoints.length > 0) plan.transitions = transitionPoints;
+    // Use final cruise altitude (after last transition) as the TOD source
+    cruiseAltFt = currentAlt;
+  }
+
+  // ----- TOD (final descent to TPA) -----
+  const descentLossFt = cruiseAltFt - tpaFt;
+  if (descentLossFt > 0 && descentRateFpm > 0) {
+    const descentTimeMin = descentLossFt / descentRateFpm;
+    const lastGs = legs[legs.length - 1]!.groundSpeedKts || 100;
+    const descentNm = (descentTimeMin / 60) * lastGs + tpaBufferNm;
+    const todFromOrigin = totalNm - descentNm;
+    if (todFromOrigin > 0 && todFromOrigin < totalNm) {
+      const located = locateOnLegs(legs, todFromOrigin);
+      if (located) {
+        const leg = legs[located.legIndex]!;
+        plan.tod = {
+          kind: 'final-descent',
+          legIndex: located.legIndex,
+          fromWaypoint: leg.from.name,
+          nextWaypoint: leg.to.name,
+          distanceFromWaypointNm: Math.round(located.distanceIntoLegNm * 10) / 10,
+          timeFromWaypointMin: round1(located.distanceIntoLegNm / leg.groundSpeedKts * 60),
+          headingMag: leg.magneticHeading,
+          fromAltFt: cruiseAltFt,
+          targetAltFt: tpaFt,
+          verticalRateFpm: descentRateFpm,
+          durationMin: round1(descentTimeMin),
+        };
+      }
+    }
+  }
+
+  return plan;
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+function locateOnLegs(
+  legs: EnrichedLeg[],
+  distanceFromOriginNm: number,
+): { legIndex: number; distanceIntoLegNm: number } | null {
+  let acc = 0;
+  for (let i = 0; i < legs.length; i++) {
+    const legNm = legs[i]!.distanceNm;
+    if (acc + legNm >= distanceFromOriginNm) {
+      return { legIndex: i, distanceIntoLegNm: distanceFromOriginNm - acc };
+    }
+    acc += legNm;
+  }
+  return null;
+}
+
 const MIN_SEGMENT_NM = 3;
 
 function weightedAverageMC(legs: RouteLeg[]): number {
@@ -711,6 +914,35 @@ export function calculateTodFromDestination(cruiseAltFt: number, destElevFt: num
   const descent = cruiseAltFt - destElevFt;
   if (descent <= 0) return 0;
   return Math.round((descent / 1000) * 3);
+}
+
+/**
+ * VFR Top of Descent distance targeting the destination's TPA (not field elevation).
+ * The pilot levels off at TPA to join the traffic pattern; descent below TPA
+ * happens within the circuit (downwind/base/final).
+ *
+ * Formula: distance = (cruiseFt − tpaFt) / descentRateFpm × gs/60 + bufferNm
+ *
+ * @param cruiseAltFt  cruise altitude MSL
+ * @param tpaFt        Traffic Pattern Altitude MSL
+ * @param descentRateFpm  comfortable descent rate (default 500 fpm for VFR)
+ * @param groundSpeedKts  cruise ground speed
+ * @param bufferNm     stabilization buffer to be level at TPA before entry (default 2 NM)
+ * @returns distance in NM from destination where descent should start (returns 0
+ *          when cruise is at or below TPA)
+ */
+export function calculateTodFromTpa(
+  cruiseAltFt: number,
+  tpaFt: number,
+  descentRateFpm = 500,
+  groundSpeedKts = 100,
+  bufferNm = 2,
+): number {
+  const descent = cruiseAltFt - tpaFt;
+  if (descent <= 0) return 0;
+  const timeMin = descent / descentRateFpm;
+  const descentNm = (timeMin / 60) * groundSpeedKts;
+  return Math.round((descentNm + bufferNm) * 10) / 10;
 }
 
 export function interpolatePositionOnRoute(
