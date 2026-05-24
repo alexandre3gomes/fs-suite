@@ -172,6 +172,8 @@ export class AiValidationService {
         trueCourse: Math.round(leg.trueCourse),
         magneticCourse: Math.round(leg.magneticCourse),
         magneticDeclination: +leg.magneticDeclination.toFixed(1),
+        magneticHeading: leg.magneticHeading != null ? Math.round(leg.magneticHeading) : null,
+        selectedAltitudeFt: leg.selectedAltitudeFt ?? null,
         suggestedAltitudesFt: leg.suggestedAltitudes ?? [],
         eteMinutes: leg.timeMin != null ? Math.round(leg.timeMin) : null,
         groundSpeedKts: leg.groundSpeedKts != null ? Math.round(leg.groundSpeedKts) : null,

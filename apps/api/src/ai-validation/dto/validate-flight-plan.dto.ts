@@ -19,6 +19,8 @@ class RouteLegDto {
   @IsOptional() @IsArray() suggestedAltitudes?: number[];
   @IsOptional() @IsNumber() timeMin?: number;
   @IsOptional() @IsNumber() groundSpeedKts?: number;
+  @IsOptional() @IsNumber() magneticHeading?: number;
+  @IsOptional() @IsNumber() selectedAltitudeFt?: number;
 }
 
 class VisualReferenceDto {
