@@ -5,6 +5,11 @@ import { PDFDocument } from 'pdf-lib';
 import type { VfrPlanData } from '../components/vfr/VfrPlanForm';
 import type { ClimbDescentPlan } from '../components/vfr/vfrNavigation';
 import type { PlanViability } from '../components/vfr/weatherTimeUtils';
+import i18n from '../i18n';
+
+/** Localized lookup for PDF strings. Picks up the app's current language. */
+const t = (key: string, params?: Record<string, string | number>): string =>
+  i18n.t(`pdf.${key}`, params) as string;
 
 export interface AiValidationResult {
   overallStatus: 'pass' | 'warnings' | 'issues';
@@ -277,7 +282,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   doc.setTextColor(...COLORS.headerText);
-  doc.text('FS SUITE — FLIGHT PLAN', 14, 14);
+  doc.text(t('title'), 14, 14);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   const eobt = plan.plannedDepartureTime
@@ -302,19 +307,19 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
   let y = 36;
 
   // ─── ROUTE SUMMARY ───
-  y = sectionTitle(doc, 'ROUTE', y);
+  y = sectionTitle(doc, t('sectionRoute'), y);
 
   const routeRows: string[][] = [
-    ['Origin', `${plan.originIcao} — ${plan.originName}`, plan.originRunwayInUse ? `RWY ${plan.originRunwayInUse}` : '', plan.originElevationFt ? `${plan.originElevationFt} ft` : ''],
-    ['Destination', `${plan.destinationIcao} — ${plan.destinationName}`, plan.destinationRunwayInUse ? `RWY ${plan.destinationRunwayInUse}` : '', plan.destinationElevationFt ? `${plan.destinationElevationFt} ft` : ''],
+    [t('origin'), `${plan.originIcao} — ${plan.originName}`, plan.originRunwayInUse ? `RWY ${plan.originRunwayInUse}` : '', plan.originElevationFt ? `${plan.originElevationFt} ft` : ''],
+    [t('destination'), `${plan.destinationIcao} — ${plan.destinationName}`, plan.destinationRunwayInUse ? `RWY ${plan.destinationRunwayInUse}` : '', plan.destinationElevationFt ? `${plan.destinationElevationFt} ft` : ''],
   ];
   if (plan.alternateIcao) {
-    routeRows.push(['Alternate', `${plan.alternateIcao} — ${plan.alternateName ?? ''}`, plan.alternateRunwayInUse ? `RWY ${plan.alternateRunwayInUse}` : '', plan.alternateElevationFt ? `${plan.alternateElevationFt} ft` : '']);
+    routeRows.push([t('alternate'), `${plan.alternateIcao} — ${plan.alternateName ?? ''}`, plan.alternateRunwayInUse ? `RWY ${plan.alternateRunwayInUse}` : '', plan.alternateElevationFt ? `${plan.alternateElevationFt} ft` : '']);
   }
 
   autoTable(doc, {
     startY: y,
-    head: [['', 'Aerodrome', 'Runway', 'Elevation']],
+    head: [['', t('aerodrome'), t('runway'), t('elevation')]],
     body: routeRows,
     theme: 'grid',
     headStyles: { fillColor: COLORS.headerBg, textColor: COLORS.headerText, fontStyle: 'bold', fontSize: 8 },
@@ -336,13 +341,14 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
   doc.setTextColor(...COLORS.text);
 
   if (plan.cruiseLevel) {
-    labelValue(doc, 'Cruise Level: ', plan.cruiseLevel, 14, y);
+    labelValue(doc, `${t('cruiseLevel')}: `, plan.cruiseLevel, 14, y);
     y += 5;
   }
   if (plan.routeText) {
+    const routeLabel = `${t('route')}: `;
     doc.setFont('helvetica', 'bold');
-    doc.text('Route: ', 14, y);
-    const rW = doc.getTextWidth('Route: ');
+    doc.text(routeLabel, 14, y);
+    const rW = doc.getTextWidth(routeLabel);
     doc.setFont('helvetica', 'normal');
     const routeLines = doc.splitTextToSize(plan.routeText, 182 - rW);
     doc.text(routeLines[0], 14 + rW, y);
@@ -354,9 +360,10 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
   }
 
   if (plan.remarks) {
+    const item18Label = `${t('item18')}: `;
     doc.setFont('helvetica', 'bold');
-    doc.text('Item 18: ', 14, y);
-    const rmkW = doc.getTextWidth('Item 18: ');
+    doc.text(item18Label, 14, y);
+    const rmkW = doc.getTextWidth(item18Label);
     doc.setFont('helvetica', 'normal');
     const rmkLines = doc.splitTextToSize(plan.remarks, 182 - rmkW);
     doc.text(rmkLines[0], 14 + rmkW, y);
@@ -372,14 +379,14 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
   if (plan.totalDistanceNm) summaryParts.push(`${plan.totalDistanceNm.toFixed(1)} NM`);
   if (plan.tripMinutes) summaryParts.push(`ETE ${formatMinutes(plan.tripMinutes)}`);
   if (plan.cruiseSpeedKts) summaryParts.push(`TAS ${plan.cruiseSpeedKts} kt`);
-  if (plan.flightCondition) summaryParts.push(plan.flightCondition === 'day' ? 'Day' : 'Night');
+  if (plan.flightCondition) summaryParts.push(plan.flightCondition === 'day' ? t('day') : t('night'));
   if (summaryParts.length > 0) {
-    labelValue(doc, 'Trip: ', summaryParts.join('  |  '), 14, y);
+    labelValue(doc, `${t('trip')}: `, summaryParts.join('  |  '), 14, y);
     y += 5;
   }
 
   if (plan.todDistanceNm) {
-    labelValue(doc, 'TOD: ', `${plan.todDistanceNm} NM before destination`, 14, y);
+    labelValue(doc, `${t('tod')}: `, t('todBeforeDest', { nm: plan.todDistanceNm }), 14, y);
     y += 5;
   }
   y += 2;
@@ -387,7 +394,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
   // ─── NAVIGATION LOG ───
   if (plan.routeLegs && plan.routeLegs.length > 0) {
     y = checkPage(doc, y, 20 + plan.routeLegs.length * 6);
-    y = sectionTitle(doc, 'NAVIGATION LOG', y);
+    y = sectionTitle(doc, t('sectionNavlog'), y);
 
     const legRows = plan.routeLegs.map((leg, i) => {
       const mh = leg.magneticHeading != null ? `${Math.round(leg.magneticHeading)}°` : `${leg.magneticCourse.toFixed(0)}°`;
@@ -411,7 +418,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
     // Total row
     legRows.push([
       '',
-      'TOTAL',
+      t('navlogTotal'),
       plan.totalDistanceNm?.toFixed(1) ?? '',
       '',
       '',
@@ -421,7 +428,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
 
     autoTable(doc, {
       startY: y,
-      head: [['#', 'Leg', 'NM', 'MH', 'GS', 'Alt', 'ETE']],
+      head: [['#', t('navlogLeg'), 'NM', 'MH', 'GS', t('navlogAlt'), 'ETE']],
       body: legRows,
       theme: 'grid',
       headStyles: { fillColor: COLORS.headerBg, textColor: COLORS.headerText, fontStyle: 'bold', fontSize: 7, halign: 'center' },
@@ -452,23 +459,23 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
   // ─── CLIMB & DESCENT PROFILE ───
   if (climbDescentPlan && (climbDescentPlan.toc || climbDescentPlan.tod)) {
     y = checkPage(doc, y, 35);
-    y = sectionTitle(doc, 'CLIMB & DESCENT PROFILE', y);
+    y = sectionTitle(doc, t('sectionClimbDescent'), y);
     doc.setFontSize(9);
     doc.setTextColor(...COLORS.text);
 
     if (climbDescentPlan.toc) {
       const toc = climbDescentPlan.toc;
       doc.setFont('helvetica', 'bold');
-      doc.text('TOC (Top of Climb)', 14, y);
+      doc.text(t('tocLabel'), 14, y);
       y += 5;
       doc.setFont('helvetica', 'normal');
       doc.text(
-        `After ${toc.fromWaypoint}, fly ${formatLegTime(toc.timeFromWaypointMin)} on MH ${toc.headingMag}°, then start climb.`,
+        t('tocInstruction', { wp: toc.fromWaypoint, time: formatLegTime(toc.timeFromWaypointMin), heading: toc.headingMag }),
         14, y,
       );
       y += 5;
       doc.text(
-        `Rate ${toc.verticalRateFpm} fpm · climb ${formatLegTime(toc.durationMin)} to ${toc.targetAltFt.toLocaleString()} ft`,
+        t('tocRate', { rate: toc.verticalRateFpm, time: formatLegTime(toc.durationMin), alt: toc.targetAltFt.toLocaleString() }),
         14, y,
       );
       y += 7;
@@ -477,16 +484,16 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
     if (climbDescentPlan.tod) {
       const tod = climbDescentPlan.tod;
       doc.setFont('helvetica', 'bold');
-      doc.text('TOD (Top of Descent)', 14, y);
+      doc.text(t('todLabel'), 14, y);
       y += 5;
       doc.setFont('helvetica', 'normal');
       doc.text(
-        `After ${tod.fromWaypoint}, fly ${formatLegTime(tod.timeFromWaypointMin)} on MH ${tod.headingMag}°, then start descent.`,
+        t('todInstruction', { wp: tod.fromWaypoint, time: formatLegTime(tod.timeFromWaypointMin), heading: tod.headingMag }),
         14, y,
       );
       y += 5;
       doc.text(
-        `Rate ${tod.verticalRateFpm} fpm · descend ${formatLegTime(tod.durationMin)} to TPA ${tod.targetAltFt.toLocaleString()} ft · level off before ${tod.nextWaypoint}`,
+        t('todRate', { rate: tod.verticalRateFpm, time: formatLegTime(tod.durationMin), alt: tod.targetAltFt.toLocaleString(), wp: tod.nextWaypoint }),
         14, y,
       );
       y += 7;
@@ -496,7 +503,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
 
   // ─── NAVIGATION MAP ───
   if (mapImageDataUrl) {
-    y = sectionTitle(doc, 'NAVIGATION MAP', checkPage(doc, y, 120));
+    y = sectionTitle(doc, t('sectionMap'), checkPage(doc, y, 120));
     try {
       const imgW = 182;
       const props = doc.getImageProperties(mapImageDataUrl);
@@ -517,7 +524,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
 
   if (metarEntries.length > 0) {
     y = checkPage(doc, y, 12 + metarEntries.length * 8);
-    y = sectionTitle(doc, 'WEATHER (METAR)', y);
+    y = sectionTitle(doc, t('sectionWeather'), y);
 
     for (const entry of metarEntries) {
       doc.setFontSize(8);
@@ -536,15 +543,15 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
   // ─── AIRCRAFT ───
   if (plan.aircraftName || plan.aircraftType) {
     y = checkPage(doc, y, 30);
-    y = sectionTitle(doc, 'AIRCRAFT', y);
+    y = sectionTitle(doc, t('sectionAircraft'), y);
 
     const acRows: string[][] = [];
-    if (plan.aircraftName) acRows.push(['Aircraft', plan.aircraftName]);
-    if (plan.aircraftType) acRows.push(['Type', plan.aircraftType]);
-    if (plan.emptyWeightKg) acRows.push(['Empty weight', `${plan.emptyWeightKg.toFixed(0)} kg  /  ${(plan.emptyWeightKg * KG_TO_LBS).toFixed(0)} lbs`]);
-    if (plan.mtowKg) acRows.push(['MTOW', `${plan.mtowKg.toFixed(0)} kg  /  ${(plan.mtowKg * KG_TO_LBS).toFixed(0)} lbs`]);
-    if (plan.fuelCapacityL) acRows.push(['Fuel capacity', `${plan.fuelCapacityL.toFixed(0)} L  /  ${(plan.fuelCapacityL * L_TO_GAL_US).toFixed(1)} gal`]);
-    if (plan.cruiseSpeedKts) acRows.push(['Cruise speed', `${plan.cruiseSpeedKts} kt`]);
+    if (plan.aircraftName) acRows.push([t('aircraftAircraft'), plan.aircraftName]);
+    if (plan.aircraftType) acRows.push([t('aircraftType'), plan.aircraftType]);
+    if (plan.emptyWeightKg) acRows.push([t('emptyWeight'), `${plan.emptyWeightKg.toFixed(0)} kg  /  ${(plan.emptyWeightKg * KG_TO_LBS).toFixed(0)} lbs`]);
+    if (plan.mtowKg) acRows.push([t('mtow'), `${plan.mtowKg.toFixed(0)} kg  /  ${(plan.mtowKg * KG_TO_LBS).toFixed(0)} lbs`]);
+    if (plan.fuelCapacityL) acRows.push([t('fuelCapacity'), `${plan.fuelCapacityL.toFixed(0)} L  /  ${(plan.fuelCapacityL * L_TO_GAL_US).toFixed(1)} gal`]);
+    if (plan.cruiseSpeedKts) acRows.push([t('cruiseSpeed'), `${plan.cruiseSpeedKts} kt`]);
 
     autoTable(doc, {
       startY: y,
@@ -563,27 +570,33 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
   // ─── WEIGHT ───
   if (plan.takeoffWeightKg || plan.payloadKg) {
     y = checkPage(doc, y, 30);
-    y = sectionTitle(doc, 'WEIGHT & BALANCE', y);
+    y = sectionTitle(doc, t('sectionWeightBalance'), y);
 
+    // Track row indexes for didParseCell styling — labels are localized so we
+    // can't compare against literal strings post-translation.
     const weightRows: string[][] = [];
-    if (plan.emptyWeightKg) weightRows.push(['Empty weight', `${plan.emptyWeightKg.toFixed(0)} kg`, `${(plan.emptyWeightKg * KG_TO_LBS).toFixed(0)} lbs`]);
-    if (plan.payloadKg) weightRows.push(['Payload', `${plan.payloadKg.toFixed(0)} kg`, `${(plan.payloadKg * KG_TO_LBS).toFixed(0)} lbs`]);
+    let takeoffIdx = -1;
+    let marginIdx = -1;
+    if (plan.emptyWeightKg) weightRows.push([t('emptyWeight'), `${plan.emptyWeightKg.toFixed(0)} kg`, `${(plan.emptyWeightKg * KG_TO_LBS).toFixed(0)} lbs`]);
+    if (plan.payloadKg) weightRows.push([t('payload'), `${plan.payloadKg.toFixed(0)} kg`, `${(plan.payloadKg * KG_TO_LBS).toFixed(0)} lbs`]);
     if (plan.fuelCurrentTotal) {
       const fuelKg = plan.fuelCurrentTotal * AVGAS_KG_PER_L;
-      weightRows.push(['Fuel', `${fuelKg.toFixed(0)} kg`, `${(fuelKg * KG_TO_LBS).toFixed(0)} lbs`]);
+      weightRows.push([t('fuelLabel'), `${fuelKg.toFixed(0)} kg`, `${(fuelKg * KG_TO_LBS).toFixed(0)} lbs`]);
     }
     if (plan.takeoffWeightKg) {
-      weightRows.push(['Takeoff weight', `${plan.takeoffWeightKg.toFixed(0)} kg`, `${(plan.takeoffWeightKg * KG_TO_LBS).toFixed(0)} lbs`]);
+      takeoffIdx = weightRows.length;
+      weightRows.push([t('takeoffWeight'), `${plan.takeoffWeightKg.toFixed(0)} kg`, `${(plan.takeoffWeightKg * KG_TO_LBS).toFixed(0)} lbs`]);
     }
     if (plan.mtowKg && plan.takeoffWeightKg) {
-      weightRows.push(['MTOW', `${plan.mtowKg.toFixed(0)} kg`, `${(plan.mtowKg * KG_TO_LBS).toFixed(0)} lbs`]);
+      weightRows.push([t('mtow'), `${plan.mtowKg.toFixed(0)} kg`, `${(plan.mtowKg * KG_TO_LBS).toFixed(0)} lbs`]);
       const margin = plan.mtowKg - plan.takeoffWeightKg;
-      weightRows.push(['Margin', `${margin >= 0 ? '+' : ''}${margin.toFixed(0)} kg`, margin >= 0 ? 'Within limits' : 'OVER MTOW']);
+      marginIdx = weightRows.length;
+      weightRows.push([t('margin'), `${margin >= 0 ? '+' : ''}${margin.toFixed(0)} kg`, margin >= 0 ? t('marginWithinLimits') : t('marginOverMtow')]);
     }
 
     autoTable(doc, {
       startY: y,
-      head: [['Item', 'Metric', 'Imperial']],
+      head: [[t('wbItem'), t('wbMetric'), t('wbImperial')]],
       body: weightRows,
       theme: 'grid',
       headStyles: { fillColor: COLORS.headerBg, textColor: COLORS.headerText, fontStyle: 'bold', fontSize: 8 },
@@ -597,11 +610,10 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
       margin: { left: 14, right: 14 },
       didParseCell: (data) => {
         if (data.section === 'body') {
-          const label = weightRows[data.row.index]?.[0];
-          if (label === 'Takeoff weight') {
+          if (data.row.index === takeoffIdx) {
             data.cell.styles.fontStyle = 'bold';
           }
-          if (label === 'Margin') {
+          if (data.row.index === marginIdx) {
             const margin = plan.mtowKg && plan.takeoffWeightKg ? plan.mtowKg - plan.takeoffWeightKg : 0;
             if (margin < 0) data.cell.styles.textColor = [220, 38, 38];
             else data.cell.styles.textColor = [22, 163, 74];
@@ -615,56 +627,59 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
   // ─── FUEL PLANNING ───
   if (plan.fuelConsumptionPerHour || plan.tripFuelKg) {
     y = checkPage(doc, y, 55);
-    y = sectionTitle(doc, 'FUEL PLANNING', y);
+    y = sectionTitle(doc, t('sectionFuel'), y);
 
+    // Track row indexes (rather than localized labels) for didParseCell.
     const fuelRows: string[][] = [];
+    let minFuelIdx = -1;
+    let onBoardIdx = -1;
 
     if (plan.fuelConsumptionPerHour) {
       const c = fuelConvert(plan.fuelConsumptionPerHour);
-      fuelRows.push(['Consumption/h', `${c.kg} kg`, `${c.liters} L`, `${c.gal} gal`]);
+      fuelRows.push([t('fuelConsumption'), `${c.kg} kg`, `${c.liters} L`, `${c.gal} gal`]);
     }
 
     // Fuel breakdown
     if (plan.tripFuelKg) {
       const tf = fmtKg(plan.tripFuelKg);
-      fuelRows.push([`Trip fuel${plan.tripMinutes ? ` (${formatMinutes(plan.tripMinutes)})` : ''}`, `${tf.kg} kg`, `${tf.liters} L`, `${tf.gal} gal`]);
+      const label = plan.tripMinutes ? t('fuelTripWithTime', { time: formatMinutes(plan.tripMinutes) }) : t('fuelTrip');
+      fuelRows.push([label, `${tf.kg} kg`, `${tf.liters} L`, `${tf.gal} gal`]);
     }
     if (plan.altFuelKg && plan.altDistanceNm) {
       const af = fmtKg(plan.altFuelKg);
-      fuelRows.push([`Alternate (${plan.altDistanceNm.toFixed(0)} NM)`, `${af.kg} kg`, `${af.liters} L`, `${af.gal} gal`]);
+      fuelRows.push([t('fuelAlt', { nm: plan.altDistanceNm.toFixed(0) }), `${af.kg} kg`, `${af.liters} L`, `${af.gal} gal`]);
     }
     if (plan.contingencyFuelKg && plan.contingencyPct) {
       const cf = fmtKg(plan.contingencyFuelKg);
-      fuelRows.push([`Contingency (${plan.contingencyPct}%)`, `${cf.kg} kg`, `${cf.liters} L`, `${cf.gal} gal`]);
+      fuelRows.push([t('fuelContingency', { pct: plan.contingencyPct }), `${cf.kg} kg`, `${cf.liters} L`, `${cf.gal} gal`]);
     }
     if (plan.reserveFuelKg) {
       const rf = fmtKg(plan.reserveFuelKg);
-      fuelRows.push([`Reserve (${plan.fuelReserveMinutes ?? ''} min)`, `${rf.kg} kg`, `${rf.liters} L`, `${rf.gal} gal`]);
+      fuelRows.push([t('fuelReserve', { min: plan.fuelReserveMinutes ?? '' }), `${rf.kg} kg`, `${rf.liters} L`, `${rf.gal} gal`]);
     }
     if (plan.minFuelKg) {
       const mf = fmtKg(plan.minFuelKg);
-      fuelRows.push(['Min. required', `${mf.kg} kg`, `${mf.liters} L`, `${mf.gal} gal`]);
+      minFuelIdx = fuelRows.length;
+      fuelRows.push([t('fuelMinRequired'), `${mf.kg} kg`, `${mf.liters} L`, `${mf.gal} gal`]);
     }
 
     // Separator — on board / endurance
     if (plan.fuelCurrentTotal) {
       const ob = fuelConvert(plan.fuelCurrentTotal);
-      fuelRows.push(['On board', `${ob.kg} kg`, `${ob.liters} L`, `${ob.gal} gal`]);
+      onBoardIdx = fuelRows.length;
+      fuelRows.push([t('fuelOnBoard'), `${ob.kg} kg`, `${ob.liters} L`, `${ob.gal} gal`]);
     }
     if (plan.fuelPerWing) {
       const pw = fuelConvert(plan.fuelPerWing);
-      fuelRows.push(['Per wing', `${pw.kg} kg`, `${pw.liters} L`, `${pw.gal} gal`]);
+      fuelRows.push([t('fuelPerWing'), `${pw.kg} kg`, `${pw.liters} L`, `${pw.gal} gal`]);
     }
     if (plan.enduranceMinutes) {
-      fuelRows.push(['Endurance', formatMinutes(plan.enduranceMinutes), '', '']);
+      fuelRows.push([t('fuelEndurance'), formatMinutes(plan.enduranceMinutes), '', '']);
     }
-
-    const minFuelIdx = fuelRows.findIndex((r) => r[0] === 'Min. required');
-    const onBoardIdx = fuelRows.findIndex((r) => r[0] === 'On board');
 
     autoTable(doc, {
       startY: y,
-      head: [['Item', 'Weight', 'Volume', 'US Gal']],
+      head: [[t('wbItem'), t('fuelWeight'), t('fuelVolume'), t('fuelUsGal')]],
       body: fuelRows,
       theme: 'grid',
       headStyles: { fillColor: COLORS.headerBg, textColor: COLORS.headerText, fontStyle: 'bold', fontSize: 8 },
@@ -691,7 +706,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
   // ─── VISUAL REFERENCES ───
   if (plan.visualReferences && plan.visualReferences.length > 0) {
     y = checkPage(doc, y, 15 + plan.visualReferences.length * 6);
-    y = sectionTitle(doc, 'VISUAL REFERENCES', y);
+    y = sectionTitle(doc, t('sectionVisualRef'), y);
 
     const refRows = plan.visualReferences
       .sort((a, b) => a.sequence - b.sequence)
@@ -704,7 +719,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
 
     autoTable(doc, {
       startY: y,
-      head: [['#', 'Reference', 'Distance', 'Time']],
+      head: [['#', t('visualRefReference'), t('visualRefDistance'), t('visualRefTime')]],
       body: refRows,
       theme: 'grid',
       headStyles: { fillColor: COLORS.headerBg, textColor: COLORS.headerText, fontStyle: 'bold', fontSize: 8 },
@@ -723,7 +738,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
 
   // ─── AI VALIDATION ───
   if (aiValidation) {
-    const statusLabel = aiValidation.overallStatus === 'pass' ? 'APROVADO' : aiValidation.overallStatus === 'warnings' ? 'ATENÇÃO' : 'PROBLEMAS';
+    const statusLabel = aiValidation.overallStatus === 'pass' ? t('aiStatusPass') : aiValidation.overallStatus === 'warnings' ? t('aiStatusWarnings') : t('aiStatusFail');
     const statusColor: [number, number, number] = aiValidation.overallStatus === 'pass' ? [22, 163, 74] : aiValidation.overallStatus === 'warnings' ? [217, 119, 6] : [220, 38, 38];
 
     doc.addPage();
@@ -734,7 +749,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
     doc.setTextColor(...COLORS.headerText);
-    doc.text('REVISÃO DO INSTRUTOR IA', 14, 12);
+    doc.text(t('sectionAiReview'), 14, 12);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.text(statusLabel, 196, 12, { align: 'right' });
@@ -792,11 +807,11 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
   // ─── FLIGHT VIABILITY ───
   if (viability) {
     const statusLabels: Record<string, string> = {
-      'viable': 'VIABLE',
-      'viable-with-warnings': 'VIABLE WITH REMARKS',
-      'incomplete': 'INCOMPLETE',
-      'not-viable': 'NOT VIABLE',
-      'unverifiable': 'UNVERIFIABLE',
+      'viable': t('viabilityViable'),
+      'viable-with-warnings': t('viabilityViableWithWarnings'),
+      'incomplete': t('viabilityIncomplete'),
+      'not-viable': t('viabilityNotViable'),
+      'unverifiable': t('viabilityUnverifiable'),
     };
     const statusColors: Record<string, [number, number, number]> = {
       'viable': [22, 163, 74],
@@ -807,7 +822,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
     };
     const color = statusColors[viability.status] ?? COLORS.muted;
     y = checkPage(doc, y, 12 + viability.items.length * 5);
-    y = sectionTitle(doc, 'FLIGHT VIABILITY', y);
+    y = sectionTitle(doc, t('sectionViability'), y);
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
@@ -841,7 +856,7 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
 
   // ─── NOTES AREA ───
   y = checkPage(doc, y, 30);
-  y = sectionTitle(doc, 'NOTES', y);
+  y = sectionTitle(doc, t('sectionNotes'), y);
   doc.setDrawColor(...COLORS.border);
   doc.setLineWidth(0.3);
   for (let i = 0; i < 5; i++) {
@@ -855,8 +870,8 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...COLORS.muted);
-    doc.text(`FS Suite — Generated ${now.toISOString().slice(0, 16).replace('T', ' ')} UTC`, 14, 290);
-    doc.text(`Page ${i}/${pageCount}`, 196, 290, { align: 'right' });
+    doc.text(t('footerGenerated', { datetime: now.toISOString().slice(0, 16).replace('T', ' ') }), 14, 290);
+    doc.text(t('footerPage', { current: i, total: pageCount }), 196, 290, { align: 'right' });
   }
 
   return doc;
