@@ -185,6 +185,7 @@ export interface LegAltConstraint {
   altMin: number;
   altMax: number;
   fromName?: string;
+  toName?: string;
 }
 
 export interface AltitudeProfile {
@@ -269,7 +270,9 @@ export function computeAltitudeProfile(
       groupAlt = g.range.min;
     }
     if (groupAlt !== prevAlt) {
-      const wpName = legs[g.startLeg]?.fromName;
+      // Transition AT this waypoint means "be at the new altitude when reaching
+      // it" — i.e., the first leg of the new group ends at the new altitude.
+      const wpName = legs[g.startLeg]?.toName;
       if (wpName) transitions.push({ atWaypoint: wpName, toAltFt: groupAlt });
       prevAlt = groupAlt;
     }

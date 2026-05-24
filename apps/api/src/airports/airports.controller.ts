@@ -10,6 +10,7 @@ import { JwtAuthGuard, Public } from '../common/guards/jwt-auth.guard';
 import { R2StorageService } from '../r2/r2-storage.service';
 
 import { AirportsService } from './airports.service';
+import { ChartOverlaysService } from './chart-overlays.service';
 import { ChartsService, getAiracCycle } from './charts.service';
 
 @ApiTags('aerodromes')
@@ -21,6 +22,7 @@ export class AirportsController {
   constructor(
     private readonly airportsService: AirportsService,
     private readonly chartsService: ChartsService,
+    private readonly chartOverlaysService: ChartOverlaysService,
     private readonly r2: R2StorageService,
   ) {}
 
@@ -222,10 +224,68 @@ export class AirportsController {
   }
 
   @Public()
+  @Get('chart-overlays/:id/image')
+  @ApiOperation({ summary: 'Stream a prepared chart overlay raster image from R2' })
+  async chartOverlayImage(@Param('id') id: string, @Res() res: Response): Promise<void> {
+    const overlay = await this.chartOverlaysService.findByIdOrThrow(id);
+    const obj = await this.r2.getObject(overlay.imageKey);
+    if (!obj) throw new NotFoundException('Chart overlay image not available');
+
+    res.setHeader('Content-Type', overlay.imageContentType);
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.removeHeader('X-Frame-Options');
+    if (obj.contentLength) res.setHeader('Content-Length', obj.contentLength);
+
+    try {
+      await pipeline(obj.body, res);
+    } catch (err) {
+      this.logger.warn(`chart-overlay image stream failed for ${id}: ${(err as Error).message}`);
+      if (!res.headersSent) res.status(502).end();
+      else res.end();
+    }
+  }
+
+  @Public()
   @Get(':icao/charts')
   @ApiOperation({ summary: 'Search for aerodrome charts from multiple authorities' })
   async charts(@Param('icao') icao: string): Promise<unknown> {
     return this.chartsService.searchCharts(icao);
+  }
+
+  @Public()
+  @Get(':icao/chart-overlay')
+  @ApiOperation({
+    summary: 'Compute (or fetch from cache) a georeferenced map overlay for an aerodrome chart',
+  })
+  @ApiQuery({ name: 'url', required: true, description: 'Direct PDF URL of the chart' })
+  @ApiQuery({ name: 'type', required: true, description: 'Chart type (e.g. VAC)' })
+  @ApiQuery({ name: 'name', required: true, description: 'Chart display name' })
+  @ApiQuery({ name: 'authority', required: false, description: 'Source authority' })
+  @ApiQuery({ name: 'page', required: false, description: 'PDF page index (default 0)' })
+  async chartOverlay(
+    @Param('icao') icao: string,
+    @Query('url') url: string,
+    @Query('type') type: string,
+    @Query('name') name: string,
+    @Query('authority') authority?: string,
+    @Query('page') page?: string,
+  ): Promise<unknown> {
+    if (!url || !type || !name) {
+      throw new BadRequestException('url, type, and name are required');
+    }
+    const pageIndex = page ? parseInt(page, 10) : 0;
+    if (Number.isNaN(pageIndex) || pageIndex < 0) {
+      throw new BadRequestException('page must be a non-negative integer');
+    }
+    return this.chartOverlaysService.getOrCompute({
+      icao,
+      chartUrl: url,
+      chartType: type,
+      chartName: name,
+      sourceAuthority: authority ?? 'unknown',
+      pageIndex,
+    });
   }
 
   @Public()

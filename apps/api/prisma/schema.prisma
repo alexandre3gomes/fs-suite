@@ -114,11 +114,45 @@ model Airport {
   type      String? // large_airport, medium_airport, small_airport, heliport, seaplane_base, closed
   raw       Json? // full source record (OurAirports) for future enrichment
 
-  runways     Runway[]
-  frequencies Frequency[]
+  runways       Runway[]
+  frequencies   Frequency[]
+  chartOverlays AerodromeChartOverlay[]
 
   @@index([latitude, longitude])
   @@map("airports")
+}
+
+// On-demand cache of an aerodrome chart rendered as a georeferenced map overlay.
+// Bounds are derived automatically from Airport (ARP) and Runway data; the raster
+// is produced once per (sourceUrl, AIRAC cycle) and stored in R2. See
+// docs/aerodrome-chart-overlay.md.
+model AerodromeChartOverlay {
+  id                 String   @id @default(cuid())
+  icao               String
+  chartType          String   @map("chart_type") // VAC (PDC in future)
+  chartName          String   @map("chart_name")
+  sourceUrl          String   @map("source_url")
+  sourceAuthority    String   @map("source_authority")
+  pageIndex          Int      @default(0) @map("page_index")
+  imageKey           String   @map("image_key") // R2 object key
+  imageContentType   String   @default("image/png") @map("image_content_type")
+  imageWidth         Int      @map("image_width")
+  imageHeight        Int      @map("image_height")
+  boundsSouth        Float    @map("bounds_south")
+  boundsWest         Float    @map("bounds_west")
+  boundsNorth        Float    @map("bounds_north")
+  boundsEast         Float    @map("bounds_east")
+  rotationDeg        Float    @default(0) @map("rotation_deg")
+  opacityDefault     Float    @default(0.7) @map("opacity_default")
+  preparedAiracCycle String   @map("prepared_airac_cycle") // cycle in which this cache row was produced
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  airport Airport @relation(fields: [icao], references: [icao])
+
+  @@unique([sourceUrl, preparedAiracCycle])
+  @@index([icao])
+  @@map("aerodrome_chart_overlays")
 }
 
 model Runway {

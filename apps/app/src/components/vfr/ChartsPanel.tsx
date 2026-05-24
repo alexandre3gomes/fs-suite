@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
-import { trackAction } from '../../services/analytics';
+import { categorizeError, trackAction, trackFailure } from '../../services/analytics';
 import { API_URL, apiClient } from '../../services/api.client';
 
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
@@ -23,10 +23,32 @@ interface ChartSearchResult {
   moreLinks: { label: string; url: string }[];
 }
 
+export interface ChartOverlay {
+  id: string;
+  icao: string;
+  chartType: string;
+  chartName: string;
+  sourceUrl: string;
+  bounds: { south: number; west: number; north: number; east: number };
+  rotationDeg: number;
+  opacityDefault: number;
+  imageWidth: number;
+  imageHeight: number;
+}
+
+/** Chart types eligible to be projected on the map (MVP: VAC only). */
+const OVERLAY_ELIGIBLE_TYPES = new Set(['VAC']);
+
 interface Props {
   icao: string;
   flightRules?: 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
   fullscreen?: boolean;
+  /** Source URL of the currently active overlay (so we can highlight the matching chip) */
+  activeOverlayChartUrl?: string | null;
+  /** Called when the user toggles the overlay on the map for a chart */
+  onShowOverlay?: (overlay: ChartOverlay) => void;
+  /** Called when the user removes the currently active overlay */
+  onHideOverlay?: () => void;
 }
 
 const VFR_CHART_TYPES = new Set(['ADC', 'PDC', 'VAC', 'INFO', 'OTHER']);
@@ -52,13 +74,14 @@ function useViewerHeight(base: number): number {
   return height < 700 ? Math.round(height * 0.45) : base;
 }
 
-export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
+export function ChartsPanel({ icao, flightRules, fullscreen, activeOverlayChartUrl, onShowOverlay, onHideOverlay }: Props) {
   const { t } = useTranslation();
   const viewerHeight = useViewerHeight(450);
   const [data, setData] = useState<ChartSearchResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [maximized, setMaximized] = useState(false);
+  const [overlayLoading, setOverlayLoading] = useState(false);
   const iframeRef = useRef<View>(null);
   const overlayRef = useRef<DomElement | null>(null);
 
@@ -72,6 +95,30 @@ export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
       .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, [icao]);
+
+  const requestOverlay = async (chart: AerodromeChart) => {
+    if (!onShowOverlay) return;
+    setOverlayLoading(true);
+    try {
+      const params = new URLSearchParams({
+        url: chart.url,
+        type: chart.type,
+        name: chart.name,
+        authority: chart.source,
+      });
+      const overlay = await apiClient.get<ChartOverlay>(
+        `/aerodromes/${icao}/chart-overlay?${params.toString()}`,
+      );
+      onShowOverlay(overlay);
+      trackAction('chart_overlay_shown', { icao, chart_type: chart.type, source: chart.source });
+    } catch (err) {
+      // Surface the failure quietly — the inline PDF viewer is still usable.
+      const { errorType, statusCode } = categorizeError(err);
+      trackFailure('chart_overlay_failed', errorType, { icao, chart_type: chart.type, status_code: statusCode });
+    } finally {
+      setOverlayLoading(false);
+    }
+  };
 
   // Reset selection when flight rules change
   useEffect(() => { setSelectedIdx(0); }, [flightRules]);
@@ -275,6 +322,31 @@ export function ChartsPanel({ icao, flightRules, fullscreen }: Props) {
                 <Text className="mr-auto flex-1 text-[10px] text-muted-foreground" numberOfLines={1}>
                   {selectedChart.source} — {selectedChart.name}
                 </Text>
+                {OVERLAY_ELIGIBLE_TYPES.has(selectedChart.type) && onShowOverlay ? (
+                  (() => {
+                    const isActive = !!activeOverlayChartUrl && activeOverlayChartUrl === selectedChart.url;
+                    return (
+                      <Pressable
+                        disabled={overlayLoading}
+                        onPress={() => {
+                          if (isActive) onHideOverlay?.();
+                          else void requestOverlay(selectedChart);
+                        }}
+                        className={`rounded-sm border px-2 py-0.5 active:bg-muted ${
+                          isActive ? 'border-primary bg-primary/10' : 'border-border'
+                        } ${overlayLoading ? 'opacity-60' : ''}`}
+                      >
+                        <Text className={`text-[10px] font-medium ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
+                          {overlayLoading
+                            ? `⏳ ${t('common.loading')}`
+                            : isActive
+                              ? `✓ ${t('vfr.chartHideFromMap')}`
+                              : `📍 ${t('vfr.chartShowOnMap')}`}
+                        </Text>
+                      </Pressable>
+                    );
+                  })()
+                ) : null}
                 <Pressable
                   onPress={() => openUrl(selectedChart.url)}
                   className="rounded-sm border border-border px-2 py-0.5 active:bg-muted"

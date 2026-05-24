@@ -93,14 +93,35 @@ interface Props {
   routeDestination?: { lat: number; lng: number; name: string } | null;
   routeAlternate?: { lat: number; lng: number; name: string } | null;
   routeWaypoints?: RouteWaypoint[];
-  onAddWaypoint?: (wp: RouteWaypoint) => void;
+  onAddWaypoint?: (wp: RouteWaypoint, altFt?: number) => void;
   onRemoveWaypoint?: (index: number) => void;
   onUpdateWaypoint?: (index: number, wp: RouteWaypoint) => void;
+  /** Sets the altitude that takes effect AT this waypoint (null = remove transition). */
+  onSetAltitudeAtWaypoint?: (waypointName: string, altFt: number | null) => void;
+  /** Cruise altitude (feet) used as default when popups offer to set a waypoint altitude. */
+  defaultCruiseAltFt?: number | null;
+  /** Altitude at each existing route waypoint (matches routeWaypoints order). */
+  waypointAltitudesFt?: (number | null | undefined)[];
   reaSegments?: ReaCorridorSegment[];
   selectedReaCorridorName?: string | null;
   flightRules?: 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
   tocTodPositions?: TocTodPosition[];
   hazardSegments?: { fromIdx: number; toIdx: number; hazardType: string; severity: string }[];
+  aerodromeOverlay?: AerodromeOverlay | null;
+  onCloseAerodromeOverlay?: () => void;
+}
+
+export interface AerodromeOverlay {
+  id: string;
+  icao: string;
+  chartType: string;
+  chartName: string;
+  sourceUrl: string;
+  bounds: { south: number; west: number; north: number; east: number };
+  rotationDeg: number;
+  opacityDefault: number;
+  imageWidth: number;
+  imageHeight: number;
 }
 
 // --------------- Constants ---------------
@@ -215,7 +236,9 @@ function injectLeafletCSS() {
 export function AerodromeMap({
   onSelectOrigin, onSelectDestination, onSelectAlternate, onMapReady,
   routeOrigin, routeDestination, routeAlternate, routeWaypoints, onAddWaypoint, onRemoveWaypoint, onUpdateWaypoint,
+  onSetAltitudeAtWaypoint, defaultCruiseAltFt, waypointAltitudesFt,
   reaSegments, selectedReaCorridorName, flightRules, tocTodPositions, hazardSegments,
+  aerodromeOverlay, onCloseAerodromeOverlay,
 }: Props) {
   const { t } = useTranslation();
   const wrapperRef = useRef<View>(null);
@@ -230,6 +253,8 @@ export function AerodromeMap({
   const sigmetLayerRef = useRef<L.GeoJSON | null>(null);
   const radarLayerRef = useRef<L.TileLayer | null>(null);
   const satelliteLayerRef = useRef<L.TileLayer | null>(null);
+  const aerodromeOverlayLayerRef = useRef<L.ImageOverlay | null>(null);
+  const [aerodromeOverlayOpacity, setAerodromeOverlayOpacity] = useState<number | null>(null);
   const [ready, setReady] = useState(false);
   const [mapInitialized, setMapInitialized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -258,6 +283,12 @@ export function AerodromeMap({
   onRemoveWpRef.current = onRemoveWaypoint;
   const onUpdateWpRef = useRef(onUpdateWaypoint);
   onUpdateWpRef.current = onUpdateWaypoint;
+  const onSetAltRef = useRef(onSetAltitudeAtWaypoint);
+  onSetAltRef.current = onSetAltitudeAtWaypoint;
+  const defaultCruiseRef = useRef(defaultCruiseAltFt);
+  defaultCruiseRef.current = defaultCruiseAltFt;
+  const waypointAltsRef = useRef(waypointAltitudesFt);
+  waypointAltsRef.current = waypointAltitudesFt;
   const wpCountRef = useRef(routeWaypoints?.length ?? 0);
   wpCountRef.current = routeWaypoints?.length ?? 0;
   const tRef = useRef(t);
@@ -329,14 +360,24 @@ export function AerodromeMap({
       const { lat, lng } = e.latlng;
       const wpNum = wpCountRef.current + 1;
       const defaultName = `WPT${String(wpNum).padStart(2, '0')}`;
+      const cruiseAlt = defaultCruiseRef.current ?? null;
+      const altPlaceholder = cruiseAlt != null ? String(cruiseAlt) : tRef.current('vfr.altitudePlaceholderCruise');
 
       const popupHtml = `
-        <div style="font-family:system-ui,sans-serif;min-width:170px">
+        <div style="font-family:system-ui,sans-serif;min-width:200px">
           <div style="font-weight:600;font-size:11px;margin-bottom:6px;color:#6b7280">
             ${lat.toFixed(4)}, ${lng.toFixed(4)}
           </div>
-          <input id="wp-name-input" type="text" value="${defaultName}"
-            style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;margin-bottom:6px;box-sizing:border-box;font-weight:600" />
+          <div style="margin-bottom:6px">
+            <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">${escapeHtml(tRef.current('vfr.waypointName'))}</label>
+            <input id="wp-name-input" type="text" value="${defaultName}"
+              style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;font-weight:600" />
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">${escapeHtml(tRef.current('vfr.altitudeFt'))}</label>
+            <input id="wp-alt-input" type="number" inputmode="numeric" placeholder="${escapeHtml(altPlaceholder)}"
+              style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box" />
+          </div>
           <button data-action="add-waypoint"
             style="width:100%;padding:6px 4px;background:${ROUTE_COLOR};color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">
             + ${escapeHtml(tRef.current('vfr.addWaypoint'))}
@@ -350,8 +391,11 @@ export function AerodromeMap({
         const btn = popupEl.querySelector?.('button[data-action="add-waypoint"]');
         btn?.addEventListener('click', () => {
           const nameInput = popupEl.querySelector?.('#wp-name-input');
+          const altInput = popupEl.querySelector?.('#wp-alt-input');
           const name = (nameInput?.value as string | undefined)?.trim() || defaultName;
-          onAddWpRef.current?.({ lat, lng, name });
+          const altRaw = (altInput?.value as string | undefined)?.trim();
+          const altFt = altRaw ? parseInt(altRaw, 10) : NaN;
+          onAddWpRef.current?.({ lat, lng, name }, Number.isFinite(altFt) && altFt > 0 ? altFt : undefined);
           map.closePopup();
         });
       }
@@ -668,6 +712,72 @@ export function AerodromeMap({
     };
   }, [showSatellite, mapInitialized]);
 
+  // Aerodrome chart overlay (VAC/PDC) — renders the prepared raster as an L.imageOverlay
+  useEffect(() => {
+    if (!mapInitialized || !mapRef.current || Platform.OS !== 'web') return;
+    const Leaf = require('leaflet') as LeafletModule;
+    const map = mapRef.current;
+
+    if (aerodromeOverlayLayerRef.current) {
+      map.removeLayer(aerodromeOverlayLayerRef.current);
+      aerodromeOverlayLayerRef.current = null;
+    }
+    if (!aerodromeOverlay) {
+      setAerodromeOverlayOpacity(null);
+      return;
+    }
+
+    const { bounds } = aerodromeOverlay;
+    const latLngBounds = Leaf.latLngBounds(
+      [bounds.south, bounds.west],
+      [bounds.north, bounds.east],
+    );
+    const imageUrl = `${API_URL}/v1/aerodromes/chart-overlays/${aerodromeOverlay.id}/image`;
+    const opacity = aerodromeOverlayOpacity ?? aerodromeOverlay.opacityDefault;
+
+    aerodromeOverlayLayerRef.current = Leaf.imageOverlay(imageUrl, latLngBounds, {
+      opacity,
+      interactive: false,
+      crossOrigin: 'anonymous',
+    }).addTo(map);
+
+    // Place below markers but above base tiles and weather layers
+    const el = aerodromeOverlayLayerRef.current.getElement() as unknown as DomElement | null;
+    if (el) {
+      el.style.zIndex = '500';
+      if (aerodromeOverlay.rotationDeg && aerodromeOverlay.rotationDeg !== 0) {
+        el.style.transformOrigin = 'center center';
+        const existing = el.style.transform ?? '';
+        el.style.transform = `${existing} rotate(${aerodromeOverlay.rotationDeg}deg)`;
+      }
+    }
+
+    if (aerodromeOverlayOpacity === null) {
+      setAerodromeOverlayOpacity(aerodromeOverlay.opacityDefault);
+    }
+
+    return () => {
+      if (aerodromeOverlayLayerRef.current) {
+        map.removeLayer(aerodromeOverlayLayerRef.current);
+        aerodromeOverlayLayerRef.current = null;
+      }
+    };
+  }, [aerodromeOverlay, mapInitialized]);
+
+  // Live-update opacity on slider drag without rebuilding the overlay
+  useEffect(() => {
+    if (!aerodromeOverlayLayerRef.current || aerodromeOverlayOpacity === null) return;
+    aerodromeOverlayLayerRef.current.setOpacity(aerodromeOverlayOpacity);
+  }, [aerodromeOverlayOpacity]);
+
+  const fitToAerodromeOverlay = useCallback(() => {
+    if (!mapRef.current || !aerodromeOverlay) return;
+    const Leaf = require('leaflet') as LeafletModule;
+    const { bounds } = aerodromeOverlay;
+    const b = Leaf.latLngBounds([bounds.south, bounds.west], [bounds.north, bounds.east]);
+    mapRef.current.fitBounds(b, { padding: [20, 20] });
+  }, [aerodromeOverlay]);
+
   // ResizeObserver — invalidate map size when container resizes (sidebar collapse, etc.)
   useEffect(() => {
     if (Platform.OS !== 'web' || !ready) return;
@@ -957,26 +1067,62 @@ export function AerodromeMap({
         marker.on('contextmenu', (e: L.LeafletMouseEvent) => {
           Leaf.DomEvent.stopPropagation(e);
           const pos = marker.getLatLng();
-          const popup = Leaf.popup({ closeButton: true, minWidth: 140 }).setLatLng(pos).setContent(`
-            <div style="font-family:system-ui,sans-serif;min-width:140px">
-              <div style="font-weight:700;font-size:12px;margin-bottom:2px;color:#1a1d26">${escapeHtml(wp.name)}</div>
+          const currentAlt = waypointAltsRef.current?.[wpIdx];
+          const altValue = currentAlt != null ? String(currentAlt) : '';
+          const cruiseAlt = defaultCruiseRef.current ?? null;
+          const altPlaceholder = cruiseAlt != null ? String(cruiseAlt) : tRef.current('vfr.altitudePlaceholderCruise');
+          const popup = Leaf.popup({ closeButton: true, minWidth: 220 }).setLatLng(pos).setContent(`
+            <div style="font-family:system-ui,sans-serif;min-width:220px">
               <div style="font-size:10px;color:#6b7280;margin-bottom:8px">${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}</div>
-              <div style="display:flex;gap:6px">
+              <div style="margin-bottom:6px">
+                <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">${escapeHtml(tRef.current('vfr.waypointName'))}</label>
+                <input id="wp-edit-name" type="text" value="${escapeHtml(wp.name)}"
+                  style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;font-weight:600" />
+              </div>
+              <div style="margin-bottom:8px">
+                <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">${escapeHtml(tRef.current('vfr.altitudeFt'))}</label>
+                <input id="wp-edit-alt" type="number" inputmode="numeric" value="${altValue}" placeholder="${escapeHtml(altPlaceholder)}"
+                  style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box" />
+              </div>
+              <div style="display:flex;gap:6px;margin-bottom:6px">
+                <button data-action="save-wp"
+                  style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:5px 4px;background:${ROUTE_COLOR};color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">
+                  ${escapeHtml(tRef.current('common.save'))}
+                </button>
                 <button data-action="sat-wp"
-                  style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:5px 4px;background:#4f46e5;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">
+                  style="flex:0 0 36px;display:inline-flex;align-items:center;justify-content:center;padding:5px;background:#4f46e5;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer"
+                  title="Satélite">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-                  Satélite
                 </button>
                 <button data-action="remove-wp"
-                  style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:5px 4px;background:#dc2626;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">
+                  style="flex:0 0 36px;display:inline-flex;align-items:center;justify-content:center;padding:5px;background:#dc2626;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer"
+                  title="${escapeHtml(tRef.current('vfr.removeWaypoint'))}">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                  ${escapeHtml(tRef.current('vfr.removeWaypoint'))}
                 </button>
               </div>
             </div>
           `).openOn(map);
           const popupEl = popup.getElement() as unknown as DomElement | undefined;
           if (popupEl) {
+            popupEl.querySelector?.('button[data-action="save-wp"]')?.addEventListener('click', () => {
+              const nameInput = popupEl.querySelector?.('#wp-edit-name');
+              const altInput = popupEl.querySelector?.('#wp-edit-alt');
+              const newName = (nameInput?.value as string | undefined)?.trim() || wp.name;
+              const altRaw = (altInput?.value as string | undefined)?.trim();
+              const curPos = marker.getLatLng();
+              if (newName !== wp.name) {
+                onUpdateWpRef.current?.(wpIdx, { lat: curPos.lat, lng: curPos.lng, name: newName });
+              }
+              if (altRaw === '') {
+                onSetAltRef.current?.(newName, null);
+              } else {
+                const altFt = parseInt(altRaw ?? '', 10);
+                if (Number.isFinite(altFt) && altFt > 0) {
+                  onSetAltRef.current?.(newName, altFt);
+                }
+              }
+              map.closePopup();
+            });
             popupEl.querySelector?.('button[data-action="remove-wp"]')?.addEventListener('click', () => {
               onRemoveWpRef.current?.(wpIdx);
               map.closePopup();
@@ -1264,6 +1410,78 @@ export function AerodromeMap({
       style={{ flex: 1, height: '100%', position: 'relative', backgroundColor: '#fff' }}
     >
       <View ref={containerRef} collapsable={false} style={{ width: '100%', height: '100%' }} />
+
+      {/* Aerodrome chart overlay card — top-left, visible only when an overlay is active */}
+      {aerodromeOverlay ? (
+        <View
+          style={{
+            position: 'absolute', top: 10, left: 10, zIndex: 1000,
+            backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 4,
+            borderWidth: 1, borderColor: '#dfe2e8',
+            padding: 8, gap: 6, minWidth: 220,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#1f2937', flex: 1 }} numberOfLines={1}>
+              {aerodromeOverlay.icao} · {aerodromeOverlay.chartType} — {aerodromeOverlay.chartName}
+            </Text>
+            <Pressable
+              onPress={fitToAerodromeOverlay}
+              style={{
+                paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3,
+                borderWidth: 1, borderColor: '#dfe2e8',
+              }}
+            >
+              <Text style={{ fontSize: 10, color: '#374151' }}>{t('vfr.chartOverlayFit')}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onCloseAerodromeOverlay?.()}
+              style={{
+                paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3,
+                borderWidth: 1, borderColor: '#dfe2e8',
+              }}
+            >
+              <Text style={{ fontSize: 12, color: '#374151', lineHeight: 12 }}>✕</Text>
+            </Pressable>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 10, color: '#6b7280', width: 64 }}>
+              {t('vfr.chartOverlayOpacity')}
+            </Text>
+            <View
+              key={aerodromeOverlay.id}
+              style={{ flex: 1 }}
+              ref={(el) => {
+                if (!el || Platform.OS !== 'web') return;
+                const node = el as unknown as DomElement;
+                if (node.querySelector?.('input')) return;
+                const doc = (globalThis as Record<string, unknown>).document as DomDocument | undefined;
+                if (!doc) return;
+                const input = doc.createElement('input') as unknown as {
+                  type: string; min: string; max: string; step: string; value: string;
+                  style: { cssText: string };
+                  oninput: ((e: { target?: { value?: string } }) => void) | null;
+                };
+                input.type = 'range';
+                input.min = '10';
+                input.max = '100';
+                input.step = '5';
+                input.value = String(Math.round((aerodromeOverlayOpacity ?? aerodromeOverlay.opacityDefault) * 100));
+                input.style.cssText = 'width:100%;';
+                input.oninput = (e) => {
+                  const raw = e.target?.value;
+                  const n = raw ? parseInt(raw, 10) : NaN;
+                  if (!Number.isNaN(n)) setAerodromeOverlayOpacity(n / 100);
+                };
+                node.appendChild(input as unknown as DomElement);
+              }}
+            />
+            <Text style={{ fontSize: 10, color: '#6b7280', width: 30, textAlign: 'right' }}>
+              {Math.round((aerodromeOverlayOpacity ?? aerodromeOverlay.opacityDefault) * 100)}%
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
       {/* Top-right controls */}
       <View style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000, alignItems: 'flex-end', gap: 4 }}>
