@@ -1,6 +1,11 @@
 # FS Suite
 
-Flight simulation planning and management platform built for the [Simulando](https://simulando.com.br) community. Provides virtual pilots with a unified experience for flight planning, operational consultation, and integrations with established ecosystem tools (SimBrief, SkyVector).
+Open-source flight simulation planning and management platform that gives
+virtual pilots a unified experience for flight planning, operational
+consultation, and integrations with established ecosystem tools (SimBrief,
+SkyVector).
+
+Live at [fs-suite.com](https://fs-suite.com).
 
 ## Features
 
@@ -192,4 +197,19 @@ See [`infra/README.md`](infra/README.md) for detailed infrastructure documentati
 
 ## License
 
-Private project. All rights reserved.
+FS Suite is released under the **GNU Affero General Public License v3.0**
+(AGPL-3.0) — see [`LICENSE`](LICENSE) for the full text.
+
+In short: you are free to use, study, modify, and redistribute the code,
+including running it as a network service, as long as derivative works
+(including hosted services) are released under the same license.
+
+The project is also available under a separate commercial license for
+organizations that need terms incompatible with the AGPL. Reach out via
+the issue tracker for details.
+
+## Contributing
+
+Contributions are welcome — bug reports, fixes, new features, translations
+and documentation. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full
+guide.
