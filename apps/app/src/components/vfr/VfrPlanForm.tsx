@@ -11,7 +11,7 @@ import { trackAction, trackSuccess, trackFailure, categorizeError } from '../../
 import { apiClient, API_URL } from '../../services/api.client';
 import type { AiValidationResult } from '../../services/pdf-export';
 import { buildFlightPlanDoc, exportFlightPlanWithAttachments } from '../../services/pdf-export';
-import { useUnitsStore, formatWeight, formatVolume, formatFuelWeight, formatSpeed, formatFuelFlow } from '../../stores/units.store';
+import { useUnitsStore, formatWeight, formatFuel, formatSpeed, kgToFuelAmount, fuelAmountToKg, fuelFlowSuffix, type FuelUnit } from '../../stores/units.store';
 
 import { AerodromeMap, type AerodromeOverlay } from './AerodromeMap';
 import { AerodromeSearch, type Aerodrome } from './AerodromeSearch';
@@ -338,7 +338,7 @@ function FabButton({ onPress, disabled, svg, title, bg, size = 34 }: { onPress: 
 
 export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const { t } = useTranslation();
-  const { weight: wu, volume: vu, speed: su } = useUnitsStore();
+  const { weight: wu, fuel: fu, speed: su } = useUnitsStore();
   const { catalog: aircraftCatalog, loading: catalogLoading, error: catalogError } = useAircraftCatalog();
 
   // Flight rules
@@ -491,12 +491,19 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     }
   }, [catalogLoading, initialData?.aircraftType, selectedAircraft, findAircraft]);
 
-  // Fuel
+  // Fuel inputs store the value in the user's currently selected fuel unit
+  // (kg | lbs | L | gal). Canonical kg/h and kg are derived on demand and used
+  // for calculations and DB persistence.
+  const initialFu = useUnitsStore.getState().fuel;
+  const fuelDecimals = (unit: FuelUnit): number => (unit === 'kg' || unit === 'lbs' ? 0 : 1);
+  const fuelKgToInputStr = (kg: number, unit: FuelUnit): string =>
+    kg > 0 ? kgToFuelAmount(kg, unit).toFixed(fuelDecimals(unit)) : '';
+
   const [consumptionPerHour, setConsumptionPerHour] = useState(
-    initialData?.fuelConsumptionPerHour ? Math.round(initialData.fuelConsumptionPerHour * AVGAS_KG_PER_L).toString() : '',
+    () => fuelKgToInputStr((initialData?.fuelConsumptionPerHour ?? 0) * AVGAS_KG_PER_L, initialFu),
   );
   const [fuelCurrentTotal, setFuelCurrentTotal] = useState(
-    initialData?.fuelCurrentTotal ? Math.round(initialData.fuelCurrentTotal * AVGAS_KG_PER_L).toString() : '',
+    () => fuelKgToInputStr((initialData?.fuelCurrentTotal ?? 0) * AVGAS_KG_PER_L, initialFu),
   );
   const [fuelManuallyEdited, setFuelManuallyEdited] = useState(!!initialData?.fuelCurrentTotal);
   const [flightCondition, setFlightCondition] = useState<'day' | 'night'>(
@@ -829,8 +836,31 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   );
 
   // Base fuel/weight variables
-  const consumptionKgH = parseFloat(consumptionPerHour) || 0;
-  const fuelOnBoardKg = parseFloat(fuelCurrentTotal) || 0;
+  // Derived canonical values (kg / kg-per-hour). Parse the input strings in
+  // the currently selected fuel unit and convert to kg.
+  const consumptionKgH = fuelAmountToKg(parseFloat(consumptionPerHour) || 0, fu);
+  const fuelOnBoardKg = fuelAmountToKg(parseFloat(fuelCurrentTotal) || 0, fu);
+
+  // When the user switches the fuel unit (kg ↔ lbs ↔ L ↔ gal), re-render the
+  // input strings so the displayed amount preserves its canonical kg value.
+  const prevFuRef = useRef(fu);
+  useEffect(() => {
+    const oldFu = prevFuRef.current;
+    if (oldFu === fu) return;
+    prevFuRef.current = fu;
+    setConsumptionPerHour((prev) => {
+      const num = parseFloat(prev);
+      if (!num || num <= 0) return prev;
+      const kgH = fuelAmountToKg(num, oldFu);
+      return kgToFuelAmount(kgH, fu).toFixed(fuelDecimals(fu));
+    });
+    setFuelCurrentTotal((prev) => {
+      const num = parseFloat(prev);
+      if (!num || num <= 0) return prev;
+      const kg = fuelAmountToKg(num, oldFu);
+      return kgToFuelAmount(kg, fu).toFixed(fuelDecimals(fu));
+    });
+  }, [fu]);
   const cruiseKts = selectedAircraft?.cruiseSpeedKts ?? null;
   const canComputeFuel = cruiseKts != null && cruiseKts > 0 && consumptionKgH > 0;
 
@@ -1363,7 +1393,8 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const handleSelectAircraft = useCallback((aircraft: AircraftCatalogEntry) => {
     setSelectedAircraft(aircraft);
     if (aircraft.fuelBurnLph != null) {
-      setConsumptionPerHour(Math.round(aircraft.fuelBurnLph * AVGAS_KG_PER_L).toString());
+      const currentFu = useUnitsStore.getState().fuel;
+      setConsumptionPerHour(fuelKgToInputStr(aircraft.fuelBurnLph * AVGAS_KG_PER_L, currentFu));
     }
     const defaults: Record<string, string> = {};
     if (aircraft.stations) {
@@ -1447,14 +1478,15 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     if (ofp.destinationRunway) setDestRunway(ofp.destinationRunway);
     if (ofp.alternateRunway) setAltRunway(ofp.alternateRunway);
 
-    // Fuel — backend already normalizes to kg
+    // Fuel — backend already normalizes to kg; render in the current fuel unit.
+    const currentFu = useUnitsStore.getState().fuel;
     if (ofp.fuelPlanRampKg != null && ofp.fuelPlanRampKg > 0) {
-      setFuelCurrentTotal(String(ofp.fuelPlanRampKg));
+      setFuelCurrentTotal(fuelKgToInputStr(ofp.fuelPlanRampKg, currentFu));
       setFuelManuallyEdited(true);
     }
 
     if (ofp.fuelAvgFlowKgH != null && ofp.fuelAvgFlowKgH > 0) {
-      setConsumptionPerHour(String(ofp.fuelAvgFlowKgH));
+      setConsumptionPerHour(fuelKgToInputStr(ofp.fuelAvgFlowKgH, currentFu));
     }
 
     // Set alternate from OFP if not already set
@@ -2134,7 +2166,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             <Row label={t('aircraft.emptyWeight')} value={selectedAircraft.emptyWeightKg != null ? formatWeight(selectedAircraft.emptyWeightKg, wu) : 'N/D'} />
             <Row label={t('aircraft.mtow')} value={selectedAircraft.mtowKg != null ? formatWeight(selectedAircraft.mtowKg, wu) : 'N/D'} bold />
             <Row label={t('aircraft.usefulLoad')} value={canComputeWeight ? formatWeight(acMtowKg! - acEmptyWeightKg!, wu) : 'N/D'} />
-            <Row label={t('aircraft.fuelCapacity')} value={selectedAircraft.fuelCapacityL != null ? formatVolume(selectedAircraft.fuelCapacityL, vu) : 'N/D'} />
+            <Row label={t('aircraft.fuelCapacity')} value={selectedAircraft.fuelCapacityL != null ? formatFuel(selectedAircraft.fuelCapacityL * AVGAS_KG_PER_L, fu) : 'N/D'} />
             <Row label={t('aircraft.cruiseSpeed')} value={selectedAircraft.cruiseSpeedKts != null ? formatSpeed(selectedAircraft.cruiseSpeedKts, su) : 'N/D'} />
           </View>
         ) : null}
@@ -2904,15 +2936,12 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
         <View className="mb-3 flex-row gap-3">
           <View className="flex-1">
             <Input
-              label={t('vfr.consumptionPerHour')}
+              label={`${t('vfr.consumptionPerHour')} (${fuelFlowSuffix(fu)})`}
               value={consumptionPerHour}
               onChangeText={setConsumptionPerHour}
               keyboardType="numeric"
               placeholder="0"
             />
-            {consumptionKgH > 0 ? (
-              <Text className="mt-0.5 text-[9px] text-muted-foreground">{formatFuelFlow(consumptionKgH, vu)}</Text>
-            ) : null}
           </View>
           <View style={{ minWidth: 64, maxWidth: 80 }}>
             <Input
@@ -2930,21 +2959,21 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           <View className="mb-3 rounded-sm border border-border bg-surface-muted px-3 py-2">
             {tripFuelKg > 0 ? (
               <>
-                <Row label={t('vfr.tripFuel')} value={formatFuelWeight(tripFuelKg, vu)} />
+                <Row label={t('vfr.tripFuel')} value={formatFuel(tripFuelKg, fu)} />
                 <Row label={t('vfr.tripTime')} value={`${Math.floor(tripMinutes / 60)}h${String(tripMinutes % 60).padStart(2, '0')}min`} />
               </>
             ) : null}
             {altFuelKg > 0 ? (
-              <Row label={t('vfr.altFuel')} value={`${formatFuelWeight(altFuelKg, vu)} (${altDistNm.toFixed(0)} NM)`} />
+              <Row label={t('vfr.altFuel')} value={`${formatFuel(altFuelKg, fu)} (${altDistNm.toFixed(0)} NM)`} />
             ) : null}
             {contingencyFuelKg > 0 ? (
-              <Row label={`${t('vfr.contingency')} (${contingencyPct}%)`} value={formatFuelWeight(contingencyFuelKg, vu)} />
+              <Row label={`${t('vfr.contingency')} (${contingencyPct}%)`} value={formatFuel(contingencyFuelKg, fu)} />
             ) : null}
-            <Row label={`${t('vfr.reserveFuel')} (${reserveMinutes} min)`} value={formatFuelWeight(reserveFuelKg, vu)} />
+            <Row label={`${t('vfr.reserveFuel')} (${reserveMinutes} min)`} value={formatFuel(reserveFuelKg, fu)} />
             {minFuelKg > 0 ? (
               <>
                 <View className="my-1 border-t border-border/50" />
-                <Row label={t('vfr.minFuel')} value={formatFuelWeight(minFuelKg, vu)} bold />
+                <Row label={t('vfr.minFuel')} value={formatFuel(minFuelKg, fu)} bold />
               </>
             ) : null}
           </View>
@@ -2954,24 +2983,21 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
         <View className="mb-3">
           <Input
             label={selectedAircraft?.fuelCapacityL != null
-              ? `${t('vfr.fuelOnBoard')} (${t('aircraft.maxLabel')} ${formatVolume(selectedAircraft.fuelCapacityL, vu)})`
-              : t('vfr.fuelOnBoard')}
+              ? `${t('vfr.fuelOnBoard')} (${fu} · ${t('aircraft.maxLabel')} ${formatFuel(selectedAircraft.fuelCapacityL * AVGAS_KG_PER_L, fu)})`
+              : `${t('vfr.fuelOnBoard')} (${fu})`}
             value={fuelCurrentTotal}
             onChangeText={(v) => { setFuelManuallyEdited(true); setFuelCurrentTotal(v); }}
             keyboardType="numeric"
             placeholder="0"
           />
-          {fuelOnBoardKg > 0 ? (
-            <Text className="mt-0.5 text-[9px] text-muted-foreground">{formatFuelWeight(fuelOnBoardKg, vu)}</Text>
-          ) : null}
           {maxFuelKg != null && maxFuelKg > 0 && fuelOnBoardKg > maxFuelKg ? (
             <Text className="mt-0.5 text-[10px] font-semibold text-destructive">
-              {t('vfr.overCapacity', { excess: formatFuelWeight(fuelOnBoardKg - maxFuelKg, vu) })}
+              {t('vfr.overCapacity', { excess: formatFuel(fuelOnBoardKg - maxFuelKg, fu) })}
             </Text>
           ) : null}
           {minFuelKg > 0 && fuelOnBoardKg > 0 && fuelOnBoardKg < minFuelKg ? (
             <Text className="mt-0.5 text-[10px] font-semibold text-destructive">
-              {t('vfr.fuelInsufficient', { deficit: formatFuelWeight(minFuelKg - fuelOnBoardKg, vu) })}
+              {t('vfr.fuelInsufficient', { deficit: formatFuel(minFuelKg - fuelOnBoardKg, fu) })}
             </Text>
           ) : null}
           {minFuelKg > 0 && fuelOnBoardKg >= minFuelKg && !(maxFuelKg != null && maxFuelKg > 0 && fuelOnBoardKg > maxFuelKg) ? (
@@ -2984,7 +3010,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
         {/* Endurance summary */}
         {fuelOnBoardKg > 0 && consumptionKgH > 0 ? (
           <View className="rounded-sm border border-border bg-surface-muted px-3 py-2">
-            <Row label={t('vfr.perWing')} value={formatFuelWeight(perWingKg, vu)} />
+            <Row label={t('vfr.perWing')} value={formatFuel(perWingKg, fu)} />
             <Row
               label={t('vfr.endurance')}
               value={`${enduranceHours}h${String(enduranceRemainder).padStart(2, '0')}min (${enduranceMin} min)`}

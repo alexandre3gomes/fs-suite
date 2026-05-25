@@ -9,7 +9,7 @@ import { apiClient } from '../../../src/services/api.client';
 import {
   useUnitsStore,
   type WeightUnit,
-  type VolumeUnit,
+  type FuelUnit,
   type SpeedUnit,
 } from '../../../src/stores/units.store';
 
@@ -42,7 +42,7 @@ function UnitPicker<T extends string>({ label, options, value, onChange }: { lab
 
 function UnitsSection() {
   const { t } = useTranslation();
-  const { weight, volume, speed, setWeight, setVolume, setSpeed } = useUnitsStore();
+  const { weight, fuel, speed, setWeight, setFuel, setSpeed } = useUnitsStore();
 
   return (
     <View className="border-b border-border px-4 py-5 md:px-6">
@@ -50,7 +50,7 @@ function UnitsSection() {
       <Text className="mt-1 text-xs text-muted-foreground">{t('profile.unitsDescription')}</Text>
       <View className="mt-3 rounded-md border border-border bg-surface-muted px-4 py-1">
         <UnitPicker<WeightUnit> label={t('profile.unitWeight')} options={['kg', 'lbs']} value={weight} onChange={setWeight} />
-        <UnitPicker<VolumeUnit> label={t('profile.unitVolume')} options={['L', 'gal']} value={volume} onChange={setVolume} />
+        <UnitPicker<FuelUnit> label={t('profile.unitFuel')} options={['kg', 'lbs', 'L', 'gal']} value={fuel} onChange={setFuel} />
         <UnitPicker<SpeedUnit> label={t('profile.unitSpeed')} options={['kt', 'km/h', 'mph']} value={speed} onChange={setSpeed} />
       </View>
     </View>
