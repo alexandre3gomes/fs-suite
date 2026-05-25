@@ -478,6 +478,8 @@
     "heroTagline": "Professional flight planning for simulators",
     "heroDescription": "Plan VFR and IFR flights with the same precision used in real aviation. ICAO rules, REA corridors, fuel and weight calculations — all in one platform.",
     "cta": "Start planning",
+    "videoTitle": "See FS Suite in action",
+    "videoSubtitle": "A walkthrough of the product and its main features",
     "featuresTitle": "Everything you need for a well-planned flight",
     "featVfr": "VFR Flight Planning",
     "featVfrDesc": "Plan visual routes with waypoints, geographic references and altitudes calculated by the semicircular rule. DCT support and automatic magnetic heading calculation.",

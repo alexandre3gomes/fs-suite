@@ -121,7 +121,16 @@ export default function LoginScreen(): JSX.Element {
   const { width } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const ctaRef = useRef<View>(null);
+  const videoRef = useRef<View>(null);
   const isWide = width >= 768;
+
+  // Inject the YouTube iframe once after mount (web only — RN doesn't render iframes).
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !videoRef.current) return;
+    const node = videoRef.current as unknown as { innerHTML: string; querySelector?: (s: string) => unknown };
+    if (node.querySelector?.('iframe')) return; // already injected
+    node.innerHTML = '<iframe src="https://www.youtube.com/embed/2v3pQ1lLpVM?rel=0" title="FS Suite walkthrough" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen style="width:100%;height:100%;border:0;display:block"></iframe>';
+  }, []);
 
   useEffect(() => { setFeatureContext('auth'); return () => setFeatureContext(null); }, []);
 
@@ -293,6 +302,58 @@ export default function LoginScreen(): JSX.Element {
               backgroundColor: '#2563eb22',
             }}
             pointerEvents="none"
+          />
+        </View>
+      </View>
+
+      {/* ===== PRODUCT VIDEO ===== */}
+      <View className="bg-background px-6 py-16 md:py-20">
+        <View className="mx-auto w-full" style={{ maxWidth: 960 }}>
+          <Text
+            style={{
+              fontSize: isWide ? 32 : 24,
+              fontWeight: '700',
+              color: '#1a1d26',
+              textAlign: 'center',
+              letterSpacing: -0.5,
+            }}
+          >
+            {t('home.videoTitle')}
+          </Text>
+          <View
+            style={{
+              alignSelf: 'center',
+              width: 60,
+              height: 3,
+              backgroundColor: '#2563eb',
+              borderRadius: 2,
+              marginTop: 16,
+            }}
+          />
+          <Text
+            style={{
+              fontSize: isWide ? 16 : 14,
+              color: '#64748b',
+              textAlign: 'center',
+              marginTop: 16,
+            }}
+          >
+            {t('home.videoSubtitle')}
+          </Text>
+          <View
+            ref={videoRef}
+            style={{
+              marginTop: 32,
+              aspectRatio: 16 / 9,
+              borderRadius: 12,
+              overflow: 'hidden',
+              backgroundColor: '#000',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.15,
+              shadowRadius: 30,
+              elevation: 8,
+            }}
           />
         </View>
       </View>
