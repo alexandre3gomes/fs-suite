@@ -23,6 +23,11 @@ class RouteLegDto {
   @IsOptional() @IsNumber() selectedAltitudeFt?: number;
 }
 
+class AltitudeChangeDto {
+  @IsString() atWaypoint!: string;
+  @IsNumber() toAltFt!: number;
+}
+
 class VisualReferenceDto {
   @IsInt() sequence!: number;
   @IsString() name!: string;
@@ -164,4 +169,8 @@ export class ValidateFlightPlanDto {
   @ApiPropertyOptional()
   @IsOptional() @IsArray()
   routeWaypoints?: { lat: number; lng: number; name: string }[];
+
+  @ApiPropertyOptional({ type: [AltitudeChangeDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => AltitudeChangeDto)
+  altitudeChanges?: AltitudeChangeDto[];
 }
