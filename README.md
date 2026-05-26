@@ -1,5 +1,9 @@
 # FS Suite
 
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](LICENSE)
+[![CI](https://github.com/alexandre3gomes/fs-suite/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandre3gomes/fs-suite/actions/workflows/ci.yml)
+[![Deploy](https://github.com/alexandre3gomes/fs-suite/actions/workflows/deploy.yml/badge.svg)](https://github.com/alexandre3gomes/fs-suite/actions/workflows/deploy.yml)
+
 Open-source flight simulation planning and management platform that gives
 virtual pilots a unified experience for flight planning, operational
 consultation, and integrations with established ecosystem tools (SimBrief,
@@ -212,4 +216,5 @@ the issue tracker for details.
 
 Contributions are welcome — bug reports, fixes, new features, translations
 and documentation. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full
-guide.
+guide. Participation is governed by the project's
+[Code of Conduct](CODE_OF_CONDUCT.md).
