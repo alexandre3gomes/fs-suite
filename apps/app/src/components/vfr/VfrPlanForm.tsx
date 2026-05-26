@@ -584,19 +584,37 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     setTafLoading(false);
   }, []);
 
+  // Reset everything tied to the previous origin/destination pair: route
+  // waypoints, followed corridor, its altitude constraints, and any
+  // altitude transitions (which reference waypoint names that no longer
+  // exist). Without this, switching the destination keeps the waypoints
+  // from the previous corridor and the leg table renders origin →
+  // stale-corridor → new dest, and Item 18 RMK keeps the stale
+  // altitude-change list.
+  const resetCorridorState = useCallback(() => {
+    setRouteWaypoints([]);
+    setFollowedCorridorName(null);
+    setCorridorAltRange(null);
+    setCorridorCompAlt(null);
+    setAltitudeChanges([]);
+    setAltChangesAuto(true);
+  }, []);
+
   // Auto-fetch on aerodrome selection + fly map to it
   const handleSelectOrigin = useCallback((a: Aerodrome) => {
     setOrigin(a);
     setOriginRunway('');
+    resetCorridorState();
     void fetchAerodromeInfo(a.icao, 'origin');
     mapHandleRef.current?.flyTo(a.latitude, a.longitude);
-  }, [fetchAerodromeInfo]);
+  }, [fetchAerodromeInfo, resetCorridorState]);
 
   const handleSelectDestination = useCallback((a: Aerodrome) => {
     setDestination(a);
     setDestRunway('');
+    resetCorridorState();
     void fetchAerodromeInfo(a.icao, 'destination');
-  }, [fetchAerodromeInfo]);
+  }, [fetchAerodromeInfo, resetCorridorState]);
 
   const handleSelectAlternate = useCallback((a: Aerodrome) => {
     setAlternate(a);
@@ -2029,7 +2047,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           label={t('vfr.origin')}
           value={origin}
           onSelect={handleSelectOrigin}
-          onClear={() => { setOrigin(null); setOriginDetail(null); setOriginRunway(''); }}
+          onClear={() => { setOrigin(null); setOriginDetail(null); setOriginRunway(''); resetCorridorState(); }}
         />
         {origin ? (
           <AerodromeInfo
@@ -2056,7 +2074,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           label={t('vfr.destination')}
           value={destination}
           onSelect={handleSelectDestination}
-          onClear={() => { setDestination(null); setDestDetail(null); setDestRunway(''); }}
+          onClear={() => { setDestination(null); setDestDetail(null); setDestRunway(''); resetCorridorState(); }}
         />
         {destination ? (
           <AerodromeInfo
