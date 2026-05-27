@@ -91,9 +91,9 @@ jobs:
           PSQL='/usr/lib/postgresql/17/bin/psql -h localhost -U postgres -d restore_target'
 
           # The dump contains CREATE SCHEMA public but the freshly
-          # provisioned database already has one. Drop+recreate so the
-          # restore can run with ON_ERROR_STOP=1.
-          $PSQL -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+          # provisioned database already has one. Drop it so the
+          # dump's own CREATE SCHEMA succeeds.
+          $PSQL -c "DROP SCHEMA public CASCADE;"
 
           $PSQL -v ON_ERROR_STOP=1 -f dump.sql 2>&1 | tail -50
 
