@@ -135,26 +135,37 @@ jobs:
             docker image prune -af --filter "until=168h" || true
             docker builder prune -af --filter "until=168h" || true
 
-            # ── 3. Login + pull (capture digests around it) ─────
+            # ── 3. Login + pull both :latest and the SHA tag ────
+            # Pulling :latest alone is unreliable as a verification
+            # signal because two builds with identical app source
+            # produce identical digests (the tag just doesn't move).
+            # The SHA tag is unambiguous: if we can pull and locate
+            # the image for THIS commit, the pull worked.
             echo "$GITHUB_TOKEN" | docker login ghcr.io -u github-actions --password-stdin
 
-            IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER}/fs-suite-api:latest
-            DIGEST_BEFORE=$(docker image inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null || echo "absent")
+            IMAGE_REPO=ghcr.io/${GITHUB_REPOSITORY_OWNER}/fs-suite-api
             docker compose pull api
-            DIGEST_AFTER=$(docker image inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null || echo "absent")
-            echo "Digest before: $DIGEST_BEFORE"
-            echo "Digest after : $DIGEST_AFTER"
+            docker pull "${IMAGE_REPO}:${GITHUB_SHORT_SHA}"
 
-            # ── 4. Verify pull actually updated :latest ─────────
-            # `docker compose pull` returns 0 even if extraction
-            # fails (e.g. ENOSPC), leaving :latest unchanged. Detect
-            # that explicitly and fail the deploy.
-            if [ "$DIGEST_BEFORE" = "$DIGEST_AFTER" ] && [ "$DIGEST_BEFORE" != "absent" ]; then
-              echo "::error::Image digest unchanged after pull. Likely causes: pull skipped due to identical manifest, or layer extraction failed silently."
-              echo "Host disk:"
+            SHA_DIGEST=$(docker image inspect "${IMAGE_REPO}:${GITHUB_SHORT_SHA}" --format '{{.Id}}' 2>/dev/null || echo absent)
+            LATEST_DIGEST=$(docker image inspect "${IMAGE_REPO}:latest" --format '{{.Id}}' 2>/dev/null || echo absent)
+            echo "Expected (:${GITHUB_SHORT_SHA}): $SHA_DIGEST"
+            echo "Running  (:latest):             $LATEST_DIGEST"
+
+            # ── 4. Verify the new image is locally present ──────
+            # `docker compose pull` returns 0 even if layer
+            # extraction fails (e.g. ENOSPC), so we cross-check the
+            # SHA tag explicitly. If we can't see it on disk, the
+            # pull was bogus and the deploy must NOT proceed.
+            if [ "$SHA_DIGEST" = "absent" ]; then
+              echo "::error::Image ${IMAGE_REPO}:${GITHUB_SHORT_SHA} not present after pull — extraction likely failed silently"
               df -h /
-              echo "Recent docker daemon errors:"
-              sudo journalctl -u docker --since "5 min ago" --no-pager | tail -20 || true
+              sudo journalctl -u docker --since "5 min ago" --no-pager | tail -30 || true
+              exit 1
+            fi
+            if [ "$LATEST_DIGEST" != "$SHA_DIGEST" ]; then
+              echo "::error:::latest ($LATEST_DIGEST) does not match :${GITHUB_SHORT_SHA} ($SHA_DIGEST). The build pushed both tags together; a mismatch means :latest's pull was incomplete."
+              df -h /
               exit 1
             fi
 
