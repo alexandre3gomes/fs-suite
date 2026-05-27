@@ -31,7 +31,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Deploy
-        run: pnpm --filter @fs-suite/edge-api-candidate deploy
+        # Use `publish-worker` instead of `deploy` because `pnpm deploy`
+        # is a built-in pnpm command (workspace bundling) that pre-empts
+        # the script lookup.
+        run: pnpm --filter @fs-suite/edge-api-candidate publish-worker
         env:
           # Token must include the "Workers Scripts:Edit" scope in
           # addition to the "Pages:Edit" scope already used by
