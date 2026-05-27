@@ -2,7 +2,7 @@ import { Button, Logo, Text } from '@fs-suite/ui';
 import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { setLanguage, type SupportedLocale } from '../../../src/i18n';
 import { setFeatureContext, trackAction, trackFailure, trackSuccess, categorizeError } from '../../../src/services/analytics';
@@ -954,7 +954,18 @@ export default function LoginScreen(): JSX.Element {
       </View>
 
       {/* Footer */}
-      <View style={{ backgroundColor: '#080d18', paddingVertical: 24, paddingHorizontal: 24, alignItems: 'center' }}>
+      <View style={{ backgroundColor: '#080d18', paddingVertical: 24, paddingHorizontal: 24, alignItems: 'center', gap: 12 }}>
+        <Pressable
+          onPress={() => { void Linking.openURL('https://github.com/alexandre3gomes/fs-suite'); }}
+          accessibilityRole="link"
+          accessibilityLabel="View FS Suite source on GitHub"
+        >
+          <Image
+            source={{ uri: 'https://img.shields.io/github/stars/alexandre3gomes/fs-suite?style=social' }}
+            style={{ width: 140, height: 20 }}
+            resizeMode="contain"
+          />
+        </Pressable>
         <Text style={{ fontSize: 12, color: '#475569' }}>
           FS Suite © {new Date().getFullYear()}
         </Text>
