@@ -73,6 +73,9 @@ jobs:
     name: Migrate Database
     needs: build
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Run migrations via EC2
@@ -87,6 +90,7 @@ jobs:
           script: |
             echo "$GITHUB_TOKEN" | docker login ghcr.io -u github-actions --password-stdin
             cd /opt/fs-suite
+            # `--quiet false` so the pull output (or any auth error) reaches the run log
             docker compose pull api
             docker compose run --rm api npx prisma migrate deploy
 
@@ -94,16 +98,27 @@ jobs:
     name: Deploy EC2
     needs: [build, migrate]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: GITHUB_TOKEN
           script: |
             cd /opt/fs-suite
+            # Force a fresh pull — don't rely on the migrate job's cached
+            # state. Login is required for private GHCR packages even with
+            # the workflow's own token.
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u github-actions --password-stdin
+            docker compose pull api
             sed -i "s/^SENTRY_RELEASE=.*/SENTRY_RELEASE=${{ needs.build.outputs.short_sha }}/" .env
             docker compose up -d api
 
