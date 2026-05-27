@@ -1,0 +1,147 @@
+name: DB Restore Drill
+
+# Weekly proof that the daily pg_dump from db-backup.yml is actually
+# restorable. Downloads the latest dump from the db-backups Supabase
+# Storage bucket, restores into an ephemeral Postgres on the runner,
+# and runs a couple of structural sanity queries.
+#
+# Zero impact on production: only reads from Storage, all restored
+# data lives inside the ephemeral runner Postgres and dies with the
+# runner. No cloud resources are created.
+#
+# Required GitHub secrets (already in place for db-backup.yml):
+#   SUPABASE_SERVICE_ROLE_KEY
+
+on:
+  schedule:
+    - cron: '0 4 * * 1' # Mondays 04:00 UTC (1h after Sunday's backup)
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+env:
+  SUPABASE_URL: https://kottmfuncqyzwtweoquw.supabase.co
+  BUCKET: db-backups
+
+jobs:
+  drill:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    # Ephemeral Postgres on the runner — same major version as prod.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: restore_target
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Install postgresql-client-17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-17
+
+      - name: List dumps and pick the most recent
+        env:
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          curl -sS -X POST "${SUPABASE_URL}/storage/v1/object/list/${BUCKET}" \
+            -H "apikey: ${SERVICE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"prefix":"","limit":100,"sortBy":{"column":"name","order":"desc"}}' \
+            > listing.json
+          LATEST=$(jq -r '.[0].name' listing.json)
+          if [[ -z "$LATEST" || "$LATEST" == "null" ]]; then
+            echo "::error::No dumps found in ${BUCKET}"
+            cat listing.json
+            exit 1
+          fi
+          echo "Latest dump: $LATEST"
+          echo "DUMP_NAME=$LATEST" >> "$GITHUB_ENV"
+
+      - name: Download dump
+        env:
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          curl -sSf -o dump.sql.gz \
+            "${SUPABASE_URL}/storage/v1/object/${BUCKET}/${DUMP_NAME}" \
+            -H "apikey: ${SERVICE_KEY}"
+          ls -lh dump.sql.gz
+          gunzip dump.sql.gz
+          wc -l dump.sql
+
+      - name: Restore into ephemeral Postgres
+        run: |
+          export PGPASSWORD=postgres
+          /usr/lib/postgresql/17/bin/psql -h localhost -U postgres -d restore_target \
+            -v ON_ERROR_STOP=1 -f dump.sql 2>&1 | tail -50
+
+      - name: Structural validation
+        run: |
+          export PGPASSWORD=postgres
+          PSQL='/usr/lib/postgresql/17/bin/psql -h localhost -U postgres -d restore_target -tA'
+
+          # Sanity: minimum expected tables exist.
+          for tbl in users sessions flight_plans aerodrome_chart_overlays activity_logs; do
+            COUNT=$($PSQL -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='${tbl}'")
+            if [[ "$COUNT" != "1" ]]; then
+              echo "::error::Expected table '${tbl}' missing from restored schema"
+              exit 1
+            fi
+          done
+          echo "Schema: required tables present."
+
+          # Row counts (smoke, not exact-equality — backup is a snapshot,
+          # prod may have moved since).
+          TABLES=$($PSQL -c "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name")
+          echo ""
+          echo "Restored row counts:"
+          for tbl in $TABLES; do
+            CNT=$($PSQL -c "SELECT count(*) FROM \"${tbl}\"" 2>/dev/null || echo "?")
+            printf "  %-40s %s\n" "$tbl" "$CNT"
+          done
+
+      - name: Open issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create restore-drill-failure --color B60205 \
+            --description "DB restore drill failure" --force \
+            --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || true
+
+          ISSUE_NUMBER=$(gh issue list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --label restore-drill-failure \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [[ -z "$ISSUE_NUMBER" ]]; then
+            ISSUE_URL=$(gh issue create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "DB restore drill failed — backups may be unusable" \
+              --label restore-drill-failure \
+              --body "Weekly DB restore drill failed. Backups may not be restorable. Investigate **before** the next incident requires a restore.")
+            ISSUE_NUMBER="${ISSUE_URL##*/}"
+          fi
+
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "$(date -u +%Y-%m-%dT%H:%M:%SZ) — drill failed restoring ${DUMP_NAME:-<unknown>}. Run: ${RUN_URL}"

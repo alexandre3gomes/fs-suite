@@ -251,7 +251,9 @@ Migrations run against the shared Supabase database before any runtime is update
 | `deploy-app.yml` | Push to `main` (app/UI paths) | Expo web export → Cloudflare Pages |
 | `deploy-edge.yml` | Push to `main` (`apps/edge-*` paths) | Deploy Cloudflare Workers (api-candidate proxy) |
 | `db-backup.yml` | Daily 03:00 UTC + manual | `pg_dump` → Supabase Storage (90-day retention) |
+| `db-restore-drill.yml` | Weekly Mon 04:00 UTC + manual | Pull latest dump, restore into ephemeral Postgres, run schema sanity. Opens issue on failure |
 | `metrics-digest.yml` | Daily 07:00 UTC + manual | Fetch `/v1/admin/metrics` → post comment on the open metrics issue |
+| `smoke-test.yml` | Daily 06:30 UTC + manual + final step in every deploy | `scripts/smoke-test.sh` over api / candidate / frontend. Opens issue on failure |
 
 ### GHCR Authentication
 
@@ -373,6 +375,23 @@ GCP Secret Manager, and GitHub Secrets by the scripts in
 ```bash
 # Manual run (after a provisioning change, for example):
 gh workflow run metrics-digest.yml
+```
+
+## Monitoring & validation
+
+| Layer | Tool | Cadence | Failure mode |
+|---|---|---|---|
+| Backups verified-restorable | `db-restore-drill.yml` | Weekly (Mon 04:00 UTC) | GitHub issue labelled `restore-drill-failure` |
+| Reachability (api / candidate / frontend) | `smoke-test.yml` + post-deploy step | Daily 06:30 UTC + every deploy | GitHub issue labelled `smoke-failure`; fails the deploy run that triggered it |
+| Operational metrics snapshot | `metrics-digest.yml` | Daily 07:00 UTC | Comment on the open metrics issue, you receive email via subscription |
+| External uptime (every 5 min) | UptimeRobot | Every 5 minutes | Email / Slack / SMS — configured outside this repo, see [`docs/monitoring/uptimerobot.md`](../docs/monitoring/uptimerobot.md) |
+
+`scripts/smoke-test.sh` is the reusable check core. Run locally:
+
+```bash
+./scripts/smoke-test.sh                 # all three surfaces
+./scripts/smoke-test.sh api candidate   # only API endpoints
+./scripts/smoke-test.sh frontend        # only the Pages bundle
 ```
 
 ## Operational hygiene

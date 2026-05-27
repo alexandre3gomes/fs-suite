@@ -1,0 +1,72 @@
+name: Smoke Test
+
+# Daily reachability check across api primary, api candidate, and
+# frontend. Runs at 06:30 UTC, 30 minutes before metrics-digest, so
+# the failure modes interleave usefully: if smoke fails at 06:30, the
+# 07:00 digest will likely also be incomplete — second confirmation.
+#
+# This catches passive breakage between deploys: expired TLS certs,
+# Cloud Run quotas hit, Cloudflare config drift, etc. Real uptime
+# monitoring is configured separately at UptimeRobot (see
+# docs/monitoring/uptimerobot.md).
+
+on:
+  schedule:
+    - cron: '30 6 * * *' # 06:30 UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: smoke-test
+  cancel-in-progress: false
+
+permissions:
+  issues: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run smoke test
+        id: smoke
+        run: ./scripts/smoke-test.sh
+        continue-on-error: true
+
+      - name: Open issue on failure
+        if: steps.smoke.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create smoke-failure --color B60205 \
+            --description "Automated smoke test failure" --force \
+            --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || true
+
+          # Reuse an open smoke-failure issue if one exists; otherwise
+          # open a new one. Either way, append the latest results as a
+          # comment with a link back to the run.
+          ISSUE_NUMBER=$(gh issue list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --label smoke-failure \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [[ -z "$ISSUE_NUMBER" ]]; then
+            ISSUE_URL=$(gh issue create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "Smoke test failing" \
+              --label smoke-failure \
+              --body "Automated daily smoke test failed. New comments appended on each subsequent failure; close this issue once the underlying problem is resolved.")
+            ISSUE_NUMBER="${ISSUE_URL##*/}"
+          fi
+
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "$(date -u +%Y-%m-%dT%H:%M:%SZ) — failure. Run: ${RUN_URL}"
+
+      - name: Propagate failure
+        if: steps.smoke.outcome == 'failure'
+        run: exit 1

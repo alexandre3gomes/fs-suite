@@ -278,3 +278,12 @@ jobs:
           done
           echo "Health check failed after 5 attempts (last status: ${STATUS})"
           exit 1
+
+  smoke-test:
+    name: Smoke test (post-deploy)
+    needs: [deploy-ec2, deploy-cloudrun]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke test (api + candidate; frontend untouched here)
+        run: ./scripts/smoke-test.sh api candidate
