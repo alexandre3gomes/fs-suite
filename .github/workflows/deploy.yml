@@ -107,19 +107,59 @@ jobs:
         uses: appleboy/ssh-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_SHORT_SHA: ${{ needs.build.outputs.short_sha }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: GITHUB_TOKEN
+          envs: GITHUB_TOKEN,GITHUB_REPOSITORY_OWNER,GITHUB_SHORT_SHA
           script: |
+            set -euo pipefail
             cd /opt/fs-suite
-            # Force a fresh pull — don't rely on the migrate job's cached
-            # state. Login is required for private GHCR packages even with
-            # the workflow's own token.
+
+            # ── 1. Disk budget check ────────────────────────────
+            # Fail loud and early if the host is dangerously close to
+            # full. Below ~15% free, layer extraction may silently
+            # corrupt the pull and leave :latest pointing at the old
+            # image (see 2026-05-27 incident).
+            USE_PCT=$(df --output=pcent / | tail -1 | tr -dc '0-9')
+            echo "Host disk usage before deploy: ${USE_PCT}%"
+            if [ "$USE_PCT" -ge 85 ]; then
+              echo "::warning::Disk usage at ${USE_PCT}% — pruning before pull"
+            fi
+
+            # ── 2. Garbage-collect old images ───────────────────
+            # Keep only what was touched in the last 7 days. Without
+            # this, dangling images grow ~1.5 GB/day on this host.
+            docker image prune -af --filter "until=168h" || true
+            docker builder prune -af --filter "until=168h" || true
+
+            # ── 3. Login + pull (capture digests around it) ─────
             echo "$GITHUB_TOKEN" | docker login ghcr.io -u github-actions --password-stdin
+
+            IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER}/fs-suite-api:latest
+            DIGEST_BEFORE=$(docker image inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null || echo "absent")
             docker compose pull api
-            sed -i "s/^SENTRY_RELEASE=.*/SENTRY_RELEASE=${{ needs.build.outputs.short_sha }}/" .env
+            DIGEST_AFTER=$(docker image inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null || echo "absent")
+            echo "Digest before: $DIGEST_BEFORE"
+            echo "Digest after : $DIGEST_AFTER"
+
+            # ── 4. Verify pull actually updated :latest ─────────
+            # `docker compose pull` returns 0 even if extraction
+            # fails (e.g. ENOSPC), leaving :latest unchanged. Detect
+            # that explicitly and fail the deploy.
+            if [ "$DIGEST_BEFORE" = "$DIGEST_AFTER" ] && [ "$DIGEST_BEFORE" != "absent" ]; then
+              echo "::error::Image digest unchanged after pull. Likely causes: pull skipped due to identical manifest, or layer extraction failed silently."
+              echo "Host disk:"
+              df -h /
+              echo "Recent docker daemon errors:"
+              sudo journalctl -u docker --since "5 min ago" --no-pager | tail -20 || true
+              exit 1
+            fi
+
+            # ── 5. Restart with fresh image ─────────────────────
+            sed -i "s/^SENTRY_RELEASE=.*/SENTRY_RELEASE=${GITHUB_SHORT_SHA}/" .env
             docker compose up -d api
 
       - name: Smoke test

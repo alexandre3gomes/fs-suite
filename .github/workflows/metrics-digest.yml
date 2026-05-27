@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Fetch metrics
+      - name: Fetch API metrics
         env:
           ADMIN_TOKEN: ${{ secrets.ADMIN_METRICS_TOKEN }}
         run: |
@@ -43,6 +43,27 @@ jobs:
           fi
           echo "Raw payload:"
           cat metrics.json
+
+      - name: Fetch EC2 host stats
+        # SSH directly (not appleboy/ssh-action) so we can capture stdout
+        # into a file for the body builder. Output goes to host.txt:
+        # one line "USED_PCT TOTAL_GB" plus image count.
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh "$EC2_USER@$EC2_HOST" "
+            DISK=\$(df --output=pcent,size / | tail -1 | tr -s ' ')
+            IMAGES=\$(sudo docker images --filter 'dangling=false' --format '{{.Repository}}' | wc -l)
+            echo \"\$DISK \$IMAGES\"
+          " > host.txt
+          echo "host.txt:"
+          cat host.txt
 
       - name: Build comment body
         run: |
@@ -69,9 +90,15 @@ jobs:
           REDIS_CAP_MB=$(awk -v c="$REDIS_CAP_BYTES" 'BEGIN{printf "%.0f", c/1048576}')
           REDIS_PCT=$(awk -v b="$REDIS_BYTES" -v c="$REDIS_CAP_BYTES" 'BEGIN{printf "%.1f", (b/c)*100}')
 
+          # host.txt layout: "USE_PCT SIZE_GB IMAGES"
+          HOST_PCT=$(awk '{print $1}' host.txt | tr -dc '0-9')
+          HOST_SIZE=$(awk '{print $2}' host.txt)
+          HOST_IMAGES=$(awk '{print $3}' host.txt)
+
           {
             echo "## ${DATE} — Daily Metrics"
             echo ""
+            echo "**EC2 disk**: ${HOST_PCT}% of ${HOST_SIZE} used · ${HOST_IMAGES} docker images"
             echo "**Database**: ${DB_MB} MB / ${CAP_MB} MB cap (${DB_PCT}%)"
             echo "**Redis**: ${REDIS_MB} MB / ${REDIS_CAP_MB} MB cap (${REDIS_PCT}%) · ${REDIS_KEYS} keys"
             echo "**Users**: ${USERS_TOTAL} total · ${USERS_NEW} new in 7d · ${USERS_ACTIVE} active in 7d"

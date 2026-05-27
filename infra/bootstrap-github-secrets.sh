@@ -86,7 +86,9 @@ for entry in "${SYNC_LIST[@]}"; do
     continue
   fi
 
-  printf '%s' "$VALUE" | gh secret set "$GH_NAME" --repo "$REPO" --body -
+  # `gh secret set` reads the value from stdin when --body is omitted.
+  # Do NOT use `--body -` — that sets the secret literally to "-".
+  printf '%s' "$VALUE" | gh secret set "$GH_NAME" --repo "$REPO"
   echo "  ✓ set ${GH_NAME} (from ${ENV_NAME})"
   PUSHED=$((PUSHED + 1))
 done

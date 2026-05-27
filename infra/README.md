@@ -365,6 +365,52 @@ GCP Secret Manager, and GitHub Secrets by the scripts in
 gh workflow run metrics-digest.yml
 ```
 
+## Operational hygiene
+
+### Disk on EC2
+
+The `deploy.yml` workflow runs `docker image prune -af --filter "until=168h"`
+on the EC2 host before every pull, so dangling and >7-day-old images do not
+accumulate. The daily Metrics Digest also reports `EC2 disk: X% of YG`. If
+that figure trends up despite pruning, investigate before it crosses ~85% —
+docker layer extraction starts failing silently when the disk fills up.
+
+### Recovery — what NOT to do
+
+If a deploy seems stuck or the container is running the wrong image:
+
+- **Do NOT** run `docker image rm -f <image>:latest` without first
+  confirming you can pull a replacement. If credentials are stale or the
+  registry is unreachable, you have just deleted the only working image
+  and the container will refuse to start.
+- **Do NOT** run `docker logout` followed by a re-login with a different
+  account on the EC2 — the persistent PAT credentials from `setup.sh`
+  will be overwritten and automated pulls from GitHub Actions may still
+  work but interactive pulls will need the original PAT re-applied.
+- **DO** check `df -h /` first. The most common silent-failure cause is
+  disk pressure, not credentials. If the host is at >85%, prune before
+  doing anything else.
+- **DO** capture the image digest before and after any pull
+  (`docker image inspect IMG --format '{{.Id}}'`). The deploy workflow
+  now does this automatically and fails loudly if the digest does not
+  change. For manual interventions, do the same comparison by hand.
+
+If recovery requires fetching the image and you do not have a PAT with
+`read:packages` handy:
+
+```bash
+# From a machine where you can authenticate:
+gh auth refresh -s read:packages
+GH_TOKEN=$(gh auth token)
+
+ssh fs-suite "
+  echo '$GH_TOKEN' | sudo docker login ghcr.io -u <github-username> --password-stdin
+  cd /opt/fs-suite
+  sudo docker compose pull api
+  sudo docker compose up -d api
+"
+```
+
 ## Failover: EC2 → Cloud Run
 
 Cloud Run is always deployed in parallel and ready to serve traffic.
