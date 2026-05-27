@@ -183,7 +183,7 @@ GitHub Actions workflows on push to `main`:
 | Frontend | Cloudflare Pages (`fs-suite.com`) |
 | API (primary) | EC2 t3.small, Amazon Linux 2023 (`api.fs-suite.com`) |
 | API (candidate) | Google Cloud Run (`api-candidate.fs-suite.com`) |
-| Database | Neon (serverless PostgreSQL, London) |
+| Database | Supabase (PostgreSQL, `eu-central-1`, via session-mode pooler) |
 | Cache | Upstash (serverless Redis, TLS) |
 | DNS/TLS | Cloudflare (proxied, Full Strict mode) |
 | Container Registry | GHCR (EC2) + Artifact Registry (Cloud Run) |

@@ -46,3 +46,7 @@ apps/app/dist/
 
 # Misc
 *.tsbuildinfo
+
+# Database dumps — never commit (contain prod data)
+*.sql
+*.dump

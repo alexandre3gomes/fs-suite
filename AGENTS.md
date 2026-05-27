@@ -10,7 +10,7 @@
   - `packages/types`: Zod schemas and TypeScript types
   - `packages/config`: ESLint, TypeScript, and Tailwind configs
 - Core infrastructure:
-  - PostgreSQL (Neon in production)
+  - PostgreSQL (Supabase in production)
   - Prisma ORM
   - Redis (Upstash in production)
 - Build web-first, but keep architecture reusable for mobile.
