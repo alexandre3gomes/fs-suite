@@ -108,7 +108,7 @@ jobs:
           curl -sS -X POST "${SUPABASE_URL}/storage/v1/object/list/${BUCKET}" \
             -H "apikey: ${SERVICE_KEY}" \
             -H "Content-Type: application/json" \
-            -d '{"limit":1000,"sortBy":{"column":"name","order":"asc"}}' \
+            -d '{"prefix":"","limit":1000,"sortBy":{"column":"name","order":"asc"}}' \
             > listing.json
           NAMES=$(jq -r '.[].name' listing.json)
           DELETED=0
