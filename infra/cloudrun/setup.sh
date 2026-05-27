@@ -135,6 +135,11 @@ create_secret() {
   local name="$1"
   local value="$2"
 
+  if [[ -z "$value" ]]; then
+    echo "  ⊘ skipped $name (empty value)"
+    return 0
+  fi
+
   gcloud secrets create "$name" --replication-policy="automatic" 2>/dev/null || true
   echo -n "$value" | gcloud secrets versions add "$name" --data-file=-
   gcloud secrets add-iam-policy-binding "$name" \
@@ -204,6 +209,9 @@ create_secret "groq-api-key" "$GROQ"
 create_secret "r2-account-id" "$R2_ACCT"
 create_secret "r2-access-key-id" "$R2_KEY"
 create_secret "r2-secret-access-key" "$R2_SECRET"
+# OWM_API_KEY / AVWX_TOKEN are optional and not currently wired into
+# deploy.yml --set-secrets. If you start using them, also add the lines
+# below to deploy.yml so Cloud Run pulls them at deploy time.
 create_secret "owm-api-key" "$OWM"
 create_secret "avwx-token" "$AVWX"
 create_secret "admin-metrics-token" "$ADMIN_TOKEN"

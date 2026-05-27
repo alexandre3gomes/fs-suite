@@ -284,8 +284,8 @@ hand.
 | `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | A | ✅ | — | — |
 | `SENTRY_DSN` | A | ✅ | — | — |
 | `GEMINI_API_KEY` / `GROQ_API_KEY` | A | ✅ | — | — |
-| `OWM_API_KEY` | A | ✅ | — | — |
-| `AVWX_TOKEN` | A | ✅ | — | — |
+| `OWM_API_KEY` | A (optional) | if precipitation tiles enabled | — | — |
+| `AVWX_TOKEN` | A (optional) | if enriched METAR enabled | — | — |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | A | ✅ | — | — |
 | `ADMIN_METRICS_TOKEN` | A + D | ✅ | — | ✅ (`metrics-digest.yml`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | D | — | — | ✅ (`db-backup.yml`) |
@@ -330,8 +330,8 @@ changes. See [Cloud Run Setup](#cloud-run-setup) and the SSH key step in
 | `ENCRYPTION_KEY` | AES-256-GCM 32-byte hex key. Persistent — regenerating breaks all encrypted OAuth tokens and BYOK API keys. |
 | `SENTRY_DSN` | Backend Sentry project DSN. |
 | `GEMINI_API_KEY` / `GROQ_API_KEY` | Free-tier AI provider keys for flight-plan validation. |
-| `OWM_API_KEY` | OpenWeatherMap key — precipitation tile proxy. |
-| `AVWX_TOKEN` | AVWX token — enriched METAR decoding. |
+| `OWM_API_KEY` | OpenWeatherMap key — precipitation tile proxy. Optional; not currently wired into `deploy.yml --set-secrets`. If you start using it, create `owm-api-key` in GCP Secret Manager and add the mapping to `deploy.yml`. |
+| `AVWX_TOKEN` | AVWX token — enriched METAR decoding. Same caveat as `OWM_API_KEY`. |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare R2 credentials for chart overlay cache. |
 | `ADMIN_METRICS_TOKEN` | Header-token auth for `GET /v1/admin/metrics` (consumed by `metrics-digest.yml`). Generate with `openssl rand -hex 32`. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service-role JWT from Supabase dashboard → Settings → API. Used by `db-backup.yml` to upload dumps to Supabase Storage. |
