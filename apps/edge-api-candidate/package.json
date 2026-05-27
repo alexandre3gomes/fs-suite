@@ -1,0 +1,16 @@
+{
+  "name": "@fs-suite/edge-api-candidate",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "typescript": "^5.6.2",
+    "wrangler": "^3.95.0"
+  }
+}

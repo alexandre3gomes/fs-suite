@@ -85,7 +85,7 @@ Supabase (PG) Upstash    Google
 |--------|------|--------|-------|
 | `fs-suite.com` | CNAME | `fs-suite-app.pages.dev` | Proxied |
 | `api.fs-suite.com` | A | EC2 Elastic IP (`52.18.13.237`) | Proxied |
-| `api-candidate.fs-suite.com` | — | Cloudflare Worker → Cloud Run | — | _planned — see [api-candidate worker](#api-candidate-worker-planned) below_ |
+| `api-candidate.fs-suite.com` | — | Cloudflare Worker → Cloud Run | — _(Workers handles routing)_ |
 
 ## EC2 Setup
 
@@ -249,6 +249,7 @@ Migrations run against the shared Supabase database before any runtime is update
 | `ci.yml` | Push to `main` + PRs | Install, lint, typecheck, build, test |
 | `deploy.yml` | Push to `main` (API/packages paths) | Build → migrate → deploy EC2 + Cloud Run |
 | `deploy-app.yml` | Push to `main` (app/UI paths) | Expo web export → Cloudflare Pages |
+| `deploy-edge.yml` | Push to `main` (`apps/edge-*` paths) | Deploy Cloudflare Workers (api-candidate proxy) |
 | `db-backup.yml` | Daily 03:00 UTC + manual | `pg_dump` → Supabase Storage (90-day retention) |
 | `metrics-digest.yml` | Daily 07:00 UTC + manual | Fetch `/v1/admin/metrics` → post comment on the open metrics issue |
 
@@ -323,7 +324,10 @@ changes. See [Cloud Run Setup](#cloud-run-setup) and the SSH key step in
 
 For greenfield setup of the underlying managed services (Supabase, Upstash,
 Cloudflare, GCP, Google OAuth, Sentry, PostHog), see the runbooks under
-[`docs/greenfield/`](../docs/greenfield/). _(Onda 2 — pending.)_
+[`docs/greenfield/`](../docs/greenfield/). Each runbook is greenfield-first
+with a "Reusing existing" callout at the top — if you already have the
+service provisioned and credentials in hand, you can skip straight to the
+"Capture credentials" section.
 
 ### Description of each secret
 
@@ -344,7 +348,7 @@ Cloudflare, GCP, Google OAuth, Sentry, PostHog), see the runbooks under
 | `EXPO_PUBLIC_POSTHOG_KEY` (`.env`) → `POSTHOG_KEY` (GH Secret) | PostHog project key. **Frontend only** — embedded into the Expo web bundle at build time via `deploy-app.yml`. The API does not use PostHog. |
 | `EC2_HOST` / `EC2_SSH_KEY` / `EC2_USER` | SSH access to the EC2 deploy target. |
 | `GCP_PROJECT_ID` / `GCP_WIF_PROVIDER` / `GCP_WIF_SERVICE_ACCOUNT` | GCP project + Workload Identity Federation for Cloud Run deploy. `GCP_SA_KEY` is the legacy fallback; remove once WIF is active. |
-| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Pages deploy credentials. |
+| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | Cloudflare credentials. Token must include scopes **Account → Cloudflare Pages: Edit** (for `deploy-app.yml`) and **Account → Workers Scripts: Edit** (for `deploy-edge.yml` / api-candidate Worker). |
 | `TURBO_TEAM` / `TURBO_TOKEN` | Turborepo remote cache (optional). |
 
 **Deprecated**: `GCP_REGION` (hardcoded to `europe-west2`), `BACKUP_DATABASE_URL` (replaced by `DATABASE_URL`).
@@ -439,17 +443,38 @@ a cold start (typically 5–10s). Subsequent requests are served normally.
    - Create A record → `52.18.13.237` (Proxied)
 2. Verify: `curl https://api.fs-suite.com/v1/health`
 
-### api-candidate worker (planned)
+### api-candidate worker
 
-The topology lists `api-candidate.fs-suite.com` as a stable hostname that
-always points at Cloud Run (independent of `api.fs-suite.com`, which
-follows the failover swap above). It is meant as a permanent fallback the
-frontend can be repointed to in seconds.
+`api-candidate.fs-suite.com` is a stable hostname that always proxies
+to Cloud Run, independent of the `api.fs-suite.com` DNS swap above. The
+frontend can be repointed at it in seconds (change `EXPO_PUBLIC_API_URL`
+in `deploy-app.yml` and push) for a permanent fallback path that
+continues working even when EC2 is down.
 
-The implementation — a Cloudflare Worker that reverse-proxies the
-hostname to the Cloud Run service URL — is not yet in the repo. Tracked
-as Onda 2 of the post-audit remediation plan. Until it lands, treat the
-hostname as a topology placeholder; failover is via the DNS swap above.
+The implementation is a Cloudflare Worker at
+[`apps/edge-api-candidate/`](../apps/edge-api-candidate/) — a thin reverse
+proxy whose `UPSTREAM_ORIGIN` env var holds the Cloud Run service URL.
+Deploys via `.github/workflows/deploy-edge.yml` on any push that touches
+the Worker.
+
+If Cloud Run is recreated (rare), the service URL's random component
+changes; update `wrangler.toml` accordingly:
+
+```bash
+gcloud run services describe fs-suite-api --region europe-west2 \
+  --format 'value(status.url)'
+# → paste into apps/edge-api-candidate/wrangler.toml UPSTREAM_ORIGIN
+```
+
+To swap the frontend to the candidate manually (e.g. EC2 down):
+
+```bash
+# In deploy-app.yml, change:
+#   EXPO_PUBLIC_API_URL: https://api.fs-suite.com
+# to:
+#   EXPO_PUBLIC_API_URL: https://api-candidate.fs-suite.com
+# then push to trigger a rebuild.
+```
 
 ### What stays intact during failover
 
