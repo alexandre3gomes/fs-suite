@@ -8,6 +8,7 @@ import {
   Query,
   Req,
   Res,
+  UseFilters,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -20,6 +21,7 @@ import { Public } from '../common/guards/jwt-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { AuthService } from './auth.service';
+import { OAuthCallbackExceptionFilter } from './filters/oauth-callback-exception.filter';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 
 const REFRESH_COOKIE = 'refresh_token';
@@ -90,6 +92,7 @@ export class AuthController {
 
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
+  @UseFilters(OAuthCallbackExceptionFilter)
   @ApiOperation({ summary: 'Google OAuth callback — issues auth code and redirects to app' })
   async googleCallback(
     @Req() req: Request & { user: User },

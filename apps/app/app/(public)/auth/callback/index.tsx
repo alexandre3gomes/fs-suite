@@ -6,13 +6,22 @@ import { ActivityIndicator, View } from 'react-native';
 import { exchangeAuthCode } from '../../../../src/services/auth.service';
 
 export default function AuthCallbackScreen(): JSX.Element {
-  const { code } = useLocalSearchParams<{ code?: string }>();
+  const { code, error } = useLocalSearchParams<{ code?: string; error?: string }>();
   const router = useRouter();
   const handled = useRef(false);
 
   useEffect(() => {
     if (handled.current) return;
     handled.current = true;
+
+    // OAuth callback failed on the API side (passport rejected the Google
+    // code — typically back-button or double-click). The API filter
+    // already swallowed the noise; don't re-report it here, just bounce
+    // back to login.
+    if (error) {
+      router.replace('/(public)/login');
+      return;
+    }
 
     if (!code) {
       router.replace('/(public)/login');
@@ -27,7 +36,7 @@ export default function AuthCallbackScreen(): JSX.Element {
         Sentry.captureException(err, { tags: { context: 'auth_callback' } });
         router.replace('/(public)/login');
       });
-  }, [code, router]);
+  }, [code, error, router]);
 
   return (
     <View className="flex-1 items-center justify-center bg-background">
