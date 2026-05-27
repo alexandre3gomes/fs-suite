@@ -1,6 +1,6 @@
 import { Readable } from 'stream';
 
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -73,6 +73,19 @@ export class R2StorageService implements OnModuleInit {
       this.logger.debug(`R2 PUT ${key} (${(body.length / 1024).toFixed(0)} KB)`);
     } catch (err: unknown) {
       this.logger.warn(`R2 PUT failed for ${key}: ${(err as Error).message}`);
+    }
+  }
+
+  /** Best-effort delete. A missing object is treated as a successful no-op. */
+  async deleteObject(key: string): Promise<void> {
+    if (!this.enabled || !this.client) return;
+    try {
+      await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+      this.logger.debug(`R2 DELETE ${key}`);
+    } catch (err: unknown) {
+      const status = (err as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+      if (status === 404) return;
+      this.logger.warn(`R2 DELETE failed for ${key}: ${(err as Error).message}`);
     }
   }
 }
