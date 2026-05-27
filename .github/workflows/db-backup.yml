@@ -59,7 +59,9 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -qq
           sudo apt-get install -y postgresql-client-17
-          pg_dump --version
+          # Ubuntu runners ship with postgresql-client-16 ahead in PATH; use
+          # the absolute path so the v17 binary actually runs.
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: Dump and compress
         env:
@@ -71,7 +73,7 @@ jobs:
           # `pgbouncer=true`. Strip the original query string and append
           # the libpq parameters we actually need.
           DB_URL_CLEAN="${DATABASE_URL%%\?*}?sslmode=require"
-          pg_dump "$DB_URL_CLEAN" \
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL_CLEAN" \
             --no-owner --no-acl \
             --schema=public \
             --format=plain \
