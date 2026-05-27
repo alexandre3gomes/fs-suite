@@ -4,6 +4,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import type { AerodromeChartOverlay } from '@prisma/client';
 import sharp from 'sharp';
 
+import { isTransientNetworkError, UpstreamUnavailableException } from '../common/exceptions/upstream-unavailable.exception';
 import { PrismaService } from '../prisma/prisma.service';
 import { R2StorageService } from '../r2/r2-storage.service';
 
@@ -399,11 +400,20 @@ export class ChartOverlaysService {
   }
 
   private async downloadPdf(url: string): Promise<Buffer> {
-    const resp = await fetch(url, {
-      headers: FETCH_HEADERS,
-      redirect: 'follow',
-      signal: AbortSignal.timeout(PDF_DOWNLOAD_TIMEOUT_MS),
-    });
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        headers: FETCH_HEADERS,
+        redirect: 'follow',
+        signal: AbortSignal.timeout(PDF_DOWNLOAD_TIMEOUT_MS),
+      });
+    } catch (err) {
+      if (isTransientNetworkError(err)) {
+        const host = ((): string => { try { return new URL(url).hostname; } catch { return 'upstream'; } })();
+        throw new UpstreamUnavailableException(host, err);
+      }
+      throw err;
+    }
     if (!resp.ok) {
       throw new BadRequestException(`Chart PDF download failed: HTTP ${resp.status}`);
     }
