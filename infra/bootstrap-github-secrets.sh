@@ -53,9 +53,11 @@ SYNC_LIST=(
   "DATABASE_URL"
   "SUPABASE_SERVICE_ROLE_KEY"
   "ADMIN_METRICS_TOKEN"
-  # Frontend build — deploy-app.yml injects EXPO_PUBLIC_POSTHOG_KEY
-  # from the GH Secret POSTHOG_KEY at Expo export time.
+  # Frontend build — deploy-app.yml injects these at Expo export time.
+  # SENTRY_DSN is shared with the backend (same project, separate by SDK
+  # tag); POSTHOG_KEY is the public project key (phc_).
   "EXPO_PUBLIC_POSTHOG_KEY:POSTHOG_KEY"
+  "SENTRY_DSN"
 )
 
 # Load .env without leaking to the parent shell.

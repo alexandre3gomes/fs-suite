@@ -40,6 +40,11 @@ jobs:
         env:
           EXPO_PUBLIC_API_URL: https://api.fs-suite.com
           EXPO_PUBLIC_POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
+          # Frontend reuses the backend's Sentry DSN — same project, errors
+          # are separable by SDK tag (javascript vs node). Release pinned to
+          # the commit SHA so frontend traces line up with the GH commit.
+          EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          EXPO_PUBLIC_SENTRY_RELEASE: ${{ github.sha }}
 
       - name: Create Cloudflare Pages project (if needed)
         run: npx wrangler pages project create fs-suite-app --production-branch=main || true
