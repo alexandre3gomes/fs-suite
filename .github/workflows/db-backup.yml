@@ -37,7 +37,7 @@ jobs:
         run: |
           STATUS=$(curl -sS -o /tmp/bucket.json -w "%{http_code}" \
             -X POST "${SUPABASE_URL}/storage/v1/bucket" \
-            -H "Authorization: Bearer ${SERVICE_KEY}" \
+            -H "apikey: ${SERVICE_KEY}" \
             -H "Content-Type: application/json" \
             -d "{\"id\":\"${BUCKET}\",\"name\":\"${BUCKET}\",\"public\":false}")
           if [[ "$STATUS" -eq 200 ]]; then
@@ -83,7 +83,7 @@ jobs:
           OBJECT_PATH="${DUMP_DATE}.sql.gz"
           STATUS=$(curl -sS -o response.json -w "%{http_code}" \
             -X POST "${SUPABASE_URL}/storage/v1/object/${BUCKET}/${OBJECT_PATH}" \
-            -H "Authorization: Bearer ${SERVICE_KEY}" \
+            -H "apikey: ${SERVICE_KEY}" \
             -H "Content-Type: application/gzip" \
             -H "x-upsert: true" \
             --data-binary @backup.sql.gz)
@@ -100,7 +100,7 @@ jobs:
         run: |
           CUTOFF=$(date -u -d "${RETENTION_DAYS} days ago" +%Y-%m-%d)
           curl -sS -X POST "${SUPABASE_URL}/storage/v1/object/list/${BUCKET}" \
-            -H "Authorization: Bearer ${SERVICE_KEY}" \
+            -H "apikey: ${SERVICE_KEY}" \
             -H "Content-Type: application/json" \
             -d '{"limit":1000,"sortBy":{"column":"name","order":"asc"}}' \
             > listing.json
@@ -110,7 +110,7 @@ jobs:
             datepart="${name%.sql.gz}"
             if [[ "$datepart" < "$CUTOFF" ]]; then
               curl -sS -X DELETE "${SUPABASE_URL}/storage/v1/object/${BUCKET}/${name}" \
-                -H "Authorization: Bearer ${SERVICE_KEY}" > /dev/null
+                -H "apikey: ${SERVICE_KEY}" > /dev/null
               echo "  deleted ${name}"
               DELETED=$((DELETED + 1))
             fi
