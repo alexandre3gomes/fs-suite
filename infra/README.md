@@ -123,14 +123,36 @@ Generate the certificate at: Cloudflare > SSL/TLS > Origin Server > Create Certi
 
 ### JWT Keys
 
-The setup script generates a fresh RS256 2048-bit keypair on every run using `openssl`.
-The keys are written to `.env` in escaped single-line format and are not provided externally.
+The JWT RS256 keypair is shared by both runtimes (EC2 + Cloud Run). The
+canonical `.env` in your password manager holds the values; both setup
+scripts propagate them to their respective runtimes.
 
-**Tradeoff**: regenerating the keypair invalidates all existing JWT access and refresh tokens.
-Users will need to sign in again after a reprovisioning. No data is lost — Google OAuth issues
-new tokens on the next login. This is a deliberate decision: it avoids the complexity of
-managing the keypair as a separate persistent secret, and the impact (re-login) is acceptable
-at the current product stage.
+**First-time provisioning** (`JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` blank
+in canonical `.env`):
+
+1. Run `infra/ec2/setup.sh` — it detects the absence and generates a
+   fresh RS256 2048-bit pair, writing both to `/opt/fs-suite/.env`.
+2. The script prints the exact `ssh` command to capture them back:
+
+   ```bash
+   ssh fs-suite "sudo grep -E '^JWT_(PRIVATE|PUBLIC)_KEY=' /opt/fs-suite/.env"
+   ```
+
+3. Paste both lines into the canonical `.env` (Bitwarden).
+4. Run `infra/cloudrun/setup.sh /path/to/.env` so GCP Secret Manager
+   gets the same pair. Cloud Run picks it up at next deploy.
+
+**Subsequent reprovisioning** (`JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`
+populated in canonical `.env`): EC2 setup detects the existing values
+in the propagated `.env` and skips generation. Both runtimes converge
+on the keys from the canonical source. Sessions issued before the
+reprovisioning continue to validate — **no user re-login required**.
+
+**If you want to force a regenerate** (e.g. you suspect the private key
+was leaked): clear both fields in the canonical `.env`, run EC2 setup
+(generates fresh keys), capture back, run Cloud Run setup. Every active
+session is invalidated; users must sign in again via Google OAuth. No
+data is lost.
 
 ### SSH Access
 
@@ -284,7 +306,7 @@ hand.
 | `REDIS_URL` | A | ✅ | — | — |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | A | ✅ | — | — |
 | `ENCRYPTION_KEY` | A | ✅ | — | — |
-| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | A | ✅ | — | — |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | A | ✅ | — | — _(see [JWT key flow](#jwt-keys))_ |
 | `SENTRY_DSN` | A + B | ✅ | ✅ (injected as `EXPO_PUBLIC_SENTRY_DSN` at build time) | — |
 | `GEMINI_API_KEY` / `GROQ_API_KEY` | A | ✅ | — | — |
 | `OWM_API_KEY` | A (optional) | if precipitation tiles enabled | — | — |
@@ -298,9 +320,14 @@ hand.
 | `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | C | — | — | ✅ (`deploy-app.yml`) |
 | `TURBO_TEAM` / `TURBO_TOKEN` | C | — | — | ✅ (`ci.yml` remote cache) |
 
-Notes on JWT keys: regenerated on every `infra/ec2/setup.sh` run (EC2 is the
-canonical source), then captured into GCP Secret Manager by
-`infra/cloudrun/setup.sh`. They do not live in your local `.env`.
+Notes on JWT keys: the canonical `.env` is the source of truth. If the
+keys are blank, `infra/ec2/setup.sh` generates a fresh RS256 pair on
+first run; the operator then captures the generated values back into
+the canonical `.env` (one-line `ssh` printed in the setup output) and
+re-runs `infra/cloudrun/setup.sh` so both runtimes share the same pair.
+On subsequent reprovisions with the values already in `.env`, both
+runtimes pick them up and existing JWT tokens stay valid. See
+[JWT Keys](#jwt-keys) for the full flow.
 
 ### Provisioning a fresh environment
 

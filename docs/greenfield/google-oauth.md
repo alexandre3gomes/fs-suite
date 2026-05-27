@@ -49,7 +49,7 @@ without Cloud Run).
 4. **Authorized JavaScript origins**:
    - `https://fs-suite.com`
    - `https://www.fs-suite.com`
-   - `http://localhost:3000` (for local dev — the Expo web dev server)
+   - `http://localhost:8081` (for local dev — Expo web dev server)
 5. **Authorized redirect URIs**:
    - `https://api.fs-suite.com/v1/auth/google/callback`
    - `http://localhost:3001/v1/auth/google/callback` (for local API dev)

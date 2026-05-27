@@ -647,7 +647,7 @@ pnpm --filter api prisma db seed
 # 5. Start all services
 pnpm dev
 # apps/app: Expo dev server (web at localhost:8081, native via Expo Go)
-# apps/api: NestJS at localhost:3000
+# apps/api: NestJS at localhost:3001
 ```
 
 ---

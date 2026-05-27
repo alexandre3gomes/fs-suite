@@ -181,8 +181,9 @@ echo "Docker Compose config written."
 echo ""
 
 # ── Process .env ──────────────────────────────────────────
-# Reads the provided .env, converts JWT PEM keys (multiline)
-# to escaped single-line format, and adds non-secret defaults.
+# Reads the provided .env and adds non-secret defaults. Keeps every
+# secret value (including JWT keys) as-is — the canonical .env is the
+# source of truth.
 
 process_env() {
   local src="$1"
@@ -206,7 +207,6 @@ DEFAULTS
       NODE_ENV=*|PORT=*|GOOGLE_CALLBACK_URL=*|WEB_ORIGIN=*) continue ;;
       JWT_ACCESS_EXPIRES_IN=*|JWT_REFRESH_EXPIRES_IN=*) continue ;;
       R2_BUCKET_NAME=*|SENTRY_RELEASE=*) continue ;;
-      JWT_PRIVATE_KEY=*|JWT_PUBLIC_KEY=*) continue ;;
     esac
 
     echo "$line" >> "$dst"
@@ -215,21 +215,36 @@ DEFAULTS
 
 process_env "$ENV_FILE" "$APP_DIR/.env"
 
-# ── Generate JWT RS256 keypair ────────────────────────────
+# ── JWT RS256 keypair ─────────────────────────────────────
+# Source of truth: the canonical .env. If JWT_PRIVATE_KEY +
+# JWT_PUBLIC_KEY are both already present (preserved from a previous
+# reprovision or provided by the operator), keep them — sessions
+# survive the reprovisioning. Otherwise generate fresh keys and tell
+# the operator to capture them back into the canonical .env so
+# Cloud Run can use the same pair and the next EC2 reprovision is
+# session-preserving.
 
-echo "Generating JWT RS256 keypair..."
-JWT_TMP=$(mktemp -d)
-openssl genrsa -out "$JWT_TMP/private.pem" 2048 2>/dev/null
-openssl rsa -in "$JWT_TMP/private.pem" -pubout -out "$JWT_TMP/public.pem" 2>/dev/null
+if grep -q '^JWT_PRIVATE_KEY=' "$APP_DIR/.env" && \
+   grep -q '^JWT_PUBLIC_KEY=' "$APP_DIR/.env"; then
+  echo "JWT keypair found in .env — preserving (sessions survive reprovisioning)."
+  GENERATED_JWT=false
+else
+  echo "JWT keypair absent from .env — generating fresh RS256 2048-bit pair..."
+  JWT_TMP=$(mktemp -d)
+  openssl genrsa -out "$JWT_TMP/private.pem" 2048 2>/dev/null
+  openssl rsa -in "$JWT_TMP/private.pem" -pubout -out "$JWT_TMP/public.pem" 2>/dev/null
 
-JWT_PRIV=$(awk '{printf "%s\\n", $0}' "$JWT_TMP/private.pem")
-JWT_PUB=$(awk '{printf "%s\\n", $0}' "$JWT_TMP/public.pem")
+  JWT_PRIV=$(awk '{printf "%s\\n", $0}' "$JWT_TMP/private.pem")
+  JWT_PUB=$(awk '{printf "%s\\n", $0}' "$JWT_TMP/public.pem")
 
-echo "JWT_PRIVATE_KEY=\"${JWT_PRIV}\"" >> "$APP_DIR/.env"
-echo "JWT_PUBLIC_KEY=\"${JWT_PUB}\"" >> "$APP_DIR/.env"
+  echo "JWT_PRIVATE_KEY=\"${JWT_PRIV}\"" >> "$APP_DIR/.env"
+  echo "JWT_PUBLIC_KEY=\"${JWT_PUB}\"" >> "$APP_DIR/.env"
 
-rm -rf "$JWT_TMP"
-echo "JWT keypair generated and written to .env."
+  rm -rf "$JWT_TMP"
+  echo "JWT keypair generated and written to .env."
+  GENERATED_JWT=true
+fi
+
 chmod 600 "$APP_DIR/.env"
 echo ".env written (chmod 600)."
 echo ""
@@ -266,6 +281,20 @@ echo "╔═══════════════════════�
 echo "║     Setup complete!                          ║"
 echo "╚══════════════════════════════════════════════╝"
 echo ""
+
+if [[ "${GENERATED_JWT:-false}" == "true" ]]; then
+  echo "⚠  FRESH JWT KEYS GENERATED — capture them into the canonical .env"
+  echo "   (Bitwarden) so Cloud Run uses the same pair and future EC2"
+  echo "   reprovisions preserve sessions:"
+  echo ""
+  echo "     ssh fs-suite \"sudo grep -E '^JWT_(PRIVATE|PUBLIC)_KEY=' /opt/fs-suite/.env\""
+  echo ""
+  echo "   Paste both lines into the canonical .env, then re-run"
+  echo "   ./infra/cloudrun/setup.sh /path/to/.env to sync GCP Secret"
+  echo "   Manager with the new keys."
+  echo ""
+fi
+
 echo "Checklist:"
 echo ""
 echo "  1. Elastic IP allocated and associated"
