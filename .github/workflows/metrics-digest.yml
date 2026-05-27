@@ -58,7 +58,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           ssh "$EC2_USER@$EC2_HOST" "
-            DISK=\$(df --output=pcent,size / | tail -1 | tr -s ' ')
+            DISK=\$(df -h --output=pcent,size / | tail -1 | tr -s ' ' | sed 's/^ //')
             IMAGES=\$(sudo docker images --filter 'dangling=false' --format '{{.Repository}}' | wc -l)
             echo \"\$DISK \$IMAGES\"
           " > host.txt
