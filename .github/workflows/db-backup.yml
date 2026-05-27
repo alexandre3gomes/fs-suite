@@ -1,0 +1,118 @@
+name: DB Backup
+
+# Daily pg_dump of the production Postgres, gzipped and uploaded to
+# Supabase Storage under the `db-backups` bucket. Old dumps are pruned
+# to a 90-day rolling window.
+#
+# Required GitHub secrets:
+#   - BACKUP_DATABASE_URL — Supabase Supavisor session-mode pooler URL
+#     (postgres://...pooler.supabase.com:5432/postgres?pgbouncer=true)
+#   - SUPABASE_SERVICE_ROLE_KEY — project service_role JWT from
+#     Settings → API in the Supabase dashboard
+#
+# The `db-backups` bucket is created on first run if missing.
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+env:
+  SUPABASE_URL: https://kottmfuncqyzwtweoquw.supabase.co
+  BUCKET: db-backups
+  RETENTION_DAYS: 90
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Ensure bucket exists
+        env:
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          STATUS=$(curl -sS -o /tmp/bucket.json -w "%{http_code}" \
+            -X POST "${SUPABASE_URL}/storage/v1/bucket" \
+            -H "Authorization: Bearer ${SERVICE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{\"id\":\"${BUCKET}\",\"name\":\"${BUCKET}\",\"public\":false}")
+          if [[ "$STATUS" -eq 200 ]]; then
+            echo "Bucket ${BUCKET} created"
+          elif grep -q "Duplicate" /tmp/bucket.json 2>/dev/null; then
+            echo "Bucket ${BUCKET} already exists"
+          else
+            echo "::error::Bucket setup failed (HTTP $STATUS)"
+            cat /tmp/bucket.json
+            exit 1
+          fi
+
+      - name: Install pg_dump (PostgreSQL 16 client)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-16
+          pg_dump --version
+
+      - name: Dump and compress
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          DUMP_DATE=$(date -u +%Y-%m-%d)
+          echo "DUMP_DATE=$DUMP_DATE" >> "$GITHUB_ENV"
+          pg_dump "$DATABASE_URL" \
+            --no-owner --no-acl \
+            --schema=public \
+            --format=plain \
+            --file=backup.sql
+          gzip -9 backup.sql
+          ls -lh backup.sql.gz
+          echo "DUMP_BYTES=$(stat -c %s backup.sql.gz)" >> "$GITHUB_ENV"
+
+      - name: Upload to Supabase Storage
+        env:
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          OBJECT_PATH="${DUMP_DATE}.sql.gz"
+          STATUS=$(curl -sS -o response.json -w "%{http_code}" \
+            -X POST "${SUPABASE_URL}/storage/v1/object/${BUCKET}/${OBJECT_PATH}" \
+            -H "Authorization: Bearer ${SERVICE_KEY}" \
+            -H "Content-Type: application/gzip" \
+            -H "x-upsert: true" \
+            --data-binary @backup.sql.gz)
+          if [[ "$STATUS" -lt 200 || "$STATUS" -ge 300 ]]; then
+            echo "::error::Upload failed (HTTP $STATUS)"
+            cat response.json
+            exit 1
+          fi
+          echo "Uploaded ${OBJECT_PATH} (${DUMP_BYTES} bytes)"
+
+      - name: Prune dumps older than 90 days
+        env:
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          CUTOFF=$(date -u -d "${RETENTION_DAYS} days ago" +%Y-%m-%d)
+          curl -sS -X POST "${SUPABASE_URL}/storage/v1/object/list/${BUCKET}" \
+            -H "Authorization: Bearer ${SERVICE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"limit":1000,"sortBy":{"column":"name","order":"asc"}}' \
+            > listing.json
+          NAMES=$(jq -r '.[].name' listing.json)
+          DELETED=0
+          for name in $NAMES; do
+            datepart="${name%.sql.gz}"
+            if [[ "$datepart" < "$CUTOFF" ]]; then
+              curl -sS -X DELETE "${SUPABASE_URL}/storage/v1/object/${BUCKET}/${name}" \
+                -H "Authorization: Bearer ${SERVICE_KEY}" > /dev/null
+              echo "  deleted ${name}"
+              DELETED=$((DELETED + 1))
+            fi
+          done
+          echo "Pruned ${DELETED} dump(s) older than ${CUTOFF}"
