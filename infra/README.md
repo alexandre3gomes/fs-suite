@@ -249,42 +249,121 @@ Migrations run against the shared Supabase database before any runtime is update
 | `ci.yml` | Push to `main` + PRs | Install, lint, typecheck, build, test |
 | `deploy.yml` | Push to `main` (API/packages paths) | Build → migrate → deploy EC2 + Cloud Run |
 | `deploy-app.yml` | Push to `main` (app/UI paths) | Expo web export → Cloudflare Pages |
-
-### GitHub Secrets
-
-| Secret | Used by | Status | Notes |
-|--------|---------|--------|-------|
-| `EC2_HOST` | `deploy.yml` | Active | Elastic IP |
-| `EC2_SSH_KEY` | `deploy.yml` | Active | SSH private key for ec2-user |
-| `EC2_USER` | `deploy.yml` | Active | `ec2-user` |
-| `GCP_PROJECT_ID` | `deploy.yml` | Active | `fs-suite` |
-| `GCP_WIF_PROVIDER` | `deploy.yml` | Recommended | WIF provider (keyless auth) |
-| `GCP_WIF_SERVICE_ACCOUNT` | `deploy.yml` | Recommended | WIF service account |
-| `GCP_SA_KEY` | `deploy.yml` | Legacy | GCP SA JSON key — remove once WIF is active |
-| `CLOUDFLARE_API_TOKEN` | `deploy-app.yml` | Active | Cloudflare Pages deploy |
-| `CLOUDFLARE_ACCOUNT_ID` | `deploy-app.yml` | Active | Cloudflare account ID |
-
-**Deprecated**: `GCP_REGION` — region is now hardcoded to `europe-west2`.
+| `db-backup.yml` | Daily 03:00 UTC + manual | `pg_dump` → Supabase Storage (90-day retention) |
+| `metrics-digest.yml` | Daily 07:00 UTC + manual | Fetch `/v1/admin/metrics` → post comment on the open metrics issue |
 
 ### GHCR Authentication
 
 - **Setup (one-time)**: PAT with `read:packages` scope, used during `setup.sh`
 - **Automated deploys**: `GITHUB_TOKEN` from Actions, passed via SSH to EC2
 
-## Secrets Reference
+## Secrets
+
+Secrets are grouped by **who consumes them**, not by where they happen to be
+stored. The canonical source is your local `.env` (kept in a password manager).
+Every other surface is a *derived copy* refreshed by a script — never edited by
+hand.
+
+### Categories
+
+| # | Category | Consumer | Lives in `.env`? | Replicates to |
+|---|----------|----------|------------------|---------------|
+| A | API runtime | NestJS process | Yes | EC2 `/opt/fs-suite/.env` (`infra/ec2/setup.sh`); GCP Secret Manager (`infra/cloudrun/setup.sh`) |
+| B | Frontend build | Expo export | Yes (`EXPO_PUBLIC_*`) | GitHub Secrets (`infra/bootstrap-github-secrets.sh`); injected into Expo build at deploy time |
+| C | CI/CD pipeline auth | Actions runner | No | GitHub Secrets only — these authenticate the pipeline itself (chicken-and-egg) |
+| D | Workflow data | Actions runner (direct, not via API) | Yes | GitHub Secrets (`infra/bootstrap-github-secrets.sh`) |
+
+### Master matrix
+
+| Secret | Cat | API needs it | Frontend needs it | Workflow needs it directly |
+|--------|-----|--------------|-------------------|----------------------------|
+| `DATABASE_URL` | A + D | ✅ | — | ✅ (`db-backup.yml`) |
+| `REDIS_URL` | A | ✅ | — | — |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | A | ✅ | — | — |
+| `ENCRYPTION_KEY` | A | ✅ | — | — |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | A | ✅ | — | — |
+| `SENTRY_DSN` | A | ✅ | — | — |
+| `GEMINI_API_KEY` / `GROQ_API_KEY` | A | ✅ | — | — |
+| `OWM_API_KEY` | A | ✅ | — | — |
+| `AVWX_TOKEN` | A | ✅ | — | — |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | A | ✅ | — | — |
+| `ADMIN_METRICS_TOKEN` | A + D | ✅ | — | ✅ (`metrics-digest.yml`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | D | — | — | ✅ (`db-backup.yml`) |
+| `EXPO_PUBLIC_POSTHOG_KEY` → `POSTHOG_KEY` | B | — | ✅ | ✅ (injected at build by `deploy-app.yml`) |
+| `EC2_HOST` / `EC2_SSH_KEY` / `EC2_USER` | C | — | — | ✅ (`deploy.yml`) |
+| `GCP_PROJECT_ID` / `GCP_WIF_PROVIDER` / `GCP_WIF_SERVICE_ACCOUNT` | C | — | — | ✅ (`deploy.yml`) |
+| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | C | — | — | ✅ (`deploy-app.yml`) |
+| `TURBO_TEAM` / `TURBO_TOKEN` | C | — | — | ✅ (`ci.yml` remote cache) |
+
+Notes on JWT keys: regenerated on every `infra/ec2/setup.sh` run (EC2 is the
+canonical source), then captured into GCP Secret Manager by
+`infra/cloudrun/setup.sh`. They do not live in your local `.env`.
+
+### Provisioning a fresh environment
+
+Starting from just your `.env`, all three runtime surfaces are populated:
+
+```bash
+# 1. EC2 — propagates every API-runtime secret from .env automatically
+scp .env origin.pem origin-key.pem fs-suite:~/
+ssh fs-suite './setup.sh'
+
+# 2. Cloud Run — paste each value when prompted (script reads the same .env)
+./infra/cloudrun/setup.sh
+
+# 3. GitHub Secrets — categories B + D, derived from .env
+./infra/bootstrap-github-secrets.sh /path/to/.env
+```
+
+Category C (pipeline auth) is set once when first wiring up CI/CD and rarely
+changes. See [Cloud Run Setup](#cloud-run-setup) and the SSH key step in
+[EC2 Setup](#ec2-setup).
+
+### Description of each secret
 
 | Secret | Description |
 |--------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string (Supabase Supavisor session-mode pooler, port 5432 on `aws-1-eu-central-1.pooler.supabase.com`). Pooler is required because Supabase's direct endpoint is IPv6-only and our runtimes don't route IPv6. Session mode supports prepared statements and advisory locks, so it works for both Prisma Client and Prisma Migrate without a separate `DIRECT_URL`. |
-| `REDIS_URL` | Redis connection string (Upstash, `rediss://` for TLS) |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials |
-| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | RS256 keypair (auto-generated by setup.sh) |
-| `ENCRYPTION_KEY` | AES-256-GCM key (32-byte hex) |
-| `SENTRY_DSN` | Sentry error tracking |
-| `GEMINI_API_KEY` / `GROQ_API_KEY` | AI model API keys |
-| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare R2 storage |
+| `DATABASE_URL` | Supabase Supavisor session-mode pooler URL (port 5432 on `aws-1-eu-central-1.pooler.supabase.com`). Required because Supabase's direct endpoint is IPv6-only and our runtimes don't route IPv6. Session mode supports prepared statements and advisory locks, so it works for both Prisma Client and Prisma Migrate without a separate `DIRECT_URL`. The `db-backup.yml` workflow strips the query string and replaces it with `sslmode=require`, so any query params are tolerated. |
+| `REDIS_URL` | Upstash Redis connection string (`rediss://` for TLS). |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials. |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | RS256 keypair. Auto-generated by `infra/ec2/setup.sh` (not in your `.env`); regenerating invalidates existing tokens — users re-login. |
+| `ENCRYPTION_KEY` | AES-256-GCM 32-byte hex key. Persistent — regenerating breaks all encrypted OAuth tokens and BYOK API keys. |
+| `SENTRY_DSN` | Backend Sentry project DSN. |
+| `GEMINI_API_KEY` / `GROQ_API_KEY` | Free-tier AI provider keys for flight-plan validation. |
+| `OWM_API_KEY` | OpenWeatherMap key — precipitation tile proxy. |
+| `AVWX_TOKEN` | AVWX token — enriched METAR decoding. |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare R2 credentials for chart overlay cache. |
+| `ADMIN_METRICS_TOKEN` | Header-token auth for `GET /v1/admin/metrics` (consumed by `metrics-digest.yml`). Generate with `openssl rand -hex 32`. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service-role JWT from Supabase dashboard → Settings → API. Used by `db-backup.yml` to upload dumps to Supabase Storage. |
+| `EXPO_PUBLIC_POSTHOG_KEY` (`.env`) → `POSTHOG_KEY` (GH Secret) | PostHog project key. **Frontend only** — embedded into the Expo web bundle at build time via `deploy-app.yml`. The API does not use PostHog. |
+| `EC2_HOST` / `EC2_SSH_KEY` / `EC2_USER` | SSH access to the EC2 deploy target. |
+| `GCP_PROJECT_ID` / `GCP_WIF_PROVIDER` / `GCP_WIF_SERVICE_ACCOUNT` | GCP project + Workload Identity Federation for Cloud Run deploy. `GCP_SA_KEY` is the legacy fallback; remove once WIF is active. |
+| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Pages deploy credentials. |
+| `TURBO_TEAM` / `TURBO_TOKEN` | Turborepo remote cache (optional). |
+
+**Deprecated**: `GCP_REGION` (hardcoded to `europe-west2`), `BACKUP_DATABASE_URL` (replaced by `DATABASE_URL`).
 
 **Never commit real secrets.**
+
+## Metrics Digest
+
+A daily snapshot of operational metrics (DB size vs Supabase cap, Redis memory
+vs Upstash cap, users, plans, sessions, activity, AI usage, chart-overlay
+cache) is posted as a comment on a single open GitHub issue labelled `metrics`.
+The issue is auto-created on first run; GitHub emails subscribers on each new
+comment.
+
+`metrics-digest.yml` runs daily at 07:00 UTC (and via `workflow_dispatch`). It
+calls `GET /v1/admin/metrics` with the `X-Admin-Token` header; the API gates
+the endpoint by comparing the header to `process.env.ADMIN_METRICS_TOKEN`. The
+shared token lives in your `.env` (category A + D) and is replicated to EC2,
+GCP Secret Manager, and GitHub Secrets by the scripts in
+[Provisioning](#provisioning-a-fresh-environment).
+
+```bash
+# Manual run (after a provisioning change, for example):
+gh workflow run metrics-digest.yml
+```
 
 ## Failover: EC2 → Cloud Run
 

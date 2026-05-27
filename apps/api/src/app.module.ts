@@ -6,6 +6,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 
 import { ActivityModule } from './activity/activity.module';
+import { AdminModule } from './admin/admin.module';
 import { AiValidationModule } from './ai-validation/ai-validation.module';
 import { AircraftProfilesModule } from './aircraft-profiles/aircraft-profiles.module';
 import { AirportsModule } from './airports/airports.module';
@@ -59,6 +60,7 @@ import { WeatherModule } from './weather/weather.module';
     ReaModule,
     RedisModule,
     ActivityModule,
+    AdminModule,
     AiValidationModule,
     AircraftProfilesModule,
     AirportsModule,

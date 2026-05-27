@@ -192,7 +192,10 @@ jobs:
           GROQ_API_KEY=groq-api-key:latest,\
           R2_ACCOUNT_ID=r2-account-id:latest,\
           R2_ACCESS_KEY_ID=r2-access-key-id:latest,\
-          R2_SECRET_ACCESS_KEY=r2-secret-access-key:latest" \
+          R2_SECRET_ACCESS_KEY=r2-secret-access-key:latest,\
+          OWM_API_KEY=owm-api-key:latest,\
+          AVWX_TOKEN=avwx-token:latest,\
+          ADMIN_METRICS_TOKEN=admin-metrics-token:latest" \
             --allow-unauthenticated
 
       - name: Smoke test

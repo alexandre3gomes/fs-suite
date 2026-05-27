@@ -5,8 +5,10 @@ name: DB Backup
 # to a 90-day rolling window.
 #
 # Required GitHub secrets:
-#   - BACKUP_DATABASE_URL — Supabase Supavisor session-mode pooler URL
-#     (postgres://...pooler.supabase.com:5432/postgres?pgbouncer=true)
+#   - DATABASE_URL — Supabase Supavisor session-mode pooler URL (same value
+#     as the API runtime DATABASE_URL). The query string is stripped and
+#     replaced with `sslmode=require` below, so libpq-incompatible params
+#     (e.g. `pgbouncer=true`) are tolerated.
 #   - SUPABASE_SERVICE_ROLE_KEY — project service_role JWT from
 #     Settings → API in the Supabase dashboard
 #
@@ -65,7 +67,7 @@ jobs:
 
       - name: Dump and compress
         env:
-          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           DUMP_DATE=$(date -u +%Y-%m-%d)
           echo "DUMP_DATE=$DUMP_DATE" >> "$GITHUB_ENV"

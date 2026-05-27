@@ -1,0 +1,117 @@
+name: Metrics Digest
+
+# Daily snapshot of operational metrics, posted as a comment on a single
+# pinned GitHub issue (one issue, many comments — easy visual comparison
+# across days; GitHub emails subscribers on each new comment).
+#
+# Required GitHub secrets:
+#   - ADMIN_METRICS_TOKEN — must match the value of $ADMIN_METRICS_TOKEN
+#     set on the API server (header-token auth for /v1/admin/metrics).
+
+on:
+  schedule:
+    - cron: '0 7 * * *' # 07:00 UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: metrics-digest
+  cancel-in-progress: false
+
+env:
+  API_URL: https://api.fs-suite.com
+  DB_CAP_BYTES: 524288000 # 500 MB — Supabase free-tier cap
+  REDIS_CAP_BYTES: 268435456 # 256 MB — Upstash free-tier cap
+  ISSUE_LABEL: metrics
+  ISSUE_TITLE: Daily Metrics Digest
+
+permissions:
+  issues: write
+
+jobs:
+  digest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fetch metrics
+        env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_METRICS_TOKEN }}
+        run: |
+          if ! curl -sSf -H "X-Admin-Token: ${ADMIN_TOKEN}" \
+            "${API_URL}/v1/admin/metrics" -o metrics.json; then
+            echo "::error::Failed to fetch /v1/admin/metrics"
+            exit 1
+          fi
+          echo "Raw payload:"
+          cat metrics.json
+
+      - name: Build comment body
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          DB_BYTES=$(jq -r '.database.size_bytes' metrics.json)
+          DB_MB=$(awk -v b="$DB_BYTES" 'BEGIN{printf "%.1f", b/1048576}')
+          CAP_MB=$(awk -v c="$DB_CAP_BYTES" 'BEGIN{printf "%.0f", c/1048576}')
+          DB_PCT=$(awk -v b="$DB_BYTES" -v c="$DB_CAP_BYTES" 'BEGIN{printf "%.1f", (b/c)*100}')
+
+          USERS_TOTAL=$(jq -r '.users.total' metrics.json)
+          USERS_NEW=$(jq -r '.users.new_7d' metrics.json)
+          USERS_ACTIVE=$(jq -r '.users.active_7d' metrics.json)
+          PLANS_TOTAL=$(jq -r '.plans.total' metrics.json)
+          PLANS_NEW=$(jq -r '.plans.new_7d' metrics.json)
+          SESSIONS=$(jq -r '.sessions.active' metrics.json)
+          ACT_24H=$(jq -r '.activity.events_24h' metrics.json)
+          ACT_7D=$(jq -r '.activity.events_7d' metrics.json)
+          AI_7D=$(jq -r '.ai_validations_7d' metrics.json)
+          OVERLAYS=$(jq -r '.chart_overlays' metrics.json)
+
+          REDIS_BYTES=$(jq -r '.redis.used_memory_bytes' metrics.json)
+          REDIS_KEYS=$(jq -r '.redis.total_keys' metrics.json)
+          REDIS_MB=$(awk -v b="$REDIS_BYTES" 'BEGIN{printf "%.2f", b/1048576}')
+          REDIS_CAP_MB=$(awk -v c="$REDIS_CAP_BYTES" 'BEGIN{printf "%.0f", c/1048576}')
+          REDIS_PCT=$(awk -v b="$REDIS_BYTES" -v c="$REDIS_CAP_BYTES" 'BEGIN{printf "%.1f", (b/c)*100}')
+
+          {
+            echo "## ${DATE} — Daily Metrics"
+            echo ""
+            echo "**Database**: ${DB_MB} MB / ${CAP_MB} MB cap (${DB_PCT}%)"
+            echo "**Redis**: ${REDIS_MB} MB / ${REDIS_CAP_MB} MB cap (${REDIS_PCT}%) · ${REDIS_KEYS} keys"
+            echo "**Users**: ${USERS_TOTAL} total · ${USERS_NEW} new in 7d · ${USERS_ACTIVE} active in 7d"
+            echo "**Plans**: ${PLANS_TOTAL} total · ${PLANS_NEW} new in 7d"
+            echo "**Sessions**: ${SESSIONS} active"
+            echo "**Activity**: ${ACT_24H} events in 24h, ${ACT_7D} in 7d"
+            echo "**AI validations (7d)**: ${AI_7D}"
+            echo "**Chart overlay cache**: ${OVERLAYS} entries"
+          } > body.md
+          echo "Comment body:"
+          cat body.md
+
+      - name: Ensure label and issue exist; post comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Label is idempotent; --force updates if color drifts.
+          gh label create "${ISSUE_LABEL}" --color 0E8A16 \
+            --description "Automated metrics digest" --force \
+            --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || true
+
+          ISSUE_NUMBER=$(gh issue list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --label "${ISSUE_LABEL}" \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [[ -z "$ISSUE_NUMBER" ]]; then
+            echo "No open metrics issue — creating one"
+            ISSUE_URL=$(gh issue create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${ISSUE_TITLE}" \
+              --label "${ISSUE_LABEL}" \
+              --body "Daily operational snapshot. New comment appended on each run; subscribe to receive emails.")
+            ISSUE_NUMBER="${ISSUE_URL##*/}"
+            echo "Created issue #${ISSUE_NUMBER}"
+          fi
+
+          gh issue comment "${ISSUE_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body-file body.md
+          echo "Posted digest to issue #${ISSUE_NUMBER}"

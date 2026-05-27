@@ -181,6 +181,15 @@ R2_KEY=$(read_secret "R2_ACCESS_KEY_ID" "")
 R2_SECRET=$(read_secret "R2_SECRET_ACCESS_KEY" "")
 echo ""
 
+echo "── Weather providers (press Enter to skip) ──"
+OWM=$(read_secret "OWM_API_KEY" "")
+AVWX=$(read_secret "AVWX_TOKEN" "")
+echo ""
+
+echo "── Admin metrics endpoint ──"
+ADMIN_TOKEN=$(read_secret "ADMIN_METRICS_TOKEN (must equal GitHub Secret)" "" true)
+echo ""
+
 echo "Creating secrets in Secret Manager..."
 create_secret "database-url" "$DB_URL"
 create_secret "redis-url" "$REDIS"
@@ -195,6 +204,9 @@ create_secret "groq-api-key" "$GROQ"
 create_secret "r2-account-id" "$R2_ACCT"
 create_secret "r2-access-key-id" "$R2_KEY"
 create_secret "r2-secret-access-key" "$R2_SECRET"
+create_secret "owm-api-key" "$OWM"
+create_secret "avwx-token" "$AVWX"
+create_secret "admin-metrics-token" "$ADMIN_TOKEN"
 
 echo "All secrets created."
 echo ""
