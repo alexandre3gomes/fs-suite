@@ -603,18 +603,22 @@ The Phase 0 scaffold delivered 5 components using React DOM primitives (`div`, `
 
 ## 15. Infrastructure & Deployment
 
-MVP target: single-region deployment.
+Single-region production deployment (EU-West).
 
-| Component    | Service                        | Notes                                           |
-|--------------|--------------------------------|-------------------------------------------------|
-| API          | Railway / Render               | Docker container, auto-deploy from `main` branch|
-| Web (app)    | EAS Hosting / Netlify          | Expo Router static export or server output; replaces Vercel (Next.js-specific). EAS Hosting is the managed option; Netlify is the fallback for static export. |
-| iOS          | Expo EAS Build + App Store     | OTA updates via EAS Update; native build on EAS |
-| Android      | Expo EAS Build + Play Store    | OTA updates via EAS Update; native build on EAS |
-| Database     | Railway Postgres / Supabase DB | Managed Postgres 16                             |
-| Redis        | Railway Redis / Upstash        | Managed Redis 7                                 |
-| File storage | Not required in MVP            | —                                               |
-| CI/CD        | GitHub Actions                 | lint → typecheck → test → build; EAS Build triggered on release tags |
+| Component    | Service                                         | Notes                                                                                   |
+|--------------|-------------------------------------------------|-----------------------------------------------------------------------------------------|
+| API          | EC2 t3.small (primary) + Cloud Run (candidate)  | EC2 `eu-west-1` serves prod; Cloud Run `europe-west2` deployed in parallel as failover  |
+| Web (app)    | Cloudflare Pages                                | Expo web export, automatic deploys via `deploy-app.yml`                                 |
+| iOS          | Expo EAS Build + App Store *(post-MVP)*         | OTA via EAS Update; not in current pipeline                                             |
+| Android      | Expo EAS Build + Play Store *(post-MVP)*        | OTA via EAS Update; not in current pipeline                                             |
+| Database     | Supabase Postgres 16                            | Connected via Supavisor session-mode pooler (IPv4); `eu-central-1`                      |
+| Redis        | Upstash Redis 7                                 | Serverless, TLS (`rediss://`); shared across EC2 and Cloud Run                          |
+| File storage | Cloudflare R2                                   | Aerodrome chart overlay cache; bucket `fs-suite-charts`                                 |
+| DNS / TLS    | Cloudflare                                      | Proxied, Full (Strict) mode; Origin Certificate terminates TLS at EC2 nginx             |
+| Observability| Sentry + PostHog                                | Sentry for backend + frontend errors (shared DSN); PostHog for client product analytics |
+| CI/CD        | GitHub Actions                                  | `ci.yml`, `deploy.yml`, `deploy-app.yml`, `db-backup.yml`, `metrics-digest.yml`         |
+
+See `infra/README.md` for the operational runbook (provisioning, secrets, deploy pipeline, failover, recovery).
 
 **Local dev:** Docker Compose spins up Postgres + Redis. `apps/app` runs via `npx expo start --web` (web) or Expo Go / simulator (native). `apps/api` runs via NestJS dev server. Both orchestrated via `turbo dev`.
 

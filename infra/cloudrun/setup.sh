@@ -2,43 +2,70 @@
 set -euo pipefail
 
 # ──────────────────────────────────────────────────────────────
-# FS Suite — Google Cloud Run setup
+# FS Suite — Google Cloud Run setup (file-driven, WIF-only)
 #
-# Creates all GCP resources needed for Cloud Run deployment:
+# Provisions every GCP resource the API needs:
 #   - Artifact Registry repo (Docker images)
-#   - Secret Manager secrets (runtime credentials)
-#   - Service accounts (CI/CD + Cloud Run runtime)
-#   - IAM bindings
+#   - Secret Manager secrets populated from a local .env
+#   - Cloud Run runtime service account + IAM bindings
+#
+# Authentication for the GitHub Actions deploy job is handled
+# separately by infra/cloudrun/setup-wif.sh (Workload Identity
+# Federation, keyless). This script does NOT generate any
+# long-lived service-account JSON key.
 #
 # Prerequisites:
 #   - gcloud CLI installed and authenticated (gcloud auth login)
 #   - GCP project created and billing enabled
-#   - All secret values ready (DB URL, Redis, OAuth, JWT keys, etc.)
+#   - A canonical .env containing every value listed in
+#     .env.example.production at the repo root
 #
 # Usage:
-#   ./infra/cloudrun/setup.sh
+#   ./infra/cloudrun/setup.sh /path/to/.env [--project ID] [--region REGION]
+#
+# Idempotent: every resource is created-if-absent, every secret
+# gets a new version appended.
 # ──────────────────────────────────────────────────────────────
+
+ENV_FILE=""
+PROJECT_ID=""
+REGION="europe-west2"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project) PROJECT_ID="$2"; shift 2 ;;
+    --region)  REGION="$2"; shift 2 ;;
+    -h|--help)
+      sed -n '4,30p' "$0"
+      exit 0 ;;
+    *) ENV_FILE="$1"; shift ;;
+  esac
+done
+
+if [[ -z "$ENV_FILE" || ! -f "$ENV_FILE" ]]; then
+  echo "Error: pass the path to your canonical .env as the first argument."
+  echo "Usage: $0 /path/to/.env [--project ID] [--region REGION]"
+  exit 1
+fi
+
+if [[ -z "$PROJECT_ID" ]]; then
+  PROJECT_ID=$(gcloud config get-value project 2>/dev/null || true)
+fi
+if [[ -z "$PROJECT_ID" ]]; then
+  echo "Error: no GCP project. Set with --project or 'gcloud config set project ID'"
+  exit 1
+fi
 
 echo "╔══════════════════════════════════════════════╗"
 echo "║     FS Suite — Cloud Run Setup               ║"
 echo "╚══════════════════════════════════════════════╝"
 echo ""
-
-# ── Project configuration ──────────────────────────────────
-
-read -rp "GCP Project ID: " PROJECT_ID
-read -rp "GCP Region [europe-west2]: " REGION
-REGION="${REGION:-europe-west2}"
-
-gcloud config set project "$PROJECT_ID"
-
-echo ""
 echo "Project: $PROJECT_ID"
 echo "Region:  $REGION"
-echo -n "Continue? [y/N] "
-read -r confirm
-[[ "$confirm" != "y" && "$confirm" != "Y" ]] && echo "Cancelled." && exit 0
+echo ".env:    $ENV_FILE"
 echo ""
+
+gcloud config set project "$PROJECT_ID" --quiet
 
 # ── Enable APIs ────────────────────────────────────────────
 
@@ -47,7 +74,9 @@ gcloud services enable \
   run.googleapis.com \
   artifactregistry.googleapis.com \
   secretmanager.googleapis.com \
-  cloudbuild.googleapis.com
+  cloudbuild.googleapis.com \
+  iamcredentials.googleapis.com \
+  --quiet
 
 echo "APIs enabled."
 echo ""
@@ -64,167 +93,86 @@ gcloud artifacts repositories create "$AR_REPO" \
   2>/dev/null || echo "(repo already exists)"
 echo ""
 
-# ── Service accounts ──────────────────────────────────────
+# ── Runtime service account ───────────────────────────────
 
-CICD_SA="fs-suite-cicd"
 RUNTIME_SA="fs-suite-runtime"
-
-echo "Creating service accounts..."
-
-gcloud iam service-accounts create "$CICD_SA" \
-  --display-name="FS Suite CI/CD" \
-  2>/dev/null || echo "(CI/CD SA already exists)"
+RUNTIME_EMAIL="${RUNTIME_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 gcloud iam service-accounts create "$RUNTIME_SA" \
   --display-name="FS Suite Cloud Run Runtime" \
   2>/dev/null || echo "(Runtime SA already exists)"
 
-CICD_EMAIL="${CICD_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
-RUNTIME_EMAIL="${RUNTIME_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
-
-echo "CI/CD SA:    $CICD_EMAIL"
-echo "Runtime SA:  $RUNTIME_EMAIL"
-echo ""
-
-# CI/CD permissions: deploy to Cloud Run + push to Artifact Registry
-for role in roles/run.admin roles/artifactregistry.writer roles/iam.serviceAccountUser; do
-  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-    --member="serviceAccount:${CICD_EMAIL}" \
-    --role="$role" \
-    --quiet > /dev/null
-done
-
-# Runtime permissions: access secrets
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${RUNTIME_EMAIL}" \
   --role="roles/secretmanager.secretAccessor" \
   --quiet > /dev/null
 
-echo "IAM bindings configured."
+echo "Runtime SA: $RUNTIME_EMAIL"
 echo ""
 
-# ── Secret Manager secrets ────────────────────────────────
+# ── .env reader ───────────────────────────────────────────
 
-read_secret() {
-  local prompt="$1"
-  local default="${2:-}"
-  local silent="${3:-false}"
-  if [[ -n "$default" ]]; then
-    prompt="$prompt [$default]"
-  fi
-  if [[ "$silent" == "true" ]]; then
-    read -rsp "$prompt: " value
-    echo "" >&2
-  else
-    echo -n "$prompt: "
-    read -r value
-  fi
-  [[ -z "$value" && -n "$default" ]] && value="$default"
-  echo "$value"
+read_var() {
+  local key="$1"
+  grep -E "^${key}=" "$ENV_FILE" 2>/dev/null \
+    | head -1 \
+    | cut -d= -f2- \
+    | sed -e 's/^"//' -e 's/"$//'
 }
 
-read_multiline() {
-  local prompt="$1"
-  echo "$prompt (paste content, then Ctrl+D):"
-  local content
-  content=$(cat)
-  echo "$content"
-}
+# ── Secret Manager helper ─────────────────────────────────
 
+# Creates the secret if absent, appends a new version, and grants
+# secretAccessor to the runtime SA. Skips silently if value is empty
+# so optional features (e.g. AVWX_TOKEN) don't pollute Secret Manager.
 create_secret() {
-  local name="$1"
-  local value="$2"
+  local gcp_name="$1"
+  local env_var="$2"
+  local value
+  value=$(read_var "$env_var")
 
   if [[ -z "$value" ]]; then
-    echo "  ⊘ skipped $name (empty value)"
+    echo "  ⊘ skipped ${gcp_name} (${env_var} empty or absent in .env)"
     return 0
   fi
 
-  gcloud secrets create "$name" --replication-policy="automatic" 2>/dev/null || true
-  echo -n "$value" | gcloud secrets versions add "$name" --data-file=-
-  gcloud secrets add-iam-policy-binding "$name" \
+  gcloud secrets create "$gcp_name" --replication-policy="automatic" \
+    2>/dev/null || true
+  printf '%s' "$value" | gcloud secrets versions add "$gcp_name" \
+    --data-file=- --quiet > /dev/null
+  gcloud secrets add-iam-policy-binding "$gcp_name" \
     --member="serviceAccount:${RUNTIME_EMAIL}" \
     --role="roles/secretmanager.secretAccessor" \
     --quiet > /dev/null
+  echo "  ✓ ${gcp_name} (from ${env_var})"
 }
 
-echo "── Secrets ──"
-echo "Enter values for each secret. These are stored in GCP Secret Manager."
-echo ""
+# ── Populate Secret Manager ───────────────────────────────
 
-echo "── External databases ──"
-DB_URL=$(read_secret "DATABASE_URL (Neon connection string)" "" true)
-REDIS=$(read_secret "REDIS_URL (Upstash connection string)" "" true)
-echo ""
+echo "── Populating Secret Manager ──"
 
-echo "── Google OAuth ──"
-G_CLIENT_ID=$(read_secret "GOOGLE_CLIENT_ID")
-G_CLIENT_SECRET=$(read_secret "GOOGLE_CLIENT_SECRET" "" true)
-echo ""
+# Required (deploy.yml --set-secrets references these by name).
+create_secret "database-url"          "DATABASE_URL"
+create_secret "redis-url"             "REDIS_URL"
+create_secret "google-client-id"      "GOOGLE_CLIENT_ID"
+create_secret "google-client-secret"  "GOOGLE_CLIENT_SECRET"
+create_secret "jwt-private-key"       "JWT_PRIVATE_KEY"
+create_secret "jwt-public-key"        "JWT_PUBLIC_KEY"
+create_secret "encryption-key"        "ENCRYPTION_KEY"
+create_secret "sentry-dsn"            "SENTRY_DSN"
+create_secret "gemini-api-key"        "GEMINI_API_KEY"
+create_secret "groq-api-key"          "GROQ_API_KEY"
+create_secret "r2-account-id"         "R2_ACCOUNT_ID"
+create_secret "r2-access-key-id"      "R2_ACCESS_KEY_ID"
+create_secret "r2-secret-access-key"  "R2_SECRET_ACCESS_KEY"
+create_secret "admin-metrics-token"   "ADMIN_METRICS_TOKEN"
 
-echo "── JWT RS256 keypair ──"
-JWT_PRIV=$(read_multiline "JWT_PRIVATE_KEY")
-JWT_PUB=$(read_multiline "JWT_PUBLIC_KEY")
-echo ""
+# Optional. If you start using these features, add the matching line
+# to .github/workflows/deploy.yml --set-secrets so Cloud Run injects
+# them at runtime.
+create_secret "owm-api-key"           "OWM_API_KEY"
+create_secret "avwx-token"            "AVWX_TOKEN"
 
-echo "── Encryption ──"
-ENC_KEY=$(read_secret "ENCRYPTION_KEY (32-byte hex)" "" true)
-echo ""
-
-echo "── Sentry (press Enter to skip) ──"
-SENTRY=$(read_secret "SENTRY_DSN" "")
-echo ""
-
-echo "── AI providers (press Enter to skip) ──"
-GEMINI=$(read_secret "GEMINI_API_KEY" "")
-GROQ=$(read_secret "GROQ_API_KEY" "")
-echo ""
-
-echo "── Cloudflare R2 (press Enter to skip) ──"
-R2_ACCT=$(read_secret "R2_ACCOUNT_ID" "")
-R2_KEY=$(read_secret "R2_ACCESS_KEY_ID" "")
-R2_SECRET=$(read_secret "R2_SECRET_ACCESS_KEY" "")
-echo ""
-
-echo "── Weather providers (press Enter to skip) ──"
-OWM=$(read_secret "OWM_API_KEY" "")
-AVWX=$(read_secret "AVWX_TOKEN" "")
-echo ""
-
-echo "── Admin metrics endpoint ──"
-ADMIN_TOKEN=$(read_secret "ADMIN_METRICS_TOKEN (must equal GitHub Secret)" "" true)
-echo ""
-
-echo "Creating secrets in Secret Manager..."
-create_secret "database-url" "$DB_URL"
-create_secret "redis-url" "$REDIS"
-create_secret "google-client-id" "$G_CLIENT_ID"
-create_secret "google-client-secret" "$G_CLIENT_SECRET"
-create_secret "jwt-private-key" "$JWT_PRIV"
-create_secret "jwt-public-key" "$JWT_PUB"
-create_secret "encryption-key" "$ENC_KEY"
-create_secret "sentry-dsn" "$SENTRY"
-create_secret "gemini-api-key" "$GEMINI"
-create_secret "groq-api-key" "$GROQ"
-create_secret "r2-account-id" "$R2_ACCT"
-create_secret "r2-access-key-id" "$R2_KEY"
-create_secret "r2-secret-access-key" "$R2_SECRET"
-# OWM_API_KEY / AVWX_TOKEN are optional and not currently wired into
-# deploy.yml --set-secrets. If you start using them, also add the lines
-# below to deploy.yml so Cloud Run pulls them at deploy time.
-create_secret "owm-api-key" "$OWM"
-create_secret "avwx-token" "$AVWX"
-create_secret "admin-metrics-token" "$ADMIN_TOKEN"
-
-echo "All secrets created."
-echo ""
-
-# ── Generate CI/CD service account key ────────────────────
-
-echo "Generating CI/CD service account key..."
-KEY_FILE="/tmp/fs-suite-cicd-key.json"
-gcloud iam service-accounts keys create "$KEY_FILE" \
-  --iam-account="$CICD_EMAIL"
 echo ""
 
 # ── Summary ───────────────────────────────────────────────
@@ -233,21 +181,23 @@ echo "╔═══════════════════════�
 echo "║     Setup complete!                          ║"
 echo "╚══════════════════════════════════════════════╝"
 echo ""
-echo "Add these GitHub Secrets to your repository:"
-echo "  Settings > Secrets and variables > Actions"
+echo "Next steps:"
 echo ""
-echo "  GCP_PROJECT_ID = $PROJECT_ID"
-echo "  GCP_REGION     = $REGION"
-echo "  GCP_SA_KEY     = (contents of $KEY_FILE)"
+echo "  1. CI/CD auth — run the Workload Identity Federation setup"
+echo "     (creates the keyless pipeline; no SA JSON key required):"
 echo ""
-echo "The SA key is saved at: $KEY_FILE"
-echo "Copy its contents to the GitHub Secret, then delete it:"
-echo "  cat $KEY_FILE    # copy output to GitHub"
-echo "  rm $KEY_FILE     # delete after copying"
+echo "       ./infra/cloudrun/setup-wif.sh"
 echo ""
-echo "DNS: Point api.fs-suite.com to the Cloud Run URL"
-echo "  gcloud run services describe fs-suite-api --region $REGION --format 'value(status.url)'"
+echo "     Then add the secrets it prints to GitHub:"
+echo "       GCP_PROJECT_ID, GCP_WIF_PROVIDER, GCP_WIF_SERVICE_ACCOUNT"
 echo ""
-echo "Custom domain mapping:"
-echo "  gcloud run domain-mappings create --service fs-suite-api --domain api.fs-suite.com --region $REGION"
+echo "  2. DNS — map the production custom domain:"
+echo ""
+echo "       gcloud run domain-mappings create \\"
+echo "         --service fs-suite-api \\"
+echo "         --domain api.fs-suite.com \\"
+echo "         --region ${REGION}"
+echo ""
+echo "     Only do this if you're cutting traffic over to Cloud Run."
+echo "     Day-to-day, EC2 is primary; Cloud Run serves api-candidate."
 echo ""

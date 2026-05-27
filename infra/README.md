@@ -85,7 +85,7 @@ Supabase (PG) Upstash    Google
 |--------|------|--------|-------|
 | `fs-suite.com` | CNAME | `fs-suite-app.pages.dev` | Proxied |
 | `api.fs-suite.com` | A | EC2 Elastic IP (`52.18.13.237`) | Proxied |
-| `api-candidate.fs-suite.com` | — | Cloudflare Worker → Cloud Run | — |
+| `api-candidate.fs-suite.com` | — | Cloudflare Worker → Cloud Run | — | _planned — see [api-candidate worker](#api-candidate-worker-planned) below_ |
 
 ## EC2 Setup
 
@@ -301,15 +301,17 @@ canonical source), then captured into GCP Secret Manager by
 
 ### Provisioning a fresh environment
 
-Starting from just your `.env`, all three runtime surfaces are populated:
+Your canonical `.env` (kept in Bitwarden, templated from
+[`.env.example.production`](../.env.example.production)) is the single
+input. All three runtime surfaces are populated from it:
 
 ```bash
 # 1. EC2 — propagates every API-runtime secret from .env automatically
 scp .env origin.pem origin-key.pem fs-suite:~/
 ssh fs-suite './setup.sh'
 
-# 2. Cloud Run — paste each value when prompted (script reads the same .env)
-./infra/cloudrun/setup.sh
+# 2. Cloud Run — file-driven, reads the same .env
+./infra/cloudrun/setup.sh /path/to/.env
 
 # 3. GitHub Secrets — categories B + D, derived from .env
 ./infra/bootstrap-github-secrets.sh /path/to/.env
@@ -318,6 +320,10 @@ ssh fs-suite './setup.sh'
 Category C (pipeline auth) is set once when first wiring up CI/CD and rarely
 changes. See [Cloud Run Setup](#cloud-run-setup) and the SSH key step in
 [EC2 Setup](#ec2-setup).
+
+For greenfield setup of the underlying managed services (Supabase, Upstash,
+Cloudflare, GCP, Google OAuth, Sentry, PostHog), see the runbooks under
+[`docs/greenfield/`](../docs/greenfield/). _(Onda 2 — pending.)_
 
 ### Description of each secret
 
@@ -433,6 +439,18 @@ a cold start (typically 5–10s). Subsequent requests are served normally.
    - Create A record → `52.18.13.237` (Proxied)
 2. Verify: `curl https://api.fs-suite.com/v1/health`
 
+### api-candidate worker (planned)
+
+The topology lists `api-candidate.fs-suite.com` as a stable hostname that
+always points at Cloud Run (independent of `api.fs-suite.com`, which
+follows the failover swap above). It is meant as a permanent fallback the
+frontend can be repointed to in seconds.
+
+The implementation — a Cloudflare Worker that reverse-proxies the
+hostname to the Cloud Run service URL — is not yet in the repo. Tracked
+as Onda 2 of the post-audit remediation plan. Until it lands, treat the
+hostname as a topology placeholder; failover is via the DNS swap above.
+
 ### What stays intact during failover
 
 - Database (Supabase) — shared, no migration needed
@@ -463,7 +481,6 @@ docker compose run --rm api npx prisma migrate deploy
 | Check | Command | Expected |
 |-------|---------|----------|
 | API health | `curl https://api.fs-suite.com/v1/health` | `{"status":"ok"}` |
-| Candidate health | `curl https://api-candidate.fs-suite.com/v1/health` | `{"status":"ok"}` |
 | Auth flow | Sign in at `https://fs-suite.com` | Google OAuth completes |
 | DB connectivity | Check API logs for Prisma errors | No connection errors |
 | Redis connectivity | Check API logs for Redis errors | No connection errors |
