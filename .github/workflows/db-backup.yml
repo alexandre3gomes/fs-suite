@@ -67,7 +67,11 @@ jobs:
         run: |
           DUMP_DATE=$(date -u +%Y-%m-%d)
           echo "DUMP_DATE=$DUMP_DATE" >> "$GITHUB_ENV"
-          pg_dump "$DATABASE_URL" \
+          # pg_dump rejects Prisma-specific query parameters like
+          # `pgbouncer=true`. Strip the original query string and append
+          # the libpq parameters we actually need.
+          DB_URL_CLEAN="${DATABASE_URL%%\?*}?sslmode=require"
+          pg_dump "$DB_URL_CLEAN" \
             --no-owner --no-acl \
             --schema=public \
             --format=plain \
