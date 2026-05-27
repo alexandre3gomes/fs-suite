@@ -7,7 +7,7 @@ import { Platform } from 'react-native';
 import { useAuthStore } from '../stores/auth.store';
 
 import { identifyUser, resetAnalytics } from './analytics';
-import { apiClient, API_URL } from './api.client';
+import { apiClient, API_URL, ApiError } from './api.client';
 
 const GOOGLE_AUTH_URL = API_URL.replace(/192\.168\.\d+\.\d+/, 'localhost');
 const SECURE_STORE_REFRESH_KEY = 'fs_suite_refresh_token';
@@ -131,7 +131,17 @@ export async function refreshAccessToken(): Promise<string | null> {
 
     return accessToken;
   } catch (err) {
-    Sentry.captureException(err, { level: 'info', tags: { context: 'token_refresh' } });
+    // 401 from /auth/refresh means "no valid session anymore" — the
+    // refresh cookie expired, was cleared by the user, or the session
+    // was revoked. Expected behaviour for any user whose session has
+    // aged out. Don't report — caller redirects to login.
+    //
+    // Other errors (5xx, network failure, malformed response) ARE
+    // worth knowing about: they may indicate API regressions.
+    const isExpiredSession = err instanceof ApiError && err.status === 401;
+    if (!isExpiredSession) {
+      Sentry.captureException(err, { level: 'info', tags: { context: 'token_refresh' } });
+    }
     return null;
   }
 }
