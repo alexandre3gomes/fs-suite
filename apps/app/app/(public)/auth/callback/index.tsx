@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRootNavigationState, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
@@ -9,8 +9,13 @@ export default function AuthCallbackScreen(): JSX.Element {
   const { code, error } = useLocalSearchParams<{ code?: string; error?: string }>();
   const router = useRouter();
   const handled = useRef(false);
+  // On web, Google redirects directly to /auth/callback — this screen
+  // mounts before the Root Layout's navigator. Gating on the root key
+  // defers router.replace() until the navigation tree is ready.
+  const navigatorReady = !!useRootNavigationState()?.key;
 
   useEffect(() => {
+    if (!navigatorReady) return;
     if (handled.current) return;
     handled.current = true;
 
@@ -36,7 +41,7 @@ export default function AuthCallbackScreen(): JSX.Element {
         Sentry.captureException(err, { tags: { context: 'auth_callback' } });
         router.replace('/(public)/login');
       });
-  }, [code, error, router]);
+  }, [code, error, router, navigatorReady]);
 
   return (
     <View className="flex-1 items-center justify-center bg-background">
