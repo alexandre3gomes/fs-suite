@@ -50,6 +50,24 @@ pnpm --filter @fs-suite/api dev
 pnpm --filter @fs-suite/app dev
 ```
 
+## Remote dev environment (WSL)
+
+`scripts/dev-remote/` runs the heavy stack (Postgres, Redis, NestJS API) on a
+remote WSL box while the laptop only edits code and runs Expo Metro. Useful when
+the laptop is resource-constrained.
+
+```bash
+./scripts/dev-remote/push.sh   # snapshot working tree → origin/dev → WSL sync
+```
+
+The script force-pushes a transient `wip(dev): ...` commit to `origin/dev` using
+git plumbing (`write-tree` + `commit-tree`) — HEAD does not move and the active
+branch stays clean. On the remote, `sync.sh` pulls, installs deps on lockfile
+change, builds shared packages, runs Prisma migrations, restarts the API in a
+tmux session, and opens an SSH tunnel `localhost:3001 → WSL:3001` for OAuth
+callbacks. The `dev` branch is never merged into `main` — `main...dev` on GitHub
+shows the live diff between prod and the WSL test environment.
+
 ## Development Guidelines
 
 - Language for code and technical documentation: **English**
