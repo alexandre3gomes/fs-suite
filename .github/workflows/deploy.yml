@@ -130,9 +130,24 @@ jobs:
             fi
 
             # ── 2. Garbage-collect old images ───────────────────
-            # Keep only what was touched in the last 7 days. Without
-            # this, dangling images grow ~1.5 GB/day on this host.
-            docker image prune -af --filter "until=168h" || true
+            # Keep only the 3 newest unique fs-suite-api images (current +
+            # 2 prior, for rollback). Each image is ~2 GB; without this
+            # the host filled up in ~3 weeks. The running container is
+            # always tagged :latest, which is image #1 in the list, so
+            # it's never removed.
+            #
+            # Count-based instead of age-based because a slow deploy week
+            # would otherwise let images accumulate beyond what the disk
+            # can hold.
+            REPO=ghcr.io/${GITHUB_REPOSITORY_OWNER}/fs-suite-api
+            OLD_IDS=$(docker images "$REPO" --filter "dangling=false" --format "{{.ID}}" \
+              | awk '!seen[$0]++' | tail -n +4)
+            if [ -n "$OLD_IDS" ]; then
+              echo "Removing $(echo "$OLD_IDS" | wc -l) old fs-suite-api image(s)..."
+              echo "$OLD_IDS" | xargs docker rmi -f || true
+            fi
+            # Builder cache stays age-based — it's pure storage waste, not
+            # versioned artifacts. 7 days is fine.
             docker builder prune -af --filter "until=168h" || true
 
             # ── 3. Login + pull both :latest and the SHA tag ────
