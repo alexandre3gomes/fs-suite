@@ -387,23 +387,43 @@ service provisioned and credentials in hand, you can skip straight to the
 
 ## Metrics Digest
 
-A daily snapshot of operational metrics (DB size vs Supabase cap, Redis memory
-vs Upstash cap, users, plans, sessions, activity, AI usage, chart-overlay
-cache) is posted as a comment on a single open GitHub issue labelled `metrics`.
-The issue is auto-created on first run; GitHub emails subscribers on each new
-comment.
+A daily snapshot of operational metrics is posted as a comment on a
+single open GitHub issue labelled `metrics`. The issue is auto-created
+on first run; GitHub emails subscribers on each new comment.
 
-`metrics-digest.yml` runs daily at 07:00 UTC (and via `workflow_dispatch`). It
-calls `GET /v1/admin/metrics` with the `X-Admin-Token` header; the API gates
-the endpoint by comparing the header to `process.env.ADMIN_METRICS_TOKEN`. The
-shared token lives in your `.env` (category A + D) and is replicated to EC2,
-GCP Secret Manager, and GitHub Secrets by the scripts in
+`metrics-digest.yml` runs daily at 07:00 UTC (and via
+`workflow_dispatch`). It calls `GET /v1/admin/metrics` with the
+`X-Admin-Token` header; the API gates the endpoint by comparing the
+header to `process.env.ADMIN_METRICS_TOKEN`. The shared token lives in
+your `.env` (category A + D) and is replicated to EC2, GCP Secret
+Manager, and GitHub Secrets by the scripts in
 [Provisioning](#provisioning-a-fresh-environment).
 
 ```bash
 # Manual run (after a provisioning change, for example):
 gh workflow run metrics-digest.yml
 ```
+
+### Metric definitions
+
+Each line of the daily comment is computed from a specific source. Use
+this table when the comment renders an unexpected value.
+
+| Label in comment | What it counts | Source | Cap / threshold |
+|---|---|---|---|
+| **EC2 disk** | `df -h /` on the EC2 host: % used, total size, count of docker images (`docker images --filter dangling=false`). | SSH to EC2 from the workflow runner. | Investigate at >85% — extraction may start failing. |
+| **Database** | `pg_database_size(current_database())` on the live Supabase Postgres, expressed in MB. | `prisma.$queryRaw` from the API. | 500 MB (Supabase free-tier project). |
+| **Redis** | `used_memory` from Redis `INFO memory` (bytes → MB) and total key count from `DBSIZE`. | Upstash Redis via the live API connection. | 256 MB (Upstash free-tier instance). |
+| **Users** | `total` = rows in `users`. `new in 7d` = rows where `created_at >= now() - 7d`. `active in 7d` = distinct `user_id`s in `activity_logs` over the last 7 days. | `prisma.user.count()`, `prisma.activityLog.findMany({ distinct: ['userId'] })`. | — |
+| **Flight plans** | `total` = rows in `flight_plans`. `new in 7d` = rows where `created_at >= now() - 7d`. | `prisma.flightPlan.count()`. Soft-deleted rows are **included** in both counts (no `deletedAt IS NULL` filter). | — |
+| **Sessions** | Rows in `sessions` where `expires_at >= now()`. Refresh-token sessions that are still valid. | `prisma.session.count()`. | — |
+| **Activity** | Rows in `activity_logs` over the last 24h and last 7d windows. Events include `auth.login`, `auth.logout`, `flight_plan.created`, `simbrief.import`, `ai_validation.*`, etc. | `prisma.activityLog.count()`. | — |
+| **AI validations (7d)** | Subset of activity rows in last 7d whose `action` starts with `ai_validation`. | `prisma.activityLog.count({ where: { action: { startsWith: 'ai_validation' }, createdAt: { gte: 7d } } })`. | — |
+| **Chart overlay cache** | Rows in `aerodrome_chart_overlays` — the R2-backed cache of rendered chart PDFs. | `prisma.aerodromeChartOverlay.count()`. | R2 is pay-per-use; cap is operational (cost), not hard. |
+
+All time windows are computed at the moment the endpoint is hit (rolling, not calendar). All counts include soft-deleted rows unless noted.
+
+The implementation lives in [`apps/api/src/admin/admin.controller.ts`](../apps/api/src/admin/admin.controller.ts) — that file is the canonical source for "what does this number really mean". The comment in the digest links here so the reader can drill down.
 
 ## Monitoring & validation
 

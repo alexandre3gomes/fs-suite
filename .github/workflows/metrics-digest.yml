@@ -102,11 +102,13 @@ jobs:
             echo "**Database**: ${DB_MB} MB / ${CAP_MB} MB cap (${DB_PCT}%)"
             echo "**Redis**: ${REDIS_MB} MB / ${REDIS_CAP_MB} MB cap (${REDIS_PCT}%) · ${REDIS_KEYS} keys"
             echo "**Users**: ${USERS_TOTAL} total · ${USERS_NEW} new in 7d · ${USERS_ACTIVE} active in 7d"
-            echo "**Plans**: ${PLANS_TOTAL} total · ${PLANS_NEW} new in 7d"
+            echo "**Flight plans**: ${PLANS_TOTAL} total · ${PLANS_NEW} new in 7d"
             echo "**Sessions**: ${SESSIONS} active"
             echo "**Activity**: ${ACT_24H} events in 24h, ${ACT_7D} in 7d"
             echo "**AI validations (7d)**: ${AI_7D}"
             echo "**Chart overlay cache**: ${OVERLAYS} entries"
+            echo ""
+            echo "_Metric definitions: see [Metrics Digest](https://github.com/${GITHUB_REPOSITORY}/blob/main/infra/README.md#metrics-digest) in infra/README.md._"
           } > body.md
           echo "Comment body:"
           cat body.md
