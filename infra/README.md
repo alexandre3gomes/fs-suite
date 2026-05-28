@@ -426,11 +426,40 @@ gh workflow run metrics-digest.yml
 
 ### Disk on EC2
 
-The `deploy.yml` workflow runs `docker image prune -af --filter "until=168h"`
-on the EC2 host before every pull, so dangling and >7-day-old images do not
-accumulate. The daily Metrics Digest also reports `EC2 disk: X% of YG`. If
-that figure trends up despite pruning, investigate before it crosses ~85% —
-docker layer extraction starts failing silently when the disk fills up.
+The `deploy.yml` workflow keeps **only the 3 newest unique
+`fs-suite-api` images** on the EC2 host before every pull (current
+plus 2 prior, for rollback). Each image is ~2 GB; without pruning the
+host filled up in ~3 weeks. The running container is always tagged
+`:latest` and is image #1 in the list, so it's never affected.
+
+Prune is **count-based, not age-based**. A previous age-based policy
+(`docker image prune --filter "until=168h"`) let images accumulate
+during active deploy weeks before the 7-day cutoff kicked in. Switched
+to count after the 2026-05-28 disk alert.
+
+The buildx layer cache is pruned separately by age
+(`docker builder prune -af --filter "until=168h"`) because it's pure
+storage waste, not versioned artifacts.
+
+`nginx:alpine` and any other infra images (Redis, Postgres in dev,
+etc) are untouched by the prune — the filter is scoped to the
+`fs-suite-api` repository.
+
+The daily Metrics Digest also reports `EC2 disk: X% of YG · N docker
+images`. If that figure trends up despite pruning, investigate before
+it crosses ~85% — docker layer extraction starts failing silently when
+the disk fills up.
+
+To manually run the same prune (e.g. one-off cleanup outside a deploy):
+
+```bash
+REPO=ghcr.io/alexandre3gomes/fs-suite-api
+ssh fs-suite "
+  OLD_IDS=\$(sudo docker images '$REPO' --filter 'dangling=false' --format '{{.ID}}' \
+    | awk '!seen[\$0]++' | tail -n +4)
+  [ -n \"\$OLD_IDS\" ] && echo \"\$OLD_IDS\" | xargs sudo docker rmi -f
+"
+```
 
 ### Recovery — what NOT to do
 
