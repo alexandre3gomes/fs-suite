@@ -4,6 +4,9 @@ import { FlightRules, PlanStatus } from '../enums';
 
 // --- Child collections ---
 
+export const FlightPlanRouteRoleSchema = z.enum(['MAIN', 'ALTERNATE']);
+export type FlightPlanRouteRole = z.infer<typeof FlightPlanRouteRoleSchema>;
+
 export const FlightPlanRouteSchema = z.object({
   id: z.string().cuid(),
   sequence: z.number().int().min(0),
@@ -11,6 +14,7 @@ export const FlightPlanRouteSchema = z.object({
   latitude: z.number().min(-90).max(90).nullable(),
   longitude: z.number().min(-180).max(180).nullable(),
   airway: z.string().max(10).nullable(),
+  role: FlightPlanRouteRoleSchema.default('MAIN'),
 });
 
 export type FlightPlanRoute = z.infer<typeof FlightPlanRouteSchema>;
@@ -87,6 +91,13 @@ export const FlightPlanSchema = z.object({
   totalDistanceNm: z.number().nullable(),
   remarks: z.string().nullable(),
 
+  // Alternate route — destination → alternate segment. ICAO Item 15
+  // only carries the main route; alt route is operational planning.
+  // REA Obrig compliance is mandatory when the segment crosses corridors.
+  alternateRouteText: z.string().nullable(),
+  alternateTotalDistanceNm: z.number().nullable(),
+  alternatePlannedAltitude: z.number().int().nullable(),
+
   // Time
   plannedDepartureUtc: z.coerce.date().nullable(),
   estimatedElapsedMin: z.number().int().nullable(),
@@ -154,6 +165,7 @@ export type OperationalPlanCore = Pick<FlightPlan,
   | 'emptyWeightKg' | 'takeoffWeightKg' | 'mtowKg' | 'fuelCapacityL' | 'fuelBurnLph'
   | 'cruiseSpeedKts' | 'equipmentCode' | 'surveillanceCode'
   | 'routeText' | 'cruiseLevel' | 'plannedAltitude' | 'totalDistanceNm' | 'remarks'
+  | 'alternateRouteText' | 'alternateTotalDistanceNm' | 'alternatePlannedAltitude'
   | 'plannedDepartureUtc' | 'estimatedElapsedMin' | 'estimatedArrivalUtc'
   | 'fuelConsumptionPerHour' | 'fuelCurrentTotal' | 'fuelReserveMinutes'
   | 'fuelRequiredTotal' | 'fuelPerWing' | 'enduranceMinutes'
@@ -212,6 +224,12 @@ export const CreateFlightPlanSchema = z.object({
   todMinutes: z.number().int().min(0).optional(),
   todDistanceNm: z.number().min(0).optional(),
 
+  // Alternate route — optional. Same shape as main route waypoints,
+  // discriminated server-side by role='ALTERNATE'.
+  alternateRouteText: z.string().optional(),
+  alternateTotalDistanceNm: z.number().min(0).optional(),
+  alternatePlannedAltitude: z.number().int().positive().optional(),
+
   // Fuel
   fuelConsumptionPerHour: z.number().optional(),
   fuelCurrentTotal: z.number().optional(),
@@ -246,6 +264,7 @@ export const CreateFlightPlanSchema = z.object({
         latitude: z.number().min(-90).max(90).optional(),
         longitude: z.number().min(-180).max(180).optional(),
         airway: z.string().max(10).optional(),
+        role: FlightPlanRouteRoleSchema.optional(),
       }),
     )
     .optional(),

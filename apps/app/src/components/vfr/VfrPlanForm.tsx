@@ -21,11 +21,12 @@ import { ChecklistPanel } from './ChecklistPanel';
 import { MetarDisplay, type ParsedMetar } from './MetarDisplay';
 import { NearbyPoisPanel } from './NearbyPoisPanel';
 import { ReaChartsPanel } from './ReaChartsPanel';
+import { ReaCorridorSuggestions, type ReaDetectionRegion } from './ReaCorridorSuggestions';
 import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
 import { TafDisplay, type ParsedTaf } from './TafDisplay';
 import { VfrPlanLayout } from './VfrPlanLayout';
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
-import { type RouteWaypoint, type AltitudeTransition, type RouteSegment, type TocTodPosition, type EnrichedLeg, type AircraftPerformance, type ClimbDescentPlan, type LegAltConstraint, buildVfrRouteText, parseVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, initialBearing, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getDefaultTransitionAltitude, getPerformanceCategory, calculateDefaultTpaFt, segmentRouteLegs, calculateTocDistance, calculateTodFromTpa, interpolatePositionOnRoute, enrichRouteLegs, computeClimbDescentPlan, computeAltitudeProfile } from './vfrNavigation';
+import { type RouteWaypoint, type AltitudeTransition, type RouteSegment, type TocTodPosition, type EnrichedLeg, type AircraftPerformance, type ClimbDescentPlan, type LegAltConstraint, buildVfrRouteText, parseVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getDefaultTransitionAltitude, getPerformanceCategory, calculateDefaultTpaFt, segmentRouteLegs, calculateTocDistance, calculateTodFromTpa, interpolatePositionOnRoute, enrichRouteLegs, computeClimbDescentPlan, computeAltitudeProfile } from './vfrNavigation';
 import { defaultDepartureTime, toDatetimeLocalValue, fromDatetimeLocalValue, formatZulu, isNightFlight, validateVfrPlan, type PlanViability } from './weatherTimeUtils';
 
 function SimpleMarkdown({ text, italic }: { text: string; italic?: boolean }) {
@@ -190,6 +191,10 @@ export interface VfrPlanData {
   tripFuelKg?: number;
   altFuelKg?: number;
   altDistanceNm?: number;
+  alternateRouteWaypoints?: { lat: number; lng: number; name: string }[];
+  alternateRouteText?: string;
+  alternateTotalDistanceNm?: number;
+  alternatePlannedAltitude?: number;
   contingencyPct?: number;
   contingencyFuelKg?: number;
   reserveFuelKg?: number;
@@ -396,6 +401,20 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const [followedCorridorName, setFollowedCorridorName] = useState<string | null>(null);
   const [corridorAltRange, setCorridorAltRange] = useState<{ min: number; max: number } | null>(null);
   const [corridorCompAlt, setCorridorCompAlt] = useState<number | null>(null);
+
+  // Alternate-leg (destination → alternate) parity. Same shape as main route
+  // but stored separately because ICAO Item 15 only carries the main route.
+  // REA Obrig compliance is mandatory for this leg too (ICA 100-12).
+  const [alternateRouteWaypoints, setAlternateRouteWaypoints] = useState<RouteWaypoint[]>(
+    initialData?.alternateRouteWaypoints ?? [],
+  );
+  const [followedAlternateCorridorName, setFollowedAlternateCorridorName] = useState<string | null>(null);
+  const [alternateRouteText, setAlternateRouteText] = useState(initialData?.alternateRouteText ?? '');
+  const [alternatePlannedAltitudeFt, setAlternatePlannedAltitudeFt] = useState<number | null>(
+    initialData?.alternatePlannedAltitude ?? null,
+  );
+  // Detected REA corridors crossed by the destination→alternate segment.
+  const [alternateReaRegions, setAlternateReaRegions] = useState<ReaDetectionRegion[]>([]);
 
   // Fetch per-leg REA altitude constraints when route changes
   useEffect(() => {
@@ -744,6 +763,14 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   // Route waypoint handlers
   const [pendingWaypoint, setPendingWaypoint] = useState<RouteWaypoint | null>(null);
   const [insertPosition, setInsertPosition] = useState<'before' | 'after'>('after');
+  // Anchor key encoding lets one continuous list cover both segments:
+  //   'origin' / 'destination' / 'alternate'  → aerodromes (positions fixed)
+  //   'main-<N>'                              → index N in the main route
+  //   'alt-<N>'                               → index N in the alternate route
+  // The segment a new waypoint lands on is derived from the anchor + position
+  // at insert time (see resolveInsert below), so the user only needs ONE
+  // "Add waypoint" button — picking "after destination" lands in the
+  // alternate leg automatically when an alternate aerodrome is set.
   const [insertRefIndex, setInsertRefIndex] = useState<string>('origin');
 
   // Pending altitude to apply once the user picks where to insert the waypoint
@@ -753,40 +780,71 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     setPendingWaypoint(wp);
     pendingAltFtRef.current = altFt ?? null;
     setInsertPosition('after');
-    setInsertRefIndex(routeWaypoints.length > 0 ? String(routeWaypoints.length - 1) : 'origin');
+    // Default anchor: after the last main waypoint; origin if main is empty.
+    setInsertRefIndex(routeWaypoints.length > 0 ? `main-${routeWaypoints.length - 1}` : 'origin');
   }, [routeWaypoints.length]);
+
+  const handleRemoveAlternateWaypoint = useCallback((idx: number) => {
+    setAlternateRouteWaypoints((prev) => prev.filter((_, i) => i !== idx));
+    setFollowedAlternateCorridorName(null);
+  }, []);
+
+  const handleUpdateAlternateWaypoint = useCallback((idx: number, wp: RouteWaypoint) => {
+    setAlternateRouteWaypoints((prev) => prev.map((w, i) => i === idx ? wp : w));
+    setFollowedAlternateCorridorName(null);
+  }, []);
 
   const confirmInsertWaypoint = useCallback(() => {
     if (!pendingWaypoint) return;
-    setRouteWaypoints((prev) => {
-      let idx: number;
-      if (insertRefIndex === 'origin') {
-        idx = insertPosition === 'after' ? 0 : 0;
-      } else if (insertRefIndex === 'destination') {
-        idx = insertPosition === 'before' ? prev.length : prev.length;
-      } else {
-        const wpIdx = parseInt(insertRefIndex, 10);
-        idx = insertPosition === 'before' ? wpIdx : wpIdx + 1;
+    const hasAlt = alternate != null;
+    // Resolve anchor + position → (segment, insertion index inside that segment).
+    const resolve = (mainLen: number, altLen: number): { segment: 'main' | 'alternate'; index: number } => {
+      if (insertRefIndex === 'origin') return { segment: 'main', index: 0 };
+      if (insertRefIndex === 'alternate') return { segment: 'alternate', index: altLen };
+      if (insertRefIndex === 'destination') {
+        if (insertPosition === 'after' && hasAlt) return { segment: 'alternate', index: 0 };
+        return { segment: 'main', index: mainLen };
       }
-      const next = [...prev];
-      next.splice(idx, 0, pendingWaypoint);
-      return next;
-    });
-    if (pendingAltFtRef.current != null && pendingAltFtRef.current > 0) {
-      const altFt = pendingAltFtRef.current;
-      const wpName = pendingWaypoint.name;
-      setAltChangesAuto(false);
-      setAltitudeChanges((prev) => {
-        const filtered = prev.filter((t) => t.atWaypoint !== wpName);
-        return [...filtered, { atWaypoint: wpName, toAltFt: altFt }];
+      if (insertRefIndex.startsWith('main-')) {
+        const i = parseInt(insertRefIndex.slice(5), 10);
+        return { segment: 'main', index: insertPosition === 'before' ? i : i + 1 };
+      }
+      if (insertRefIndex.startsWith('alt-')) {
+        const i = parseInt(insertRefIndex.slice(4), 10);
+        return { segment: 'alternate', index: insertPosition === 'before' ? i : i + 1 };
+      }
+      return { segment: 'main', index: 0 };
+    };
+    const target = resolve(routeWaypoints.length, alternateRouteWaypoints.length);
+    if (target.segment === 'alternate') {
+      setAlternateRouteWaypoints((prev) => {
+        const next = [...prev];
+        next.splice(target.index, 0, pendingWaypoint);
+        return next;
       });
+      setFollowedAlternateCorridorName(null);
+    } else {
+      setRouteWaypoints((prev) => {
+        const next = [...prev];
+        next.splice(target.index, 0, pendingWaypoint);
+        return next;
+      });
+      if (pendingAltFtRef.current != null && pendingAltFtRef.current > 0) {
+        const altFt = pendingAltFtRef.current;
+        const wpName = pendingWaypoint.name;
+        setAltChangesAuto(false);
+        setAltitudeChanges((prev) => {
+          const filtered = prev.filter((t) => t.atWaypoint !== wpName);
+          return [...filtered, { atWaypoint: wpName, toAltFt: altFt }];
+        });
+      }
+      setFollowedCorridorName(null);
+      setCorridorAltRange(null);
+      setCorridorCompAlt(null);
     }
     pendingAltFtRef.current = null;
-    setFollowedCorridorName(null);
-    setCorridorAltRange(null);
-    setCorridorCompAlt(null);
     setPendingWaypoint(null);
-  }, [pendingWaypoint, insertPosition, insertRefIndex]);
+  }, [pendingWaypoint, insertPosition, insertRefIndex, alternate, routeWaypoints.length, alternateRouteWaypoints.length]);
 
   const handleRemoveWaypoint = useCallback((idx: number) => {
     const removedName = routeWaypoints[idx]?.name;
@@ -1333,30 +1391,9 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     );
   }, [aircraftPerf, enrichedLegs, origin, destination, cruiseLevel, destTpaFt, altitudeChanges]);
 
-  // REA detection
-  interface ReaDetectionRegion {
-    regionId: string;
-    chartName: string;
-    chartPdfUrl: string;
-    hasMandatory: boolean;
-    corridors: {
-      name: string;
-      tipo: 'Obrig' | 'Recom';
-      segments: {
-        nome: string; tipo: 'Obrig' | 'Recom'; trecho: number;
-        fixoA: { lat: number; lon: number; nome: string };
-        fixoB: { lat: number; lon: number; nome: string };
-        rumoAtoB: number | null; rumoBtoA: number | null;
-        altMinAtoB: number; altMaxAtoB: number; altMinBtoA: number; altMaxBtoA: number;
-        altComp: number | null; altCompAtoB: number | null; altCompBtoA: number | null;
-        fca: string; ats: string;
-        geometry: { type: string; coordinates: number[][][][] | number[][][] };
-      }[];
-    }[];
-  }
-
+  // REA detection — feeds the map overlay and charts panel (the corridor
+  // suggestion cards fetch their own entry→exit options independently).
   const [reaRegions, setReaRegions] = useState<ReaDetectionRegion[]>([]);
-  const [reaLoading, setReaLoading] = useState(false);
 
   useEffect(() => {
     if (!origin || !destination) { setReaRegions([]); return; }
@@ -1364,19 +1401,44 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     if (origin.latitude === 0 && origin.longitude === 0) return;
     if (destination.latitude === 0 && destination.longitude === 0) return;
 
-    const waypoints: { lat: number; lon: number }[] = [];
-    waypoints.push({ lat: origin.latitude, lon: origin.longitude });
-    for (const wp of routeWaypoints) waypoints.push({ lat: wp.lat, lon: wp.lng });
-    waypoints.push({ lat: destination.latitude, lon: destination.longitude });
+    // Detect on the FIXED origin→destination segment only — never the
+    // already-applied routeWaypoints. Detecting on the live route made the
+    // suggestion list grow/shift every time a corridor was picked (the chosen
+    // path weaves through new regions), so the options appeared to "sum" and a
+    // corridor valid at first could vanish or read as invalid after a pick.
+    // Picking a corridor must be an exclusive, stable choice for the O→D leg.
+    const waypoints: { lat: number; lon: number }[] = [
+      { lat: origin.latitude, lon: origin.longitude },
+      { lat: destination.latitude, lon: destination.longitude },
+    ];
 
     const wpStr = waypoints.map((w) => `${w.lat}:${w.lon}`).join(',');
 
-    setReaLoading(true);
     apiClient.get<{ regions: ReaDetectionRegion[] }>(`/rea/detect?waypoints=${wpStr}`)
       .then((r) => setReaRegions(r.regions))
-      .catch(() => setReaRegions([]))
-      .finally(() => setReaLoading(false));
-  }, [origin, destination, routeWaypoints]);
+      .catch(() => setReaRegions([]));
+  }, [origin, destination]);
+
+  // Parallel REA detection for the destination → alternate segment. Same
+  // ICA 100-12 rules apply.
+  useEffect(() => {
+    if (!destination || !alternate) { setAlternateReaRegions([]); return; }
+    if (destination.latitude === 0 && destination.longitude === 0) return;
+    if (alternate.latitude === 0 && alternate.longitude === 0) return;
+
+    // Same as the main leg: detect on the fixed destination→alternate segment
+    // only, not the applied alternate route, so the corridor options stay
+    // stable and each pick is an exclusive choice.
+    const wps: { lat: number; lon: number }[] = [
+      { lat: destination.latitude, lon: destination.longitude },
+      { lat: alternate.latitude, lon: alternate.longitude },
+    ];
+    const wpStr = wps.map((w) => `${w.lat}:${w.lon}`).join(',');
+
+    apiClient.get<{ regions: ReaDetectionRegion[] }>(`/rea/detect?waypoints=${wpStr}`)
+      .then((r) => setAlternateReaRegions(r.regions))
+      .catch(() => setAlternateReaRegions([]));
+  }, [destination, alternate]);
 
   const [reaViolations, setReaViolations] = useState<{ from: string; to: string; message: string; severity: 'error' | 'warning' }[]>([]);
 
@@ -1591,6 +1653,11 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       simbriefOfpId: simbriefOfpId || undefined,
       visualReferences: initialData?.visualReferences,
       routeWaypoints: routeWaypoints.length > 0 ? routeWaypoints.map((wp) => ({ lat: wp.lat, lng: wp.lng, name: wp.name })) : undefined,
+      alternateRouteWaypoints: alternateRouteWaypoints.length > 0
+        ? alternateRouteWaypoints.map((wp) => ({ lat: wp.lat, lng: wp.lng, name: wp.name }))
+        : undefined,
+      alternateRouteText: alternateRouteText || undefined,
+      alternatePlannedAltitude: alternatePlannedAltitudeFt ?? undefined,
       routeLegs: routeLegs.length > 0 ? routeLegs.map((leg, i) => ({
         from: leg.from.name,
         to: leg.to.name,
@@ -1690,14 +1757,27 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       totalDistanceNm: totalDistanceNm > 0 ? totalDistanceNm : undefined,
       groundSpeed: windAdjustedGS ?? (cruiseKts ? Math.round(cruiseKts) : undefined),
       weatherBasis: new Date().toISOString(),
-      routes: routeWaypoints.length > 0
-        ? routeWaypoints.map((wp, i) => ({
-            sequence: i,
-            waypointIdent: wp.name.slice(0, 50),
-            latitude: wp.lat,
-            longitude: wp.lng,
-          }))
+      routes: (routeWaypoints.length + alternateRouteWaypoints.length) > 0
+        ? [
+            ...routeWaypoints.map((wp, i) => ({
+              sequence: i,
+              waypointIdent: wp.name.slice(0, 50),
+              latitude: wp.lat,
+              longitude: wp.lng,
+              role: 'MAIN' as const,
+            })),
+            ...alternateRouteWaypoints.map((wp, i) => ({
+              sequence: i,
+              waypointIdent: wp.name.slice(0, 50),
+              latitude: wp.lat,
+              longitude: wp.lng,
+              role: 'ALTERNATE' as const,
+            })),
+          ]
         : undefined,
+      alternateRouteText: alternateRouteText || undefined,
+      alternateTotalDistanceNm: data.altDistanceNm,
+      alternatePlannedAltitude: alternatePlannedAltitudeFt ?? undefined,
     };
     void onSave(savePayload as VfrPlanData);
   };
@@ -1920,6 +2000,9 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       onRemoveWaypoint={handleRemoveWaypoint}
       onUpdateWaypoint={handleUpdateWaypoint}
       onSetAltitudeAtWaypoint={handleSetAltitudeAtWaypoint}
+      alternateRouteWaypoints={alternateRouteWaypoints}
+      onRemoveAlternateWaypoint={handleRemoveAlternateWaypoint}
+      onUpdateAlternateWaypoint={handleUpdateAlternateWaypoint}
       defaultCruiseAltFt={parseCruiseLevelFt(cruiseLevel) ?? null}
       waypointAltitudesFt={routeWaypoints.map((wp) =>
         altitudeChanges.find((t) => t.atWaypoint === wp.name)?.toAltFt ?? null,
@@ -2280,264 +2363,44 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       {/* ====== REA (VFR only) ====== */}
       {hasVfr && origin && destination && /^S[BDIIJNSW]/.test(origin.icao) ? (
         <Section title={t('vfr.rea')}>
-          {reaLoading ? (
-            <Text className="text-xs text-muted-foreground">{t('common.loading')}</Text>
-          ) : reaRegions.length === 0 ? (
-            <Text className="text-xs text-green-600 mb-2">{t('vfr.reaNoConflict')}</Text>
-          ) : (
-            reaRegions.map((region) => (
-              <View key={region.regionId} className="mb-3">
-                <View className="flex-row items-center gap-2 mb-1.5">
-                  <Text className="text-sm font-semibold text-foreground">{region.chartName}</Text>
-                </View>
-
-                {region.corridors.some((c) => c.tipo === 'Obrig' && c.segments.length <= 2) ? (
-                  <Text className="text-xs text-amber-600 mb-2">{t('vfr.reaGateWarning')}</Text>
-                ) : null}
-
-                {reaViolations.length > 0 ? (
-                  <View className="mb-2">
-                    {reaViolations.map((v, vi) => (
-                      <View key={vi} className={`flex-row items-start gap-1.5 mb-1 px-2 py-1 rounded ${v.severity === 'error' ? 'bg-red-50' : 'bg-amber-50'}`}>
-                        <Text className={`text-xs font-semibold ${v.severity === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
-                          {v.severity === 'error' ? '✕' : '⚠'}
-                        </Text>
-                        <Text className={`text-xs flex-1 ${v.severity === 'error' ? 'text-red-700' : 'text-amber-700'}`}>
-                          {v.message}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-
-                <View className="rounded border border-border overflow-hidden mb-2">
-                  {region.corridors
-                    .map((corridor) => {
-                      const sorted = [...corridor.segments].sort((a, b) => a.trecho - b.trecho);
-
-                      // Build ordered waypoints following segment sequence (A→B direction)
-                      const wpsAtoB: RouteWaypoint[] = [];
-                      const seenAB = new Set<string>();
-                      for (const seg of sorted) {
-                        const kA = `${seg.fixoA.lat.toFixed(4)},${seg.fixoA.lon.toFixed(4)}`;
-                        if (!seenAB.has(kA) && seg.fixoA.nome) {
-                          seenAB.add(kA);
-                          wpsAtoB.push({ lat: seg.fixoA.lat, lng: seg.fixoA.lon, name: seg.fixoA.nome });
-                        }
-                        const kB = `${seg.fixoB.lat.toFixed(4)},${seg.fixoB.lon.toFixed(4)}`;
-                        if (!seenAB.has(kB) && seg.fixoB.nome) {
-                          seenAB.add(kB);
-                          wpsAtoB.push({ lat: seg.fixoB.lat, lng: seg.fixoB.lon, name: seg.fixoB.nome });
-                        }
-                      }
-
-                      // Find entry and exit considering both distance and direction of travel.
-                      // A waypoint in the direction of the destination is preferred over
-                      // one that is simply closest but requires backtracking.
-                      let wps: RouteWaypoint[] = [];
-                      let reversed = false;
-                      if (wpsAtoB.length >= 2 && origin && destination) {
-                        const odBrg = initialBearing(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
-                        const angDiffDeg = (a: number, b: number) => { const d = ((a - b) % 360 + 360) % 360; return d > 180 ? 360 - d : d; };
-
-                        let entryIdx = 0;
-                        let entryScore = Infinity;
-                        let exitIdx = 0;
-                        let exitScore = Infinity;
-                        for (let i = 0; i < wpsAtoB.length; i++) {
-                          const dO = haversineDistanceNm(origin.latitude, origin.longitude, wpsAtoB[i]!.lat, wpsAtoB[i]!.lng);
-                          const dD = haversineDistanceNm(destination.latitude, destination.longitude, wpsAtoB[i]!.lat, wpsAtoB[i]!.lng);
-
-                          // Penalise entry points that require backtracking (bearing from origin
-                          // to waypoint diverges from origin→destination bearing)
-                          const brgToWp = initialBearing(origin.latitude, origin.longitude, wpsAtoB[i]!.lat, wpsAtoB[i]!.lng);
-                          const entryPenalty = dO < 3 ? 1 : 1 + angDiffDeg(brgToWp, odBrg) / 90;
-                          const eScore = dO * entryPenalty;
-                          if (eScore < entryScore) { entryScore = eScore; entryIdx = i; }
-
-                          if (dD < exitScore) { exitScore = dD; exitIdx = i; }
-                        }
-                        if (entryIdx <= exitIdx) {
-                          wps = wpsAtoB.slice(entryIdx, exitIdx + 1);
-                        } else {
-                          wps = wpsAtoB.slice(exitIdx, entryIdx + 1).reverse();
-                          reversed = true;
-                        }
-                      } else {
-                        wps = wpsAtoB;
-                      }
-
-                      // One-way validation: check if any segment forbids this direction
-                      // rumoAtoB===null means A→B forbidden; rumoBtoA===null means B→A forbidden
-                      const directionBlocked = sorted.some((seg) => {
-                        const kA = `${seg.fixoA.lat.toFixed(4)},${seg.fixoA.lon.toFixed(4)}`;
-                        const kB = `${seg.fixoB.lat.toFixed(4)},${seg.fixoB.lon.toFixed(4)}`;
-                        const usedInPath = wps.some((w) => {
-                          const k = `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`;
-                          return k === kA || k === kB;
-                        });
-                        if (!usedInPath) return false;
-                        if (reversed && seg.rumoBtoA === null) return true;
-                        if (!reversed && seg.rumoAtoB === null) return true;
-                        return false;
-                      });
-                      if (directionBlocked) return { corridor, wps: [] as RouteWaypoint[], altRange: null, compAlt: null as number | null, score: Infinity };
-
-                      // Extract altitude for segments in the used sub-path
-                      // Priority: compulsory direction-specific > compulsory general > directional min/max > general min/max
-                      const usedCoords = new Set(wps.map((w) => `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`));
-                      let altMin = 0;
-                      let altMax = Infinity;
-                      let compAlt: number | null = null;
-                      for (const seg of sorted) {
-                        const kA = `${seg.fixoA.lat.toFixed(4)},${seg.fixoA.lon.toFixed(4)}`;
-                        const kB = `${seg.fixoB.lat.toFixed(4)},${seg.fixoB.lon.toFixed(4)}`;
-                        if (!usedCoords.has(kA) && !usedCoords.has(kB)) continue;
-
-                        // Compulsory altitude (highest priority)
-                        const dirComp = reversed ? seg.altCompBtoA : seg.altCompAtoB;
-                        if (dirComp != null) { compAlt = dirComp; }
-                        else if (seg.altComp != null) { compAlt = seg.altComp; }
-
-                        // Range altitudes (lower priority, used if no compulsory)
-                        const segMin = (reversed ? seg.altMinBtoA : seg.altMinAtoB) || seg.altMinAtoB || seg.altMinBtoA;
-                        const segMax = (reversed ? seg.altMaxBtoA : seg.altMaxAtoB) || seg.altMaxAtoB || seg.altMaxBtoA;
-                        if (segMin > 0) altMin = Math.max(altMin, segMin);
-                        if (segMax > 0) altMax = Math.min(altMax, segMax);
-                      }
-                      const altRange = altMin > 0 && altMax < Infinity ? { min: altMin, max: altMax } : null;
-
-                      const score = origin && destination && wps.length > 0
-                        ? haversineDistanceNm(origin.latitude, origin.longitude, wps[0]!.lat, wps[0]!.lng)
-                          + haversineDistanceNm(destination.latitude, destination.longitude, wps[wps.length - 1]!.lat, wps[wps.length - 1]!.lng)
-                        : Infinity;
-                      return { corridor, wps, altRange, compAlt, score };
-                    })
-                    .filter(({ wps }) => {
-                      if (!origin || !destination) return true;
-                      if (wps.length < 2) return false;
-                      const subBearing = initialBearing(wps[0]!.lat, wps[0]!.lng, wps[wps.length - 1]!.lat, wps[wps.length - 1]!.lng);
-                      const odBearing = initialBearing(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
-                      const diff = ((subBearing - odBearing) % 360 + 360) % 360;
-                      const angDiff = diff > 180 ? 360 - diff : diff;
-                      if (angDiff > 90) return false;
-                      const entryDistToDest = haversineDistanceNm(wps[0]!.lat, wps[0]!.lng, destination.latitude, destination.longitude);
-                      const exitDistToDest = haversineDistanceNm(wps[wps.length - 1]!.lat, wps[wps.length - 1]!.lng, destination.latitude, destination.longitude);
-                      const progress = entryDistToDest - exitDistToDest;
-                      let pathDist = 0;
-                      for (let i = 1; i < wps.length; i++) {
-                        pathDist += haversineDistanceNm(wps[i - 1]!.lat, wps[i - 1]!.lng, wps[i]!.lat, wps[i]!.lng);
-                      }
-                      if (pathDist > 0 && progress / pathDist < 0.5) return false;
-                      return true;
-                    })
-                    .sort((a, b) => a.score - b.score)
-                    .map(({ corridor, wps, altRange, compAlt, score }, cIdx, arr) => {
-                      const isBest = cIdx === 0 && arr.length > 1 && score < Infinity;
-                      const isFollowed = followedCorridorName === corridor.name;
-                      return (
-                        <Pressable
-                          key={corridor.name}
-                          onPress={() => {
-                            if (!origin || !destination) {
-                              if (wps.length === 0) return;
-                              setRouteWaypoints(wps);
-                              setFollowedCorridorName(corridor.name);
-                              setCorridorAltRange(altRange);
-                              setCorridorCompAlt(compAlt);
-                              return;
-                            }
-                            const altFt = cruiseLevel ? parseCruiseLevelFt(cruiseLevel) : undefined;
-                            const altParam = altFt ? `&altitude=${altFt}` : '';
-                            // Use corridor's far-end waypoint as origin so Dijkstra starts from
-                            // the corridor's graph-connecting node, not the airport
-                            const graphOrigin = wps.length >= 2
-                              ? wps[wps.length - 1]!
-                              : { lat: origin.latitude, lng: origin.longitude };
-                            apiClient
-                              .get<{
-                                found: boolean;
-                                legs: { from: { lat: number; lon: number; nome: string }; to: { lat: number; lon: number; nome: string }; corridorName: string; altMin: number; altMax: number; altComp: number | null }[];
-                                waypoints: { lat: number; lon: number; nome: string }[];
-                                corridorNames: string[];
-                                altitudeRange: { min: number; max: number } | null;
-                                compulsoryAltitude: number | null;
-                              }>(
-                                `/rea/navigate/suggest?origin=${graphOrigin.lat}:${graphOrigin.lng}` +
-                                `&destination=${destination.latitude}:${destination.longitude}${altParam}`,
-                              )
-                              .then((result) => {
-                                if (!result.found || result.waypoints.length === 0) {
-                                  setRouteWaypoints(wps);
-                                  setFollowedCorridorName(corridor.name);
-                                  setCorridorAltRange(altRange);
-                                  setCorridorCompAlt(compAlt);
-                                  return;
-                                }
-                                // Merge corridor waypoints with graph route, deduplicating the shared node
-                                const corridorWps = wps.length >= 2 ? wps.slice(0, -1) : [];
-                                const graphWps = result.waypoints.map((w) => ({ lat: w.lat, lng: w.lon, name: w.nome }));
-                                setRouteWaypoints([...corridorWps, ...graphWps]);
-                                const allCorridors = [corridor.name, ...result.corridorNames.filter((c) => c !== corridor.name)];
-                                setFollowedCorridorName(allCorridors.join(' + '));
-                                setCorridorAltRange(result.altitudeRange ?? altRange);
-                                setCorridorCompAlt(result.compulsoryAltitude ?? compAlt);
-                              })
-                              .catch(() => {
-                                setRouteWaypoints(wps);
-                                setFollowedCorridorName(corridor.name);
-                                setCorridorAltRange(altRange);
-                                setCorridorCompAlt(compAlt);
-                              });
-                          }}
-                          className={`px-2 py-1.5 ${cIdx < arr.length - 1 ? 'border-b border-border' : ''} ${isFollowed ? 'bg-green-50' : ''}`}
-                        >
-                          <View className="flex-row items-center gap-2">
-                            <View
-                              className="w-2 h-2 rounded-full"
-                              style={{ backgroundColor: isFollowed ? '#16a34a' : corridor.tipo === 'Obrig' ? '#dc2626' : '#2563eb' }}
-                            />
-                            <Text className="text-xs font-semibold text-foreground">{corridor.name}</Text>
-                            <Text className="text-[10px] text-muted-foreground">
-                              ({corridor.tipo === 'Obrig' ? t('vfr.reaMandatory') : t('vfr.reaRecommended')})
-                            </Text>
-                            {compAlt != null ? (
-                              <Text className="text-[9px] font-semibold text-amber-600">
-                                {compAlt} ft ✦
-                              </Text>
-                            ) : altRange ? (
-                              <Text className="text-[9px] text-muted-foreground">
-                                {altRange.min}–{altRange.max} ft
-                              </Text>
-                            ) : null}
-                            {isBest ? (
-                              <View className="rounded px-1 py-0.5 bg-green-100">
-                                <Text className="text-[8px] font-bold text-green-700">{t('vfr.reaBestMatch')}</Text>
-                              </View>
-                            ) : null}
-                            {isFollowed ? (
-                              <View className="rounded px-1 py-0.5 bg-green-600">
-                                <Text className="text-[8px] font-bold text-white">✓ {t('vfr.reaFollow')}</Text>
-                              </View>
-                            ) : null}
-                          </View>
-                          {wps.length > 0 ? (
-                            <Text className="text-[10px] text-muted-foreground mt-0.5 ml-4" numberOfLines={1}>
-                              {wps.map((w) => w.name).join(' → ')}
-                            </Text>
-                          ) : null}
-                        </Pressable>
-                      );
-                    })}
-                </View>
-              </View>
-            ))
-          )}
+          <ReaCorridorSuggestions
+            violations={reaViolations}
+            startPoint={origin}
+            endPoint={destination}
+            followedCorridorName={followedCorridorName}
+            onApplyCorridor={({ waypoints, corridorName, altRange, compAlt }) => {
+              setRouteWaypoints(waypoints);
+              setFollowedCorridorName(corridorName);
+              setCorridorAltRange(altRange);
+              setCorridorCompAlt(compAlt);
+            }}
+          />
 
           {/* Embedded REA charts — always available for Brazilian routes */}
           <ReaChartsPanel highlightRegionIds={reaRegions.map((r) => r.regionId)} />
         </Section>
       ) : null}
+
+      {/* ====== REA Alternate (VFR only, destination → alternate) ====== */}
+      {hasVfr && destination && alternate && /^S[BDIIJNSW]/.test(destination.icao) ? (
+        <Section title={`${t('vfr.rea')} · ${t('vfr.alternate')}`}>
+          <ReaCorridorSuggestions
+            startPoint={destination}
+            endPoint={alternate}
+            followedCorridorName={followedAlternateCorridorName}
+            onApplyCorridor={({ waypoints, corridorName, compAlt }) => {
+              setAlternateRouteWaypoints(waypoints);
+              setFollowedAlternateCorridorName(corridorName);
+              // Adopt corridor's compulsory altitude only if the alt-leg
+              // altitude hasn't been set yet — never overwrite a user value.
+              if (compAlt != null && alternatePlannedAltitudeFt == null) {
+                setAlternatePlannedAltitudeFt(compAlt);
+              }
+            }}
+          />
+        </Section>
+      ) : null}
+
 
       {/* ====== ROUTE LEGS ====== */}
       {routeLegs.length > 0 ? (
@@ -2713,6 +2576,47 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           <Text className="mt-1 text-[10px] text-muted-foreground">
             {t('vfr.mixedRouteHint')}
           </Text>
+        ) : null}
+
+        {/* Alternate route — destination → alternate. Only shown when an
+            alternate is set. ICA 100-12 requires REA Obrig compliance on
+            this leg; user can type the route or add waypoints on the map. */}
+        {alternate ? (
+          <View className="mt-3">
+            <Input
+              label={`${t('vfr.alternate')} ${t('vfr.routeText').toLowerCase()}`}
+              value={alternateRouteText}
+              onChangeText={setAlternateRouteText}
+              placeholder="DCT 2338S04640W DCT"
+            />
+            {alternateReaRegions.length > 0 ? (
+              <Text className="mt-1 text-[10px] text-amber-600">
+                {`${alternateReaRegions.length} REA detectado(s) no segmento destino→alternado — siga corredor`}
+              </Text>
+            ) : null}
+            <View className="mt-2 flex-row items-center gap-2">
+              <Text className="text-xs font-medium text-foreground">{`${t('vfr.alternate')} ${t('vfr.altitudeFt').toLowerCase()}`}</Text>
+              <TextInput
+                value={alternatePlannedAltitudeFt != null ? String(alternatePlannedAltitudeFt) : ''}
+                placeholder="—"
+                onChangeText={(v) => {
+                  const cleaned = v.replace(/[^0-9]/g, '');
+                  if (cleaned === '') { setAlternatePlannedAltitudeFt(null); return; }
+                  const n = parseInt(cleaned, 10);
+                  if (!isNaN(n) && n > 0) setAlternatePlannedAltitudeFt(n);
+                }}
+                keyboardType="numeric"
+                className="rounded-sm border border-border bg-surface px-2 py-1 text-xs text-foreground"
+                style={{ minWidth: 80 }}
+              />
+              <Text className="text-[10px] text-muted-foreground">ft</Text>
+              {followedAlternateCorridorName ? (
+                <Text className="ml-2 text-[10px] text-primary">
+                  {`✓ ${followedAlternateCorridorName}`}
+                </Text>
+              ) : null}
+            </View>
+          </View>
         ) : null}
         {/* Destination TPA — lower bound for final descent target */}
         {destination && destTpaFt != null ? (
@@ -3616,58 +3520,58 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
               {/* Reference waypoint */}
               <Text className="mb-1 text-xs font-semibold text-muted-foreground">{t('vfr.insertRelativeTo')}</Text>
-              {Platform.OS === 'web' ? (
-                <select
-                  value={insertRefIndex}
-                  onChange={(e: unknown) => setInsertRefIndex((e as { target: { value: string } }).target.value)}
-                  style={{
-                    width: '100%',
-                    padding: 8,
-                    borderRadius: 6,
-                    border: '1px solid #d4d4d8',
-                    fontSize: 14,
-                    backgroundColor: 'transparent',
-                    color: 'inherit',
-                    marginBottom: 16,
-                  }}
-                >
-                  <option value="origin">{origin?.icao ?? 'Origin'}</option>
-                  {routeWaypoints.map((wp, i) => (
-                    <option key={i} value={String(i)}>{wp.name}</option>
-                  ))}
-                  <option value="destination">{destination?.icao ?? 'Destination'}</option>
-                </select>
-              ) : (
-                <View className="mb-4 rounded-md border border-border">
-                  <Pressable
-                    onPress={() => setInsertRefIndex('origin')}
-                    className={`border-b border-border px-3 py-2 ${insertRefIndex === 'origin' ? 'bg-primary/10' : ''}`}
+              {(() => {
+                // Single unified anchor list — picking an anchor + position
+                // automatically determines which segment the waypoint joins
+                // (see resolveInsert in confirmInsertWaypoint). "Destination"
+                // is the divider: insert "after destination" lands in the
+                // alternate leg when an alternate aerodrome is set.
+                const anchors: { value: string; label: string }[] = [
+                  { value: 'origin', label: origin?.icao ?? 'Origin' },
+                  ...routeWaypoints.map((wp, i) => ({ value: `main-${i}`, label: wp.name })),
+                  { value: 'destination', label: destination?.icao ?? 'Destination' },
+                ];
+                if (alternate) {
+                  anchors.push(
+                    ...alternateRouteWaypoints.map((wp, i) => ({ value: `alt-${i}`, label: wp.name })),
+                    { value: 'alternate', label: `${alternate.icao} (alt)` },
+                  );
+                }
+                return Platform.OS === 'web' ? (
+                  <select
+                    value={insertRefIndex}
+                    onChange={(e: unknown) => setInsertRefIndex((e as { target: { value: string } }).target.value)}
+                    style={{
+                      width: '100%',
+                      padding: 8,
+                      borderRadius: 6,
+                      border: '1px solid #d4d4d8',
+                      fontSize: 14,
+                      backgroundColor: 'transparent',
+                      color: 'inherit',
+                      marginBottom: 16,
+                    }}
                   >
-                    <Text className={`text-sm ${insertRefIndex === 'origin' ? 'font-medium text-primary' : 'text-foreground'}`}>
-                      {origin?.icao ?? 'Origin'}
-                    </Text>
-                  </Pressable>
-                  {routeWaypoints.map((wp, i) => (
-                    <Pressable
-                      key={i}
-                      onPress={() => setInsertRefIndex(String(i))}
-                      className={`border-b border-border px-3 py-2 ${insertRefIndex === String(i) ? 'bg-primary/10' : ''}`}
-                    >
-                      <Text className={`text-sm ${insertRefIndex === String(i) ? 'font-medium text-primary' : 'text-foreground'}`}>
-                        {wp.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                  <Pressable
-                    onPress={() => setInsertRefIndex('destination')}
-                    className={`px-3 py-2 ${insertRefIndex === 'destination' ? 'bg-primary/10' : ''}`}
-                  >
-                    <Text className={`text-sm ${insertRefIndex === 'destination' ? 'font-medium text-primary' : 'text-foreground'}`}>
-                      {destination?.icao ?? 'Destination'}
-                    </Text>
-                  </Pressable>
-                </View>
-              )}
+                    {anchors.map((a, i) => (
+                      <option key={`${a.value}-${i}`} value={a.value}>{a.label}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <View className="mb-4 rounded-md border border-border">
+                    {anchors.map((a, i) => (
+                      <Pressable
+                        key={`${a.value}-${i}`}
+                        onPress={() => setInsertRefIndex(a.value)}
+                        className={`${i < anchors.length - 1 ? 'border-b border-border' : ''} px-3 py-2 ${insertRefIndex === a.value ? 'bg-primary/10' : ''}`}
+                      >
+                        <Text className={`text-sm ${insertRefIndex === a.value ? 'font-medium text-primary' : 'text-foreground'}`}>
+                          {a.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                );
+              })()}
 
               {/* Actions */}
               <View className="flex-row gap-2">

@@ -53,8 +53,17 @@ async function bootstrap(): Promise<void> {
   );
 
   // CORS
+  // Production locks to the single configured WEB_ORIGIN. In dev we also
+  // accept the common Expo web hostnames (localhost / mac.local) so testing
+  // works regardless of which one the browser or Remote Control loaded —
+  // otherwise auth/providers and other calls get CORS-blocked and features
+  // like the dev-login button silently disappear.
+  const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
   app.enableCors({
-    origin: process.env.WEB_ORIGIN ?? 'http://localhost:3000',
+    origin:
+      process.env.NODE_ENV === 'production'
+        ? webOrigin
+        : [...new Set([webOrigin, 'http://localhost:8081', 'http://mac.local:8081'])],
     credentials: true,
   });
 

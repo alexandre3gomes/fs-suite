@@ -217,6 +217,15 @@ model FlightPlan {
   alternateName        String? @map("alternate_name")
   alternateElevationFt Int?    @map("alternate_elevation_ft")
 
+  // Alternate route — destination → alternate segment.
+  // Stored separately from the main A→B route because ICAO Item 15
+  // only carries the main route; the alternate leg is operational
+  // planning data. REA Obrig compliance is mandatory for VFR when the
+  // segment crosses corridors (ICA 100-12). See FlightPlanRoute.role.
+  alternateRouteText            String? @map("alternate_route_text")
+  alternateTotalDistanceNm      Float?  @map("alternate_total_distance_nm")
+  alternatePlannedAltitude      Int?    @map("alternate_planned_altitude")
+
   // Aircraft identification
   aircraftType     String? @map("aircraft_type")
   aircraftName     String? @map("aircraft_name")
@@ -304,18 +313,27 @@ model FlightPlan {
 }
 
 model FlightPlanRoute {
-  id            String  @id @default(cuid())
-  flightPlanId  String  @map("flight_plan_id")
+  id            String              @id @default(cuid())
+  flightPlanId  String              @map("flight_plan_id")
   sequence      Int
-  waypointIdent String  @map("waypoint_ident")
+  waypointIdent String              @map("waypoint_ident")
   latitude      Float?
   longitude     Float?
   airway        String?
+  // Discriminates main A→B route (default) from the alternate
+  // leg B→C. Both share this table to reuse the sequence/waypoint
+  // shape; queries filter by role.
+  role          FlightPlanRouteRole @default(MAIN)
 
   flightPlan FlightPlan @relation(fields: [flightPlanId], references: [id], onDelete: Cascade)
 
-  @@index([flightPlanId, sequence])
+  @@index([flightPlanId, role, sequence])
   @@map("flight_plan_routes")
+}
+
+enum FlightPlanRouteRole {
+  MAIN
+  ALTERNATE
 }
 
 model FlightPlanVisualReference {

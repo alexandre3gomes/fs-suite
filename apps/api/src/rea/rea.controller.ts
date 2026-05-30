@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 import {
   type RouteAltitudesResponse,
+  type RouteOptionsResponse,
   type SuggestRouteResponse,
   type ValidateRouteResponse,
   ReaNavigationService,
@@ -50,10 +51,12 @@ export class ReaController {
   @ApiQuery({ name: 'origin', description: 'Origin lat:lon', required: true })
   @ApiQuery({ name: 'destination', description: 'Destination lat:lon', required: true })
   @ApiQuery({ name: 'altitude', description: 'Planned altitude in feet', required: false })
+  @ApiQuery({ name: 'preferCorridor', description: 'Pilot preference — bias the path toward this corridor name (soft, 0.1× weight)', required: false })
   async suggestRoute(
     @Query('origin') origin: string,
     @Query('destination') destination: string,
     @Query('altitude') altitude?: string,
+    @Query('preferCorridor') preferCorridor?: string,
   ): Promise<SuggestRouteResponse> {
     const [oLat, oLon] = origin.split(':').map(Number);
     const [dLat, dLon] = destination.split(':').map(Number);
@@ -61,6 +64,29 @@ export class ReaController {
       return { found: false, legs: [], waypoints: [], totalDistanceNm: 0, corridorNames: [], altitudeRange: null, compulsoryAltitude: null };
     }
     return this.reaNav.suggestRoute(
+      { lat: oLat!, lon: oLon! },
+      { lat: dLat!, lon: dLon! },
+      altitude ? Number(altitude) : undefined,
+      preferCorridor,
+    );
+  }
+
+  @Get('navigate/options')
+  @ApiOperation({ summary: 'Enumerate distinct (entry gate → exit gate) route options for O→D' })
+  @ApiQuery({ name: 'origin', description: 'Origin lat:lon', required: true })
+  @ApiQuery({ name: 'destination', description: 'Destination lat:lon', required: true })
+  @ApiQuery({ name: 'altitude', description: 'Planned altitude in feet', required: false })
+  async routeOptions(
+    @Query('origin') origin: string,
+    @Query('destination') destination: string,
+    @Query('altitude') altitude?: string,
+  ): Promise<RouteOptionsResponse> {
+    const [oLat, oLon] = origin.split(':').map(Number);
+    const [dLat, dLon] = destination.split(':').map(Number);
+    if ([oLat, oLon, dLat, dLon].some((v) => v == null || isNaN(v!))) {
+      return { options: [] };
+    }
+    return this.reaNav.listRouteOptions(
       { lat: oLat!, lon: oLon! },
       { lat: dLat!, lon: dLon! },
       altitude ? Number(altitude) : undefined,

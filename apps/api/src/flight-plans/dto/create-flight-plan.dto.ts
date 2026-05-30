@@ -22,6 +22,12 @@ export class RouteWaypointDto {
   @ApiPropertyOptional({ example: -23.43 }) @IsOptional() @IsNumber() latitude?: number;
   @ApiPropertyOptional({ example: -46.47 }) @IsOptional() @IsNumber() longitude?: number;
   @ApiPropertyOptional({ example: 'UW2' }) @IsOptional() @IsString() @MaxLength(10) airway?: string;
+  // Discriminates main A→B leg from the alternate B→C leg. Omitted on
+  // legacy clients defaults to MAIN server-side.
+  @ApiPropertyOptional({ enum: ['MAIN', 'ALTERNATE'], default: 'MAIN' })
+  @IsOptional()
+  @IsEnum(['MAIN', 'ALTERNATE'])
+  role?: 'MAIN' | 'ALTERNATE';
 }
 
 export class VisualReferenceDto {
@@ -103,6 +109,12 @@ export class CreateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) remarks?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) todMinutes?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) todDistanceNm?: number;
+
+  // Alternate route (operational planning; not in ICAO Item 15). Waypoints
+  // are passed in the `routes` array with role='ALTERNATE'.
+  @ApiPropertyOptional() @IsOptional() @IsString() alternateRouteText?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) alternateTotalDistanceNm?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) alternatePlannedAltitude?: number;
 
   // Fuel
   @ApiPropertyOptional() @IsOptional() @IsNumber() fuelConsumptionPerHour?: number;

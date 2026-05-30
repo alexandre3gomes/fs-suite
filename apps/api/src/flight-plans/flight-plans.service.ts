@@ -51,6 +51,9 @@ function mapPlanFields(dto: Partial<CreateFlightPlanDto>): Partial<Omit<Prisma.F
     remarks: dto.remarks,
     todMinutes: dto.todMinutes,
     todDistanceNm: dto.todDistanceNm,
+    alternateRouteText: dto.alternateRouteText,
+    alternateTotalDistanceNm: dto.alternateTotalDistanceNm,
+    alternatePlannedAltitude: dto.alternatePlannedAltitude,
     fuelConsumptionPerHour: dto.fuelConsumptionPerHour,
     fuelCurrentTotal: dto.fuelCurrentTotal,
     fuelReserveMinutes: dto.fuelReserveMinutes,
@@ -182,7 +185,7 @@ export class FlightPlansService {
 
   async duplicate(id: string, userId: string): Promise<FlightPlan> {
     const original = await this.findOne(id, userId) as FlightPlan & {
-      routes: { sequence: number; waypointIdent: string; latitude: number | null; longitude: number | null; airway: string | null }[];
+      routes: { sequence: number; waypointIdent: string; latitude: number | null; longitude: number | null; airway: string | null; role: 'MAIN' | 'ALTERNATE' }[];
       visualReferences: { sequence: number; name: string; distanceNm: number | null; timeMin: number | null }[];
       briefingItems: { code: string; label: string; checked: boolean; notes: string | null }[];
     };
@@ -231,6 +234,9 @@ export class FlightPlansService {
           remarks: original.remarks,
           todMinutes: original.todMinutes,
           todDistanceNm: original.todDistanceNm,
+          alternateRouteText: original.alternateRouteText,
+          alternateTotalDistanceNm: original.alternateTotalDistanceNm,
+          alternatePlannedAltitude: original.alternatePlannedAltitude,
           plannedDepartureUtc: original.plannedDepartureUtc,
           estimatedElapsedMin: original.estimatedElapsedMin,
           estimatedArrivalUtc: original.estimatedArrivalUtc,
@@ -254,6 +260,7 @@ export class FlightPlansService {
                     latitude: r.latitude,
                     longitude: r.longitude,
                     airway: r.airway,
+                    role: r.role,
                   })),
                 },
               }

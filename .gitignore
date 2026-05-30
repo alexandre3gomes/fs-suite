@@ -51,3 +51,7 @@ apps/app/dist/
 # Database dumps — never commit (contain prod data)
 *.sql
 *.dump
+# …but Prisma migration SQL MUST be versioned, or `prisma migrate deploy`
+# has nothing to apply on prod. The broad *.sql rule above was silently
+# excluding new migrations (older ones predate the rule).
+!apps/api/prisma/migrations/**/*.sql

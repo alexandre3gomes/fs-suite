@@ -98,6 +98,12 @@ interface Props {
   onUpdateWaypoint?: (index: number, wp: RouteWaypoint) => void;
   /** Sets the altitude that takes effect AT this waypoint (null = remove transition). */
   onSetAltitudeAtWaypoint?: (waypointName: string, altFt: number | null) => void;
+  /** Alternate-leg (destination → alternate) intermediate waypoints. Rendered
+   *  with the same waypoint+polyline pattern as the main route, but separate
+   *  state so the two legs can be edited independently. */
+  alternateRouteWaypoints?: RouteWaypoint[];
+  onRemoveAlternateWaypoint?: (index: number) => void;
+  onUpdateAlternateWaypoint?: (index: number, wp: RouteWaypoint) => void;
   /** Cruise altitude (feet) used as default when popups offer to set a waypoint altitude. */
   defaultCruiseAltFt?: number | null;
   /** Altitude at each existing route waypoint (matches routeWaypoints order). */
@@ -237,6 +243,7 @@ export function AerodromeMap({
   onSelectOrigin, onSelectDestination, onSelectAlternate, onMapReady,
   routeOrigin, routeDestination, routeAlternate, routeWaypoints, onAddWaypoint, onRemoveWaypoint, onUpdateWaypoint,
   onSetAltitudeAtWaypoint, defaultCruiseAltFt, waypointAltitudesFt,
+  alternateRouteWaypoints, onRemoveAlternateWaypoint, onUpdateAlternateWaypoint,
   reaSegments, selectedReaCorridorName, flightRules, tocTodPositions, hazardSegments,
   aerodromeOverlay, onCloseAerodromeOverlay,
 }: Props) {
@@ -289,6 +296,11 @@ export function AerodromeMap({
   defaultCruiseRef.current = defaultCruiseAltFt;
   const waypointAltsRef = useRef(waypointAltitudesFt);
   waypointAltsRef.current = waypointAltitudesFt;
+  // Alternate route callback refs
+  const onRemoveAltWpRef = useRef(onRemoveAlternateWaypoint);
+  onRemoveAltWpRef.current = onRemoveAlternateWaypoint;
+  const onUpdateAltWpRef = useRef(onUpdateAlternateWaypoint);
+  onUpdateAltWpRef.current = onUpdateAlternateWaypoint;
   const wpCountRef = useRef(routeWaypoints?.length ?? 0);
   wpCountRef.current = routeWaypoints?.length ?? 0;
   const tRef = useRef(t);
@@ -388,14 +400,18 @@ export function AerodromeMap({
       const popup = Leaf.popup({ closeButton: true }).setLatLng(e.latlng).setContent(popupHtml).openOn(map);
       const popupEl = popup.getElement() as unknown as DomElement | undefined;
       if (popupEl) {
-        const btn = popupEl.querySelector?.('button[data-action="add-waypoint"]');
-        btn?.addEventListener('click', () => {
+        const readFields = (): { name: string; altFt: number | undefined } => {
           const nameInput = popupEl.querySelector?.('#wp-name-input');
           const altInput = popupEl.querySelector?.('#wp-alt-input');
           const name = (nameInput?.value as string | undefined)?.trim() || defaultName;
           const altRaw = (altInput?.value as string | undefined)?.trim();
           const altFt = altRaw ? parseInt(altRaw, 10) : NaN;
-          onAddWpRef.current?.({ lat, lng, name }, Number.isFinite(altFt) && altFt > 0 ? altFt : undefined);
+          return { name, altFt: Number.isFinite(altFt) && altFt > 0 ? altFt : undefined };
+        };
+        const btnMain = popupEl.querySelector?.('button[data-action="add-waypoint"]');
+        btnMain?.addEventListener('click', () => {
+          const { name, altFt } = readFields();
+          onAddWpRef.current?.({ lat, lng, name }, altFt);
           map.closePopup();
         });
       }
@@ -888,6 +904,7 @@ export function AerodromeMap({
   // Route rendering — redraws when waypoints / origin / destination change
   // Serialize waypoints for stable dependency (array reference may not change on re-render)
   const waypointsKey = routeWaypoints ? routeWaypoints.map((w) => `${w.lat},${w.lng}`).join(';') : '';
+  const altWaypointsKey = alternateRouteWaypoints ? alternateRouteWaypoints.map((w) => `${w.lat},${w.lng}`).join(';') : '';
 
   useEffect(() => {
     if (!mapRef.current || Platform.OS !== 'web') return;
@@ -1147,11 +1164,21 @@ export function AerodromeMap({
       });
     }
 
-    // Alternate route — same pattern
+    // Alternate route — same pattern, with intermediate waypoints supported.
+    // ICA 100-12 requires REA Obrig compliance on this leg too, so the
+    // user can route through corridor waypoints exactly like the main leg.
     interface AltLegInfo { from: L.LatLngTuple; to: L.LatLngTuple; marker: L.Marker }
     const altLegLabels: AltLegInfo[] = [];
     if (routeDestination && routeAlternate) {
-      const altLatlngs: L.LatLngTuple[] = [[routeDestination.lat, routeDestination.lng], [routeAlternate.lat, routeAlternate.lng]];
+      const altPath: { lat: number; lng: number; name: string; isIntermediate: boolean }[] = [
+        { ...routeDestination, isIntermediate: false },
+      ];
+      if (alternateRouteWaypoints && alternateRouteWaypoints.length > 0) {
+        for (const wp of alternateRouteWaypoints) altPath.push({ ...wp, isIntermediate: true });
+      }
+      altPath.push({ ...routeAlternate, isIntermediate: false });
+
+      const altLatlngs: L.LatLngTuple[] = altPath.map((p) => [p.lat, p.lng] as L.LatLngTuple);
       Leaf.polyline(altLatlngs, { color: ALT_ROUTE_OUTLINE, weight: 8, opacity: 0.6, lineCap: 'butt', lineJoin: 'round' }).addTo(group);
       Leaf.polyline(altLatlngs, { color: ALT_ROUTE_COLOR, weight: 5, opacity: 0.85, lineCap: 'butt', lineJoin: 'round' }).addTo(group);
 
@@ -1163,15 +1190,54 @@ export function AerodromeMap({
       });
       Leaf.marker([routeAlternate.lat, routeAlternate.lng], { icon: altEmblemIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
 
-      const { midLat: altMidLat, midLng: altMidLng, html: altHtml } = buildLegPillHtml(routeDestination.lat, routeDestination.lng, routeAlternate.lat, routeAlternate.lng);
-      const altLabelIcon = Leaf.divIcon({
-        className: 'leg-label-tooltip route-leg-pill',
-        html: altHtml.replace(ROUTE_OUTLINE, ALT_ROUTE_OUTLINE),
-        iconSize: [0, 0] as L.PointTuple,
-        iconAnchor: [0, 0] as L.PointTuple,
-      });
-      const altM = Leaf.marker([altMidLat, altMidLng], { icon: altLabelIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
-      altLegLabels.push({ from: [routeDestination.lat, routeDestination.lng], to: [routeAlternate.lat, routeAlternate.lng], marker: altM });
+      // Intermediate alt waypoint markers — click to remove.
+      if (alternateRouteWaypoints && alternateRouteWaypoints.length > 0) {
+        alternateRouteWaypoints.forEach((wp, wpIdx) => {
+          const wpIcon = Leaf.divIcon({
+            className: 'leg-label-tooltip',
+            html: `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#fff" stroke="${ALT_ROUTE_COLOR}" stroke-width="2.5"/></svg>`,
+            iconSize: [14, 14] as L.PointTuple,
+            iconAnchor: [7, 7] as L.PointTuple,
+          });
+          const wpMarker = Leaf.marker([wp.lat, wp.lng], { icon: wpIcon, pane: 'routeLabels' }).addTo(group);
+          wpMarker.on('click', () => {
+            const wpPopup = Leaf.popup({ closeButton: true, maxWidth: 220 })
+              .setLatLng([wp.lat, wp.lng])
+              .setContent(`
+                <div style="font-family:system-ui,sans-serif;min-width:180px">
+                  <div style="font-weight:700;font-size:12px;margin-bottom:4px;color:#1a1d26">${escapeHtml(wp.name)}</div>
+                  <div style="font-size:10px;color:#6b7280;margin-bottom:8px">${wp.lat.toFixed(4)}, ${wp.lng.toFixed(4)}</div>
+                  <button data-action="remove-alt-wp"
+                    style="width:100%;padding:6px;background:#dc2626;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">
+                    ${escapeHtml(tRef.current('vfr.removeWaypoint'))}
+                  </button>
+                </div>
+              `)
+              .openOn(map);
+            const wpPopupEl = wpPopup.getElement() as unknown as DomElement | undefined;
+            const btn = wpPopupEl?.querySelector?.('button[data-action="remove-alt-wp"]');
+            btn?.addEventListener('click', () => {
+              onRemoveAltWpRef.current?.(wpIdx);
+              map.closePopup();
+            });
+          });
+        });
+      }
+
+      // Pill labels per leg of the alt path
+      for (let i = 0; i < altPath.length - 1; i++) {
+        const a = altPath[i]!;
+        const b = altPath[i + 1]!;
+        const { midLat: altMidLat, midLng: altMidLng, html: altHtml } = buildLegPillHtml(a.lat, a.lng, b.lat, b.lng);
+        const altLabelIcon = Leaf.divIcon({
+          className: 'leg-label-tooltip route-leg-pill',
+          html: altHtml.replace(ROUTE_OUTLINE, ALT_ROUTE_OUTLINE),
+          iconSize: [0, 0] as L.PointTuple,
+          iconAnchor: [0, 0] as L.PointTuple,
+        });
+        const altM = Leaf.marker([altMidLat, altMidLng], { icon: altLabelIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
+        altLegLabels.push({ from: [a.lat, a.lng] as L.LatLngTuple, to: [b.lat, b.lng] as L.LatLngTuple, marker: altM });
+      }
     }
 
     // TOC / TOD markers
@@ -1234,7 +1300,7 @@ export function AerodromeMap({
       routeBoundsRef.current = null;
       setHasRoute(false);
     };
-  }, [routeOrigin, routeDestination, routeAlternate, waypointsKey, tocTodPositions, hazardSegments, mapInitialized]);
+  }, [routeOrigin, routeDestination, routeAlternate, waypointsKey, altWaypointsKey, tocTodPositions, hazardSegments, mapInitialized]);
 
   // REA corridor overlay
   const reaKey = reaSegments ? reaSegments.map((s) => `${s.nome}:${s.trecho}`).join(';') : '';

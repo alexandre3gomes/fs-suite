@@ -58,12 +58,23 @@ export default function EditVfrPlanScreen() {
     if (!id) return;
     void (async () => {
       try {
-        const data = await apiClient.get<VfrPlanData & { routes?: { sequence: number; waypointIdent: string; latitude: number | null; longitude: number | null }[] }>(`/flight-plans/${id}`);
-        if (data.routes && !data.routeWaypoints) {
-          data.routeWaypoints = data.routes
-            .sort((a, b) => a.sequence - b.sequence)
-            .filter((r) => r.latitude != null && r.longitude != null)
-            .map((r) => ({ lat: r.latitude!, lng: r.longitude!, name: r.waypointIdent }));
+        const data = await apiClient.get<VfrPlanData & { routes?: { sequence: number; waypointIdent: string; latitude: number | null; longitude: number | null; role?: 'MAIN' | 'ALTERNATE' }[] }>(`/flight-plans/${id}`);
+        if (data.routes) {
+          const routesTyped = data.routes as { sequence: number; waypointIdent: string; latitude: number | null; longitude: number | null; role?: 'MAIN' | 'ALTERNATE' }[];
+          const mainRoutes = routesTyped.filter((r) => (r.role ?? 'MAIN') === 'MAIN');
+          const altRoutes = routesTyped.filter((r) => r.role === 'ALTERNATE');
+          if (!data.routeWaypoints) {
+            data.routeWaypoints = mainRoutes
+              .sort((a, b) => a.sequence - b.sequence)
+              .filter((r) => r.latitude != null && r.longitude != null)
+              .map((r) => ({ lat: r.latitude!, lng: r.longitude!, name: r.waypointIdent }));
+          }
+          if (!data.alternateRouteWaypoints) {
+            data.alternateRouteWaypoints = altRoutes
+              .sort((a, b) => a.sequence - b.sequence)
+              .filter((r) => r.latitude != null && r.longitude != null)
+              .map((r) => ({ lat: r.latitude!, lng: r.longitude!, name: r.waypointIdent }));
+          }
         }
         const icaos = [data.originIcao, data.destinationIcao, data.alternateIcao].filter(Boolean) as string[];
         const aerodromes = await Promise.all(

@@ -359,6 +359,32 @@ export function buildFlightPlanDoc(plan: VfrPlanData, mapImageDataUrl?: string, 
     y += 5;
   }
 
+  // Alternate route — destination → alternate segment. Not part of ICAO
+  // Item 15, but operational data the pilot needs (REA compliance, etc).
+  const planAny = plan as unknown as { alternateRouteText?: string; alternateTotalDistanceNm?: number; alternatePlannedAltitude?: number };
+  if (plan.alternateIcao && (planAny.alternateRouteText || planAny.alternateTotalDistanceNm)) {
+    const altRouteLabel = `${t('alternate')} ${t('route').toLowerCase()}: `;
+    doc.setFont('helvetica', 'bold');
+    doc.text(altRouteLabel, 14, y);
+    const arW = doc.getTextWidth(altRouteLabel);
+    doc.setFont('helvetica', 'normal');
+    const altText = planAny.alternateRouteText ?? 'DCT';
+    const altLines = doc.splitTextToSize(altText, 182 - arW);
+    doc.text(altLines[0], 14 + arW, y);
+    for (let i = 1; i < altLines.length; i++) {
+      y += 4;
+      doc.text(altLines[i], 14, y);
+    }
+    if (planAny.alternateTotalDistanceNm) {
+      y += 4;
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...COLORS.muted);
+      doc.text(`(${planAny.alternateTotalDistanceNm.toFixed(1)} NM${planAny.alternatePlannedAltitude ? `, ${planAny.alternatePlannedAltitude} ft` : ''})`, 14 + arW, y);
+      doc.setTextColor(...COLORS.text);
+    }
+    y += 5;
+  }
+
   if (plan.remarks) {
     const item18Label = `${t('item18')}: `;
     doc.setFont('helvetica', 'bold');

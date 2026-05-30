@@ -59,6 +59,23 @@ export interface SuggestRouteResponse {
   compulsoryAltitude: number | null;
 }
 
+export interface RouteOption {
+  /** First corridor of the path — where the route crosses INTO the REA mesh. */
+  entryGate: string;
+  /** Last corridor of the path — where the route crosses OUT toward the destination. */
+  exitGate: string;
+  waypoints: { lat: number; lon: number; nome: string }[];
+  legs: RouteLeg[];
+  corridorNames: string[];
+  totalDistanceNm: number;
+  altitudeRange: { min: number; max: number } | null;
+  compulsoryAltitude: number | null;
+}
+
+export interface RouteOptionsResponse {
+  options: RouteOption[];
+}
+
 export interface RouteViolation {
   legIndex: number;
   from: string;
@@ -92,7 +109,16 @@ export interface RouteAltitudesResponse {
 // ---- Constants ----
 
 const GRAPH_MEMORY_TTL_MS = 3600_000; // 1 hour
+// Strict radius for validateRoute: user-supplied waypoints must actually
+// be REA fixos (or very close to one) — 10 NM is generous but bounded.
 const SNAP_RADIUS_NM = 10;
+// suggestRoute does NOT use a radius cutoff. The origin/destination are
+// AIRPORT coordinates, and any fixed radius is arbitrary (a gate at
+// radius+1 would be wrongly excluded). Instead we take the N geometrically
+// nearest nodes and let total-cost minimization (snapDist + graphDist)
+// rank them — a far gate with a short graph path beats a near gate
+// with a long detour. N kept moderate to bound the O(N²) Dijkstra runs.
+const SUGGEST_TOP_CANDIDATES = 10;
 const BBOX_MARGIN_DEG = 0.5;
 
 // ---- Service ----
@@ -114,6 +140,7 @@ export class ReaNavigationService {
     origin: { lat: number; lon: number },
     dest: { lat: number; lon: number },
     altitude?: number,
+    preferCorridor?: string,
   ): Promise<SuggestRouteResponse> {
     const empty: SuggestRouteResponse = {
       found: false,
@@ -128,28 +155,177 @@ export class ReaNavigationService {
     const graph = await this.getOrBuildGraph(origin, dest);
     if (graph.nodes.size === 0) return empty;
 
-    const originNode = this.snapToGraph(origin.lat, origin.lon, graph);
-    if (!originNode) return empty;
+    const path = this.computePath(graph, origin, dest, altitude, preferCorridor);
+    if (!path) return empty;
+    return this.buildResponse(path, graph);
+  }
 
-    const destCandidates = this.snapCandidates(dest.lat, dest.lon, graph, 6);
-    if (destCandidates.length === 0) return empty;
+  /**
+   * Enumerate the distinct (entry gate → exit gate) route options for O→D.
+   *
+   * Each corridor in the graph is tried as a hard via-preference; the first and
+   * last corridor of the resulting path define that option's entry and exit
+   * gates. Options are deduplicated by (entry, exit) keeping the shortest,
+   * filtered for direction efficiency (the path must make net progress toward
+   * the destination), and sorted by distance.
+   *
+   * This replaces the old "one card per detected corridor" model, which
+   * conflated entry gates, exit gates and through-corridors — so a route could
+   * surface three cards that all produced the identical path (e.g. SBST→SBMT
+   * listing Cometa, Rodoanel Sul and Itaquera, all yielding Rodoanel Sul →
+   * Itaquera → Cometa). One card per real entry→exit pair matches how a pilot
+   * actually reasons about REA: pick where you cross in and where you cross out.
+   */
+  async listRouteOptions(
+    origin: { lat: number; lon: number },
+    dest: { lat: number; lon: number },
+    altitude?: number,
+  ): Promise<RouteOptionsResponse> {
+    const graph = await this.getOrBuildGraph(origin, dest);
+    if (graph.nodes.size === 0) return { options: [] };
 
-    let bestPath: GraphEdge[] | null = null;
-    let bestTotal = Infinity;
-    for (const { node: destNode, snapDist } of destCandidates) {
-      if (destNode.key === originNode.key) continue;
-      const path = this.dijkstra(graph, originNode.key, destNode.key, altitude);
+    // Enumerate only the corridors RELEVANT to this segment, not every corridor
+    // in the bounding box. Detection applies intersection + proximity filtering
+    // (see ReaService.detectReaForRoute); using the raw graph instead surfaced
+    // far-off corridors whose via-path doubled back through the mesh and still
+    // squeaked past the direction filter.
+    const detection = await this.reaService.detectReaForRoute([origin, dest]);
+    const corridorNames = new Set<string>();
+    for (const region of detection.regions) {
+      for (const corridor of region.corridors) corridorNames.add(corridor.name);
+    }
+
+    const byPair = new Map<string, RouteOption>();
+    for (const name of corridorNames) {
+      const path = this.computePath(graph, origin, dest, altitude, name);
       if (!path || path.length === 0) continue;
-      const graphDist = path.reduce((s, e) => s + e.distanceNm, 0);
-      const total = graphDist + snapDist;
-      if (total < bestTotal) {
-        bestTotal = total;
-        bestPath = path;
+      const resp = this.buildResponse(path, graph);
+      if (resp.corridorNames.length === 0 || resp.waypoints.length < 2) continue;
+
+      const entryGate = resp.corridorNames[0]!;
+      const exitGate = resp.corridorNames[resp.corridorNames.length - 1]!;
+      // A single-gate path has no meaningful entry→exit distinction.
+      if (entryGate === exitGate) continue;
+
+      // Direction efficiency: the path must close distance to the destination.
+      // Drop options that enter on the wrong side and double back.
+      const wps = resp.waypoints;
+      const entryToDest = haversineNm(wps[0]!.lat, wps[0]!.lon, dest.lat, dest.lon);
+      const exitToDest = haversineNm(wps[wps.length - 1]!.lat, wps[wps.length - 1]!.lon, dest.lat, dest.lon);
+      let pathDist = 0;
+      for (let i = 1; i < wps.length; i++) {
+        pathDist += haversineNm(wps[i - 1]!.lat, wps[i - 1]!.lon, wps[i]!.lat, wps[i]!.lon);
+      }
+      const progress = pathDist > 0 ? (entryToDest - exitToDest) / pathDist : 0;
+      if (progress < 0.5) continue;
+
+      const key = `${entryGate}>>${exitGate}`;
+      const existing = byPair.get(key);
+      if (!existing || existing.totalDistanceNm > resp.totalDistanceNm) {
+        byPair.set(key, {
+          entryGate,
+          exitGate,
+          waypoints: resp.waypoints,
+          legs: resp.legs,
+          corridorNames: resp.corridorNames,
+          totalDistanceNm: resp.totalDistanceNm,
+          altitudeRange: resp.altitudeRange,
+          compulsoryAltitude: resp.compulsoryAltitude,
+        });
       }
     }
 
-    if (!bestPath) return empty;
-    return this.buildResponse(bestPath, graph);
+    const options = [...byPair.values()].sort((a, b) => a.totalDistanceNm - b.totalDistanceNm);
+    return { options };
+  }
+
+  /**
+   * Core path search, no logging — callable in a loop by listRouteOptions.
+   *
+   * Multi-candidate snap on BOTH ends: the single nearest node by Euclidean
+   * distance may sit in a disconnected sub-region needing a long detour, while
+   * a slightly farther node opens a much shorter path (see
+   * vfr-regulatory-references.md §1.5.3).
+   *
+   * When preferCorridor is set, hard via-routes through one of that corridor's
+   * edges (origin → edge.from, edge.to → dest) instead of using a soft bias —
+   * a soft bias can't pull the path onto an edge no shortest path already
+   * considers. Falls back to the natural shortest path when no preference is
+   * given or the preferred corridor is unreachable.
+   */
+  private computePath(
+    graph: ReaGraph,
+    origin: { lat: number; lon: number },
+    dest: { lat: number; lon: number },
+    altitude?: number,
+    preferCorridor?: string,
+  ): GraphEdge[] | null {
+    const originCandidates = this.snapCandidates(origin.lat, origin.lon, graph, SUGGEST_TOP_CANDIDATES, Infinity);
+    if (originCandidates.length === 0) return null;
+    const destCandidates = this.snapCandidates(dest.lat, dest.lon, graph, SUGGEST_TOP_CANDIDATES, Infinity);
+    if (destCandidates.length === 0) return null;
+
+    let bestPath: GraphEdge[] | null = null;
+    let bestTotal = Infinity;
+
+    if (preferCorridor) {
+      const corridorEdges: GraphEdge[] = [];
+      for (const edges of graph.adjacency.values()) {
+        for (const edge of edges) {
+          if (edge.corridorName === preferCorridor) corridorEdges.push(edge);
+        }
+      }
+
+      for (const cEdge of corridorEdges) {
+        for (const { node: originNode, snapDist: originSnap } of originCandidates) {
+          let leg1: GraphEdge[] | null;
+          if (originNode.key === cEdge.from) {
+            leg1 = [];
+          } else {
+            leg1 = this.dijkstra(graph, originNode.key, cEdge.from, altitude);
+            if (!leg1) continue;
+          }
+
+          for (const { node: destNode, snapDist: destSnap } of destCandidates) {
+            if (destNode.key === originNode.key) continue;
+            let leg2: GraphEdge[] | null;
+            if (cEdge.to === destNode.key) {
+              leg2 = [];
+            } else {
+              leg2 = this.dijkstra(graph, cEdge.to, destNode.key, altitude);
+              if (!leg2) continue;
+            }
+
+            const leg1Dist = leg1.reduce((s, e) => s + e.distanceNm, 0);
+            const leg2Dist = leg2.reduce((s, e) => s + e.distanceNm, 0);
+            const total = originSnap + leg1Dist + cEdge.distanceNm + leg2Dist + destSnap;
+
+            if (total < bestTotal) {
+              bestTotal = total;
+              bestPath = [...leg1, cEdge, ...leg2];
+            }
+          }
+        }
+      }
+    }
+
+    if (!bestPath) {
+      for (const { node: originNode, snapDist: originSnap } of originCandidates) {
+        for (const { node: destNode, snapDist: destSnap } of destCandidates) {
+          if (destNode.key === originNode.key) continue;
+          const path = this.dijkstra(graph, originNode.key, destNode.key, altitude);
+          if (!path || path.length === 0) continue;
+          const graphDist = path.reduce((s, e) => s + e.distanceNm, 0);
+          const total = originSnap + graphDist + destSnap;
+          if (total < bestTotal) {
+            bestTotal = total;
+            bestPath = path;
+          }
+        }
+      }
+    }
+
+    return bestPath;
   }
 
   async validateRoute(
@@ -426,11 +602,20 @@ export class ReaNavigationService {
     return best;
   }
 
-  private snapCandidates(lat: number, lon: number, graph: ReaGraph, count: number): { node: GraphNode; snapDist: number }[] {
+  private snapCandidates(
+    lat: number,
+    lon: number,
+    graph: ReaGraph,
+    count: number,
+    // Pass Infinity to disable the radius cutoff (used by suggestRoute,
+    // where we want every reasonable gate considered regardless of how far
+    // it is — total cost ranking handles the rest).
+    radiusNm: number = SNAP_RADIUS_NM,
+  ): { node: GraphNode; snapDist: number }[] {
     const all: { node: GraphNode; snapDist: number }[] = [];
     for (const node of graph.nodes.values()) {
       const d = haversineNm(lat, lon, node.lat, node.lon);
-      if (d < SNAP_RADIUS_NM) all.push({ node, snapDist: d });
+      if (d < radiusNm) all.push({ node, snapDist: d });
     }
     return all.sort((a, b) => a.snapDist - b.snapDist).slice(0, count);
   }
