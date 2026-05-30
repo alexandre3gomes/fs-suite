@@ -9,9 +9,12 @@ import { getChecklistsForAircraft } from '../../data/checklistCatalog';
 import { useAircraftCatalog } from '../../hooks/useAircraftCatalog';
 import { trackAction, trackSuccess, trackFailure, categorizeError } from '../../services/analytics';
 import { apiClient, API_URL } from '../../services/api.client';
+import { exportFlightPlanLnm } from '../../services/lnmpln-export';
 import type { AiValidationResult } from '../../services/pdf-export';
 import { buildFlightPlanDoc, exportFlightPlanWithAttachments } from '../../services/pdf-export';
+import { exportFlightPlanCharts, exportFlightPlanPln } from '../../services/pln-export';
 import { useUnitsStore, formatWeight, formatFuel, formatSpeed, kgToFuelAmount, fuelAmountToKg, fuelFlowSuffix, type FuelUnit } from '../../stores/units.store';
+import { CopyButton } from '../CopyButton';
 
 import { AerodromeMap, type AerodromeOverlay } from './AerodromeMap';
 import { AerodromeSearch, type Aerodrome } from './AerodromeSearch';
@@ -312,6 +315,8 @@ const ICON_AI = (c = '#fff') => `<svg xmlns="http://www.w3.org/2000/svg" width="
 const ICON_PDF = (c = '#fff') => `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>`;
 const ICON_TRASH = (c = '#fff') => `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
 const ICON_ROUTE = (c = '#fff') => `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M12 19h4.5a3.5 3.5 0 000-7h-9a3.5 3.5 0 010-7H12"/></svg>`;
+const ICON_PLN = (c = '#fff') => `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>`;
+const ICON_LNM = (c = '#fff') => `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>`;
 
 function FabButton({ onPress, disabled, svg, title, bg, size = 34 }: { onPress: () => void; disabled?: boolean; svg: string; title: string; bg: string; size?: number }) {
   const iconSize = Math.round(size * 0.48);
@@ -1537,6 +1542,61 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const [registration, setRegistration] = useState(initialData?.registration ?? '');
   const [simbriefOfpId, setSimbriefOfpId] = useState(initialData?.simbriefOfpId ?? '');
 
+  // Plain-text renderings for the copy-to-clipboard buttons.
+  const fmtAerodrome = (a: { icao: string } | null, rwy: string): string =>
+    a ? `${a.icao}${rwy ? `/RW${rwy}` : ''}` : '—';
+
+  // Route with departure/destination aerodromes + runway, e.g.
+  // "SBST/35 DCT 2338S04640W DCT SBMT/12" — a briefing/SkyVector depiction,
+  // distinct from the bare ICAO Item 15 route the plain copy produces.
+  const routeFullText = useMemo(() => {
+    const dep = origin ? `${origin.icao}${originRunway ? `/${originRunway}` : ''}` : '';
+    const arr = destination ? `${destination.icao}${destRunway ? `/${destRunway}` : ''}` : '';
+    return [dep, routeText, arr].filter(Boolean).join(' ');
+  }, [origin, originRunway, destination, destRunway, routeText]);
+
+  // Operational summary for the Flight Viability panel — DEP/ARR/ALT, perf and
+  // the viability verdict with its items. Good for a quick briefing/Discord paste.
+  const viabilitySummaryText = useMemo(() => {
+    const statusLabel =
+      planViability.status === 'viable' ? t('vfr.viable')
+      : planViability.status === 'viable-with-warnings' ? t('vfr.viableWithWarnings')
+      : planViability.status === 'incomplete' ? t('vfr.incomplete')
+      : planViability.status === 'not-viable' ? t('vfr.notViable')
+      : t('vfr.unverifiable');
+    const lines: string[] = [statusLabel];
+    if (callsign || registration) {
+      lines.push(`C/S ${callsign || registration}${registration && callsign ? `  REG ${registration}` : ''}`);
+    }
+    lines.push(`DEP ${fmtAerodrome(origin, originRunway)}`);
+    lines.push(`ARR ${fmtAerodrome(destination, destRunway)}`);
+    if (alternate) lines.push(`ALT ${fmtAerodrome(alternate, altRunway)}`);
+    const perf = [
+      cruiseLevel ? `CRZ ${cruiseLevel}` : null,
+      cruiseKts && cruiseKts > 0 ? `TAS ${cruiseKts} kt` : null,
+      windAdjustedGS != null ? `GS ${windAdjustedGS} kt` : null,
+      totalDistanceNm > 0 ? `DIST ${Math.round(totalDistanceNm)} nm` : null,
+    ].filter(Boolean).join('  ');
+    if (perf) lines.push(perf);
+    for (const item of planViability.items) lines.push(`• ${item.message}`);
+    return lines.join('\n');
+  }, [planViability, callsign, registration, origin, originRunway, destination, destRunway, alternate, altRunway, cruiseLevel, cruiseKts, windAdjustedGS, totalDistanceNm, t]);
+
+  // Full plan dump for filing elsewhere (SimBrief/IVAO/VATSIM/Discord): header,
+  // aerodromes, cruise, route(s) and Item 18 RMK.
+  const fullPlanText = useMemo(() => {
+    const lines: string[] = [];
+    const head = [callsign || registration, registration && callsign ? `(${registration})` : null, selectedAircraft?.icaoType]
+      .filter(Boolean).join(' ');
+    if (head) lines.push(head);
+    lines.push(`DEP ${fmtAerodrome(origin, originRunway)}  ARR ${fmtAerodrome(destination, destRunway)}${alternate ? `  ALT ${fmtAerodrome(alternate, altRunway)}` : ''}`);
+    if (cruiseLevel) lines.push(`CRZ ${cruiseLevel}`);
+    if (routeText) lines.push(`RTE ${routeText}`);
+    if (alternate && alternateRouteText) lines.push(`ALTN RTE ${alternateRouteText}`);
+    if (fullRemarks) lines.push(`RMK ${fullRemarks}`);
+    return lines.join('\n');
+  }, [callsign, registration, selectedAircraft, origin, originRunway, destination, destRunway, alternate, altRunway, cruiseLevel, routeText, alternateRouteText, fullRemarks]);
+
   // OFP PDF for embedded viewer
   const [ofpPdfUrl, setOfpPdfUrl] = useState<string | null>(null);
 
@@ -1590,12 +1650,16 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       originIcao: origin.icao,
       originName: origin.name,
       originElevationFt: origin.elevation ?? undefined,
+      originLatitude: origin.latitude ?? undefined,
+      originLongitude: origin.longitude ?? undefined,
       originRunwayInUse: originRunway || undefined,
       originMetarRaw: metars[origin.icao]?.raw,
       originTafRaw: tafs[origin.icao]?.raw,
       destinationIcao: destination.icao,
       destinationName: destination.name,
       destinationElevationFt: destination.elevation ?? undefined,
+      destinationLatitude: destination.latitude ?? undefined,
+      destinationLongitude: destination.longitude ?? undefined,
       destinationRunwayInUse: destRunway || undefined,
       destinationMetarRaw: metars[destination.icao]?.raw,
       destinationTafRaw: tafs[destination.icao]?.raw,
@@ -1605,6 +1669,8 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       alternateIcao: alternate?.icao,
       alternateName: alternate?.name,
       alternateElevationFt: alternate?.elevation ?? undefined,
+      alternateLatitude: alternate?.latitude ?? undefined,
+      alternateLongitude: alternate?.longitude ?? undefined,
       alternateRunwayInUse: altRunway || undefined,
       alternateMetarRaw: alternate ? metars[alternate.icao]?.raw : undefined,
       alternateTafRaw: alternate ? tafs[alternate.icao]?.raw : undefined,
@@ -1786,6 +1852,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const [routeTextDraft, setRouteTextDraft] = useState('');
 
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showSimExportModal, setShowSimExportModal] = useState(false);
   const [exportIncludeCharts, setExportIncludeCharts] = useState(false);
   const [exportIncludeChecklist, setExportIncludeChecklist] = useState(false);
   const [exportIncludeAiAnalysis, setExportIncludeAiAnalysis] = useState(false);
@@ -1805,6 +1872,30 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     });
     setShowExportModal(true);
   };
+
+  const handleExportFlightFile = async (
+    kind: 'msfs' | 'charts' | 'lnm',
+    exporter: (data: VfrPlanData) => Promise<boolean>,
+  ) => {
+    const data = buildPlanData();
+    if (!data) {
+      Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
+      return;
+    }
+    try {
+      const ok = await exporter(data);
+      if (!ok) {
+        Alert.alert(t('common.error'), t('vfr.plnMissingCoords'));
+        return;
+      }
+      trackSuccess(`export_${kind}`, { origin_icao: data.originIcao, destination_icao: data.destinationIcao });
+    } catch (err) {
+      const { errorType, statusCode } = categorizeError(err);
+      trackFailure(`export_${kind}`, errorType, { status_code: statusCode });
+      Alert.alert(t('common.error'), t('vfr.exportFailed'));
+    }
+  };
+
 
   const handleExportConfirm = async () => {
     const data = buildPlanData();
@@ -2561,13 +2652,29 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       ) : null}
 
       {/* ====== ROUTE ====== */}
-      <Section title={t('vfr.route')} info={
-        flightRules === 'VFR' ? t('info.routeVfr')
-          : flightRules === 'IFR' ? t('info.routeIfr')
-          : t('info.routeMixed')
-      }>
+      <Section
+        title={t('vfr.route')}
+        info={
+          flightRules === 'VFR' ? t('info.routeVfr')
+            : flightRules === 'IFR' ? t('info.routeIfr')
+            : t('info.routeMixed')
+        }
+      >
+        {/* Label row with the copy control sitting right above the input.
+            Tapping it offers "Route" (bare Item 15) or "Full route" (with
+            departure/destination + runway). */}
+        <View className="mb-1.5 flex-row items-center justify-between">
+          <Text className="text-sm font-medium text-foreground">{t('vfr.routeText')}</Text>
+          {(routeText || origin || destination) ? (
+            <CopyButton
+              options={[
+                { label: t('vfr.copyRoutePlain'), text: routeText },
+                { label: t('vfr.copyRouteFull'), text: routeFullText },
+              ]}
+            />
+          ) : null}
+        </View>
         <Input
-          label={t('vfr.routeText')}
           value={routeText}
           onChangeText={setRouteText}
           placeholder={hasIfr ? 'SID AIRWAY WAYPOINT STAR' : 'DCT 2338S04640W DCT 2345S04655W DCT'}
@@ -2583,8 +2690,11 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             this leg; user can type the route or add waypoints on the map. */}
         {alternate ? (
           <View className="mt-3">
+            <View className="mb-1.5 flex-row items-center justify-between">
+              <Text className="text-sm font-medium text-foreground">{`${t('vfr.alternate')} ${t('vfr.routeText').toLowerCase()}`}</Text>
+              {alternateRouteText ? <CopyButton text={alternateRouteText} /> : null}
+            </View>
             <Input
-              label={`${t('vfr.alternate')} ${t('vfr.routeText').toLowerCase()}`}
               value={alternateRouteText}
               onChangeText={setAlternateRouteText}
               placeholder="DCT 2338S04640W DCT"
@@ -2808,7 +2918,10 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       <Section title={t('vfr.remarksTitle')}>
         {autoRemarks ? (
           <View className="mb-2 rounded-sm border border-border bg-surface-muted px-3 py-2">
-            <Text className="text-[10px] font-medium text-muted-foreground">{t('vfr.remarksAuto')}</Text>
+            <View className="flex-row items-center justify-between">
+              <Text className="text-[10px] font-medium text-muted-foreground">{t('vfr.remarksAuto')}</Text>
+              <CopyButton text={autoRemarks} />
+            </View>
             <Text className="mt-0.5 font-mono text-xs text-foreground" selectable>{autoRemarks}</Text>
           </View>
         ) : null}
@@ -2820,7 +2933,10 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
         />
         {fullRemarks ? (
           <View className="mt-2 rounded-sm border border-primary/20 bg-primary/5 px-3 py-2">
-            <Text className="text-[10px] font-medium text-primary">{t('vfr.remarksPreview')}</Text>
+            <View className="flex-row items-center justify-between">
+              <Text className="text-[10px] font-medium text-primary">{t('vfr.remarksPreview')}</Text>
+              <CopyButton text={fullRemarks} />
+            </View>
             <Text className="mt-0.5 font-mono text-xs text-foreground" selectable>{fullRemarks}</Text>
           </View>
         ) : null}
@@ -2943,7 +3059,10 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
       {/* ====== FLIGHT VIABILITY ====== */}
       {hasVfr ? (
-        <Section title={t('vfr.flightViability')}>
+        <Section
+          title={t('vfr.flightViability')}
+          trailing={<CopyButton text={viabilitySummaryText} label={t('vfr.copySummary')} />}
+        >
           {/* Flight Summary */}
           <View className="mb-3 rounded-md border border-border bg-surface-muted px-3 py-2.5">
             {/* Callsign + Registration */}
@@ -3133,6 +3252,12 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
               ))}
             </View>
           ) : null}
+
+          {/* Full-plan copy — header, aerodromes, cruise, route(s) and RMK in one
+              paste for filing on SimBrief/IVAO/VATSIM/Discord. */}
+          <View className="mt-3 flex-row justify-end">
+            <CopyButton text={fullPlanText} label={t('vfr.copyFullPlan')} />
+          </View>
         </Section>
       ) : null}
 
@@ -3180,6 +3305,14 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
               size={34}
             />
             <FabButton
+              onPress={() => setShowSimExportModal(true)}
+              disabled={!origin || !destination}
+              svg={ICON_PLN()}
+              title={t('vfr.exportSim')}
+              bg="#0e7490"
+              size={34}
+            />
+            <FabButton
               onPress={() => { void handleAiValidate(); }}
               disabled={validating || (!aiReady && !validationResult)}
               svg={ICON_AI()}
@@ -3197,6 +3330,55 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             />
           </View>
         </>
+      ) : null}
+      {showSimExportModal ? (
+        <Modal transparent animationType="fade" onRequestClose={() => setShowSimExportModal(false)}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 }}
+            onPress={() => setShowSimExportModal(false)}
+          >
+            <Pressable
+              style={{ width: '100%', maxWidth: 360, gap: 10 }}
+              className="rounded-lg border border-border bg-card p-4 shadow-xl"
+              onPress={() => {}}
+            >
+              <Text className="text-base font-bold text-foreground">{t('vfr.exportSim')}</Text>
+              <Pressable
+                onPress={() => { setShowSimExportModal(false); void handleExportFlightFile('msfs', exportFlightPlanPln); }}
+                className="flex-row items-center gap-3 rounded-md border border-border bg-surface-muted px-3 py-3 active:opacity-70"
+              >
+                <View style={{ width: 28, height: 28 }}><SvgIcon svg={ICON_PLN('#0e7490')} size={22} /></View>
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold text-foreground">MSFS</Text>
+                  <Text className="text-[11px] text-muted-foreground">.pln · planner.flightsimulator.com</Text>
+                </View>
+              </Pressable>
+              <Pressable
+                onPress={() => { setShowSimExportModal(false); void handleExportFlightFile('charts', exportFlightPlanCharts); }}
+                className="flex-row items-center gap-3 rounded-md border border-border bg-surface-muted px-3 py-3 active:opacity-70"
+              >
+                <View style={{ width: 28, height: 28 }}><SvgIcon svg={ICON_PLN('#7c3aed')} size={22} /></View>
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold text-foreground">Navigraph Charts</Text>
+                  <Text className="text-[11px] text-muted-foreground">.pln · com pista</Text>
+                </View>
+              </Pressable>
+              <Pressable
+                onPress={() => { setShowSimExportModal(false); void handleExportFlightFile('lnm', exportFlightPlanLnm); }}
+                className="flex-row items-center gap-3 rounded-md border border-border bg-surface-muted px-3 py-3 active:opacity-70"
+              >
+                <View style={{ width: 28, height: 28 }}><SvgIcon svg={ICON_LNM('#0f766e')} size={22} /></View>
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold text-foreground">Little Navmap</Text>
+                  <Text className="text-[11px] text-muted-foreground">.lnmpln · com pista</Text>
+                </View>
+              </Pressable>
+              <Pressable onPress={() => setShowSimExportModal(false)} className="mt-1 items-center py-2">
+                <Text className="text-sm font-medium text-muted-foreground">{t('common.cancel')}</Text>
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
       ) : null}
       {showExportModal ? (
         <Modal transparent animationType="fade" onRequestClose={() => setShowExportModal(false)}>

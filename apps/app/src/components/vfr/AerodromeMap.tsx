@@ -1164,11 +1164,11 @@ export function AerodromeMap({
       });
     }
 
-    // Alternate route — same pattern, with intermediate waypoints supported.
-    // ICA 100-12 requires REA Obrig compliance on this leg too, so the
-    // user can route through corridor waypoints exactly like the main leg.
-    interface AltLegInfo { from: L.LatLngTuple; to: L.LatLngTuple; marker: L.Marker }
-    const altLegLabels: AltLegInfo[] = [];
+    // Alternate route — full feature parity with the main leg: draggable
+    // intermediate waypoints with live polyline update and an edit popup
+    // (rename / satellite / remove). ICA 100-12 REA compliance applies here too.
+    // Declared outside the block so the leg-label visibility pass below can see it.
+    const altLegLabels: { from: L.LatLngTuple; to: L.LatLngTuple; marker: L.Marker }[] = [];
     if (routeDestination && routeAlternate) {
       const altPath: { lat: number; lng: number; name: string; isIntermediate: boolean }[] = [
         { ...routeDestination, isIntermediate: false },
@@ -1179,8 +1179,10 @@ export function AerodromeMap({
       altPath.push({ ...routeAlternate, isIntermediate: false });
 
       const altLatlngs: L.LatLngTuple[] = altPath.map((p) => [p.lat, p.lng] as L.LatLngTuple);
-      Leaf.polyline(altLatlngs, { color: ALT_ROUTE_OUTLINE, weight: 8, opacity: 0.6, lineCap: 'butt', lineJoin: 'round' }).addTo(group);
-      Leaf.polyline(altLatlngs, { color: ALT_ROUTE_COLOR, weight: 5, opacity: 0.85, lineCap: 'butt', lineJoin: 'round' }).addTo(group);
+      const altOutlinePoly = Leaf.polyline(altLatlngs, { color: ALT_ROUTE_OUTLINE, weight: 8, opacity: 0.6, lineCap: 'butt', lineJoin: 'round' }).addTo(group);
+      const altMainPoly = Leaf.polyline(altLatlngs, { color: ALT_ROUTE_COLOR, weight: 5, opacity: 0.85, lineCap: 'butt', lineJoin: 'round' }).addTo(group);
+      // Mutable copy for live drag updates (index 0 = destination).
+      const altLive = altPath.map((p) => [p.lat, p.lng] as [number, number]);
 
       const altEmblemIcon = Leaf.divIcon({
         className: 'leg-label-tooltip',
@@ -1190,53 +1192,126 @@ export function AerodromeMap({
       });
       Leaf.marker([routeAlternate.lat, routeAlternate.lng], { icon: altEmblemIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
 
-      // Intermediate alt waypoint markers — click to remove.
+      // Per-leg pill labels (kept so drag can update them live + the visibility pass can read them).
+      for (let i = 0; i < altPath.length - 1; i++) {
+        const a = altPath[i]!;
+        const b = altPath[i + 1]!;
+        const { midLat, midLng, html } = buildLegPillHtml(a.lat, a.lng, b.lat, b.lng);
+        const altLabelIcon = Leaf.divIcon({
+          className: 'leg-label-tooltip route-leg-pill',
+          html: html.replace(ROUTE_OUTLINE, ALT_ROUTE_OUTLINE),
+          iconSize: [0, 0] as L.PointTuple,
+          iconAnchor: [0, 0] as L.PointTuple,
+        });
+        const altM = Leaf.marker([midLat, midLng], { icon: altLabelIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
+        altLegLabels.push({ from: [a.lat, a.lng] as L.LatLngTuple, to: [b.lat, b.lng] as L.LatLngTuple, marker: altM });
+      }
+      const updateAltLegLabel = (legIdx: number) => {
+        const lm = altLegLabels[legIdx]?.marker;
+        const fromPos = altLive[legIdx];
+        const toPos = altLive[legIdx + 1];
+        if (!lm || !fromPos || !toPos) return;
+        const { midLat, midLng, html } = buildLegPillHtml(fromPos[0], fromPos[1], toPos[0], toPos[1]);
+        lm.setLatLng([midLat, midLng]);
+        const el = lm.getElement() as unknown as DomElement | null;
+        if (el) el.innerHTML = html.replace(ROUTE_OUTLINE, ALT_ROUTE_OUTLINE);
+      };
+
+      // Intermediate alt waypoint markers — draggable, name label + edit popup.
       if (alternateRouteWaypoints && alternateRouteWaypoints.length > 0) {
         alternateRouteWaypoints.forEach((wp, wpIdx) => {
+          const li = wpIdx + 1; // index into altLive (destination at 0)
+
+          const nameIcon = Leaf.divIcon({
+            className: 'leg-label-tooltip',
+            html: `<div style="transform:translate(-50%,-100%);margin-top:-8px"><div style="display:inline-flex;align-items:center;gap:4px;background:rgba(120,53,15,0.6);color:#fff;font-size:11px;font-weight:700;padding:3px 7px;border-radius:4px;white-space:nowrap;font-family:system-ui,sans-serif;line-height:1;letter-spacing:0.4px;border:1px solid rgba(255,255,255,0.12)"><span style="width:8px;height:8px;border-radius:4px;background:${ALT_ROUTE_COLOR};flex-shrink:0"></span>${escapeHtml(wp.name)}</div><div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:4px solid rgba(120,53,15,0.6);margin:0 auto"></div></div>`,
+            iconSize: [0, 0] as L.PointTuple,
+            iconAnchor: [0, 0] as L.PointTuple,
+          });
+          const nameMarker = Leaf.marker([wp.lat, wp.lng], { icon: nameIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
+
           const wpIcon = Leaf.divIcon({
             className: 'leg-label-tooltip',
             html: `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#fff" stroke="${ALT_ROUTE_COLOR}" stroke-width="2.5"/></svg>`,
             iconSize: [14, 14] as L.PointTuple,
             iconAnchor: [7, 7] as L.PointTuple,
           });
-          const wpMarker = Leaf.marker([wp.lat, wp.lng], { icon: wpIcon, pane: 'routeLabels' }).addTo(group);
-          wpMarker.on('click', () => {
-            const wpPopup = Leaf.popup({ closeButton: true, maxWidth: 220 })
-              .setLatLng([wp.lat, wp.lng])
-              .setContent(`
-                <div style="font-family:system-ui,sans-serif;min-width:180px">
-                  <div style="font-weight:700;font-size:12px;margin-bottom:4px;color:#1a1d26">${escapeHtml(wp.name)}</div>
-                  <div style="font-size:10px;color:#6b7280;margin-bottom:8px">${wp.lat.toFixed(4)}, ${wp.lng.toFixed(4)}</div>
+          const marker = Leaf.marker([wp.lat, wp.lng], { icon: wpIcon, pane: 'routeLabels', draggable: true }).addTo(group);
+          const mEl = marker.getElement() as unknown as DomElement | null;
+          if (mEl) mEl.style['cursor'] = 'move';
+
+          marker.on('drag', () => {
+            const pos = marker.getLatLng();
+            altLive[li] = [pos.lat, pos.lng];
+            altOutlinePoly.setLatLngs(altLive);
+            altMainPoly.setLatLngs(altLive);
+            nameMarker.setLatLng(pos);
+            if (li > 0) updateAltLegLabel(li - 1);
+            if (li < altLive.length - 1) updateAltLegLabel(li);
+          });
+
+          marker.on('dragend', () => {
+            const pos = marker.getLatLng();
+            onUpdateAltWpRef.current?.(wpIdx, { lat: pos.lat, lng: pos.lng, name: wp.name });
+          });
+
+          marker.on('contextmenu', (e: L.LeafletMouseEvent) => {
+            Leaf.DomEvent.stopPropagation(e);
+            const pos = marker.getLatLng();
+            const popup = Leaf.popup({ closeButton: true, minWidth: 220 }).setLatLng(pos).setContent(`
+              <div style="font-family:system-ui,sans-serif;min-width:220px">
+                <div style="font-size:10px;color:#6b7280;margin-bottom:8px">${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}</div>
+                <div style="margin-bottom:8px">
+                  <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">${escapeHtml(tRef.current('vfr.waypointName'))}</label>
+                  <input id="alt-wp-name" type="text" value="${escapeHtml(wp.name)}"
+                    style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;font-weight:600" />
+                </div>
+                <div style="display:flex;gap:6px">
+                  <button data-action="save-alt-wp"
+                    style="flex:1;display:inline-flex;align-items:center;justify-content:center;padding:5px 4px;background:${ALT_ROUTE_COLOR};color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">
+                    ${escapeHtml(tRef.current('common.save'))}
+                  </button>
+                  <button data-action="sat-alt-wp"
+                    style="flex:0 0 36px;display:inline-flex;align-items:center;justify-content:center;padding:5px;background:#4f46e5;color:#fff;border:none;border-radius:4px;cursor:pointer" title="Satélite">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                  </button>
                   <button data-action="remove-alt-wp"
-                    style="width:100%;padding:6px;background:#dc2626;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">
-                    ${escapeHtml(tRef.current('vfr.removeWaypoint'))}
+                    style="flex:0 0 36px;display:inline-flex;align-items:center;justify-content:center;padding:5px;background:#dc2626;color:#fff;border:none;border-radius:4px;cursor:pointer" title="${escapeHtml(tRef.current('vfr.removeWaypoint'))}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                   </button>
                 </div>
-              `)
-              .openOn(map);
-            const wpPopupEl = wpPopup.getElement() as unknown as DomElement | undefined;
-            const btn = wpPopupEl?.querySelector?.('button[data-action="remove-alt-wp"]');
-            btn?.addEventListener('click', () => {
-              onRemoveAltWpRef.current?.(wpIdx);
-              map.closePopup();
-            });
+              </div>
+            `).openOn(map);
+            const popupEl = popup.getElement() as unknown as DomElement | undefined;
+            if (popupEl) {
+              popupEl.querySelector?.('button[data-action="save-alt-wp"]')?.addEventListener('click', () => {
+                const nameInput = popupEl.querySelector?.('#alt-wp-name');
+                const newName = (nameInput?.value as string | undefined)?.trim() || wp.name;
+                const curPos = marker.getLatLng();
+                if (newName !== wp.name) {
+                  onUpdateAltWpRef.current?.(wpIdx, { lat: curPos.lat, lng: curPos.lng, name: newName });
+                }
+                map.closePopup();
+              });
+              popupEl.querySelector?.('button[data-action="remove-alt-wp"]')?.addEventListener('click', () => {
+                onRemoveAltWpRef.current?.(wpIdx);
+                map.closePopup();
+              });
+              popupEl.querySelector?.('button[data-action="sat-alt-wp"]')?.addEventListener('click', () => {
+                const curPos = marker.getLatLng();
+                const satUrl = buildSatelliteUrl(curPos.lat, curPos.lng, 0.08, 320, 200);
+                map.closePopup();
+                Leaf.popup({ closeButton: true, maxWidth: 360 }).setLatLng(curPos).setContent(`
+                  <div style="font-family:system-ui,sans-serif;min-width:320px">
+                    <div style="font-weight:700;font-size:12px;margin-bottom:2px;color:#1a1d26">${escapeHtml(wp.name)}</div>
+                    <div style="font-size:10px;color:#6b7280;margin-bottom:6px">${curPos.lat.toFixed(4)}, ${curPos.lng.toFixed(4)}</div>
+                    <img src="${satUrl}" style="width:320px;height:200px;border-radius:4px;border:1px solid #e5e7eb;object-fit:cover;display:block" />
+                  </div>
+                `).openOn(map);
+              });
+            }
           });
         });
-      }
-
-      // Pill labels per leg of the alt path
-      for (let i = 0; i < altPath.length - 1; i++) {
-        const a = altPath[i]!;
-        const b = altPath[i + 1]!;
-        const { midLat: altMidLat, midLng: altMidLng, html: altHtml } = buildLegPillHtml(a.lat, a.lng, b.lat, b.lng);
-        const altLabelIcon = Leaf.divIcon({
-          className: 'leg-label-tooltip route-leg-pill',
-          html: altHtml.replace(ROUTE_OUTLINE, ALT_ROUTE_OUTLINE),
-          iconSize: [0, 0] as L.PointTuple,
-          iconAnchor: [0, 0] as L.PointTuple,
-        });
-        const altM = Leaf.marker([altMidLat, altMidLng], { icon: altLabelIcon, interactive: false, pane: 'routeLabels' }).addTo(group);
-        altLegLabels.push({ from: [a.lat, a.lng] as L.LatLngTuple, to: [b.lat, b.lng] as L.LatLngTuple, marker: altM });
       }
     }
 
