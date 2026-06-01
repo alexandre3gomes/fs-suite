@@ -87,6 +87,19 @@ Supabase (PG) Upstash    Google
 | `api.fs-suite.com` | A | EC2 Elastic IP (`52.18.13.237`) | Proxied |
 | `api-candidate.fs-suite.com` | — | Cloudflare Worker → Cloud Run | — _(Workers handles routing)_ |
 
+**Email sending (Resend).** To send product-announcement emails from
+`@fs-suite.com`, verify the domain in Resend and add the records it generates
+to Cloudflare (all **DNS-only / unproxied**):
+
+| Record | Type | Notes |
+|--------|------|-------|
+| `resend._domainkey.fs-suite.com` (and any extra `*._domainkey`) | TXT/CNAME | DKIM — exact values from the Resend dashboard. |
+| `send.fs-suite.com` (Return-Path) | MX + TXT (SPF) | Bounce/Return-Path subdomain; `MX → feedback-smtp.<region>.amazonses.com`, `TXT "v=spf1 include:amazonses.com ~all"`. |
+
+These are **send-only** and coexist with the iCloud Custom Domain **MX** records
+that receive mail for `@fs-suite.com` — Resend uses the `send.` subdomain, so the
+apex MX (iCloud) is untouched.
+
 ## EC2 Setup
 
 ```bash
@@ -314,7 +327,8 @@ hand.
 | `AVWX_TOKEN` | A (optional) | if enriched METAR enabled | — | — |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | A | ✅ | — | — |
 | `ADMIN_METRICS_TOKEN` | A + D | ✅ | — | ✅ (`metrics-digest.yml`) |
-| `SUPABASE_SERVICE_ROLE_KEY` | D | — | — | ✅ (`db-backup.yml`) |
+| `RESEND_API_KEY` | A | ✅ (announcement emails) | — | — |
+| `SUPABASE_SERVICE_ROLE_KEY` | A + D | ✅ (screenshot uploads) | — | ✅ (`db-backup.yml`) |
 | `EXPO_PUBLIC_POSTHOG_KEY` → `POSTHOG_KEY` | B | — | ✅ | ✅ (injected at build by `deploy-app.yml`) |
 | `EC2_HOST` / `EC2_SSH_KEY` / `EC2_USER` | C | — | — | ✅ (`deploy.yml`) |
 | `GCP_PROJECT_ID` / `GCP_WIF_PROVIDER` / `GCP_WIF_SERVICE_ACCOUNT` | C | — | — | ✅ (`deploy.yml`) |
@@ -374,7 +388,16 @@ service provisioned and credentials in hand, you can skip straight to the
 | `AVWX_TOKEN` | AVWX token — enriched METAR decoding. Same caveat as `OWM_API_KEY`. |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare R2 credentials for chart overlay cache. |
 | `ADMIN_METRICS_TOKEN` | Header-token auth for `GET /v1/admin/metrics` (consumed by `metrics-digest.yml`). Generate with `openssl rand -hex 32`. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service-role JWT from Supabase dashboard → Settings → API. Used by `db-backup.yml` to upload dumps to Supabase Storage. |
+| `RESEND_API_KEY` | [Resend](https://resend.com) API key — sends product-announcement emails (admin → Communications). Requires the `fs-suite.com` domain verified in Resend (DKIM/SPF, see [DNS Records](#dns-records)). Without it, compose/upload/dry-run still work but real sends return 400. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-side full-access key (bypasses RLS). On the **new** Supabase key system this is the **secret key** (`sb_secret_…`) from dashboard → Settings → API Keys → Secret key; on legacy projects it's the `service_role` JWT. Used by `db-backup.yml` to upload DB dumps **and** by the API to upload communication screenshots to the public `communications` bucket. The env var name is kept for continuity even when the value is an `sb_secret_…` key. |
+
+Non-secret config (set as plain env vars, not in Secret Manager):
+
+| Var | Description |
+|-----|-------------|
+| `API_PUBLIC_URL` | Externally reachable origin of this API (e.g. `https://api.fs-suite.com`). Used to build one-click unsubscribe links in emails. Defaults to `http://localhost:3001` for local dev. |
+| `SUPABASE_URL` | Public Supabase project URL (`https://<ref>.supabase.co`) — dashboard → Settings → API → "Project URL". Not secret. Where screenshots are uploaded/served from the public `communications` bucket. |
+| `EMAIL_FROM` / `EMAIL_REPLY_TO` | Optional overrides for the sender/reply-to. Code defaults to `FS Suite <novidades@fs-suite.com>` / `alexandre@fs-suite.com`; the sender domain must be verified in Resend. |
 | `EXPO_PUBLIC_POSTHOG_KEY` (`.env`) → `POSTHOG_KEY` (GH Secret) | PostHog project key. **Frontend only** — embedded into the Expo web bundle at build time via `deploy-app.yml`. The API does not use PostHog. |
 | `EC2_HOST` / `EC2_SSH_KEY` / `EC2_USER` | SSH access to the EC2 deploy target. |
 | `GCP_PROJECT_ID` / `GCP_WIF_PROVIDER` / `GCP_WIF_SERVICE_ACCOUNT` | GCP project + Workload Identity Federation for Cloud Run deploy. `GCP_SA_KEY` is the legacy fallback; remove once WIF is active. |

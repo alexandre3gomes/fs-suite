@@ -20,13 +20,24 @@ export class UsersService {
   }
 
   async updateMe(id: string, dto: UpdateUserDto): Promise<User> {
+    const consentChanged = dto.marketingEmailConsent !== undefined;
     const user = await this.prisma.user.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
+        ...(consentChanged && {
+          marketingEmailConsent: dto.marketingEmailConsent,
+          marketingEmailConsentUpdatedAt: new Date(),
+        }),
       },
     });
     void this.activity.log('user.updated', id);
+    if (consentChanged) {
+      void this.activity.log(
+        dto.marketingEmailConsent ? 'email.consent.opt_in' : 'email.consent.opt_out',
+        id,
+      );
+    }
     return user;
   }
 

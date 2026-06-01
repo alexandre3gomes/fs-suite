@@ -166,6 +166,8 @@ create_secret "r2-account-id"         "R2_ACCOUNT_ID"
 create_secret "r2-access-key-id"      "R2_ACCESS_KEY_ID"
 create_secret "r2-secret-access-key"  "R2_SECRET_ACCESS_KEY"
 create_secret "admin-metrics-token"   "ADMIN_METRICS_TOKEN"
+create_secret "resend-api-key"            "RESEND_API_KEY"
+create_secret "supabase-service-role-key" "SUPABASE_SERVICE_ROLE_KEY"
 
 # Optional. If you start using these features, add the matching line
 # to .github/workflows/deploy.yml --set-secrets so Cloud Run injects

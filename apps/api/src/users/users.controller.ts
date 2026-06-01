@@ -13,6 +13,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { User } from '@prisma/client';
 import type { Response } from 'express';
 
+import { isAdminEmail } from '../auth/admin-emails';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
@@ -28,8 +29,8 @@ export class UsersController {
 
   @Get('me')
   @ApiOperation({ summary: 'Get authenticated user profile' })
-  getMe(@CurrentUser() user: User): User {
-    return user;
+  getMe(@CurrentUser() user: User): User & { isAdmin: boolean } {
+    return { ...user, isAdmin: isAdminEmail(user.email) };
   }
 
   @Patch('me')
