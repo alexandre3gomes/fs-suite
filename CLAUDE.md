@@ -78,12 +78,30 @@ shows the live diff between prod and the WSL test environment.
 
 ## External Integrations
 
-| Service     | Status | Purpose                                  |
-|-------------|--------|------------------------------------------|
-| SimBrief    | Active | Import OFP flight plan data              |
-| SkyVector   | Active | Contextual route and airport visualization |
-| DECEA/AIS   | Active | Aerodrome charts (ADC, VAC, PDC)         |
-| FlightAware | Future | Flight tracking and operational reference |
+| Service     | Status   | Purpose                                  |
+|-------------|----------|------------------------------------------|
+| SimBrief    | Active   | Import OFP flight plan data              |
+| SkyVector   | Active   | Contextual route and airport visualization |
+| DECEA/AIS   | Active   | Aerodrome charts (ADC, VAC, PDC)         |
+| Resend      | Reserved | Email provider configured and ready for future user communications |
+| FlightAware | Future   | Flight tracking and operational reference |
+
+## Admin area & user communications
+
+The in-app admin area (gated by `User.isAdmin`, with the `ADMIN_EMAILS`
+allow-list as a bootstrap fallback) is a **user management** screen: list users,
+grant/revoke admin, and soft-delete accounts (LGPD-consistent).
+
+- **Admin access** is a persisted `User.isAdmin` flag, toggled from the admin
+  area. `ADMIN_EMAILS` (`auth/admin-emails.ts`) are always admin so the instance
+  can't be locked out. `GET /users/me` returns the effective `isAdmin`.
+- **User communications are not built yet.** The earlier in-app announcement /
+  broadcast-email feature was removed. **Resend stays configured and ready**
+  (`RESEND_API_KEY` env) for future user communications — rebuild on top of it
+  when needed.
+- **Marketing consent is retained:** users keep a `marketingEmailConsent`
+  opt-in (default true) plus a one-click LGPD unsubscribe endpoint
+  (`GET /v1/email/unsubscribe`), so the future email feature is consent-ready.
 
 ## Production URLs
 

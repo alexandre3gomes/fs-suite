@@ -2,17 +2,18 @@ import { type CanActivate, type ExecutionContext, ForbiddenException, Injectable
 import type { User } from '@prisma/client';
 import type { Request } from 'express';
 
-import { isAdminEmail } from '../../auth/admin-emails';
+import { isUserAdmin } from '../../auth/admin-emails';
 
 /**
- * Requires the JWT-authenticated user to be an admin (see ADMIN_EMAILS).
- * Must run AFTER JwtAuthGuard, which populates `req.user`.
+ * Requires the JWT-authenticated user to be an admin (persisted User.isAdmin
+ * flag, or a bootstrap ADMIN_EMAILS account). Must run AFTER JwtAuthGuard,
+ * which populates `req.user`.
  */
 @Injectable()
 export class AdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<Request & { user?: User }>();
-    if (!isAdminEmail(req.user?.email)) {
+    if (!isUserAdmin(req.user)) {
       throw new ForbiddenException('Admin access required');
     }
     return true;

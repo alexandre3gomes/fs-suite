@@ -2,11 +2,13 @@ import { Module } from '@nestjs/common';
 
 import { EmailTokenService } from './email-token.service';
 import { EmailController } from './email.controller';
-import { EmailService } from './email.service';
 
+// Email sending (Resend) was removed with the communications feature. This
+// module now only serves the LGPD one-click unsubscribe endpoint and its HMAC
+// token service, kept for future user communications.
 @Module({
   controllers: [EmailController],
-  providers: [EmailTokenService, EmailService],
-  exports: [EmailTokenService, EmailService],
+  providers: [EmailTokenService],
+  exports: [EmailTokenService],
 })
 export class EmailModule {}

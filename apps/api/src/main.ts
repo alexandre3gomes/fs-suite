@@ -34,10 +34,6 @@ async function bootstrap(): Promise<void> {
   // Use pino as the application logger
   app.useLogger(app.get(Logger));
 
-  // Raise the JSON body limit so admins can upload base64 screenshots for
-  // email communications (default is 100kb). Other routes send small payloads.
-  app.useBodyParser('json', { limit: '6mb' });
-
   // Security headers
   app.use(helmet());
 

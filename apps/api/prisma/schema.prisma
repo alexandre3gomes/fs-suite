@@ -20,6 +20,10 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at") // soft delete for LGPD
 
+  // Admin access. Persisted so it can be granted/revoked from the in-app admin
+  // area. ADMIN_EMAILS still acts as a bootstrap fallback (see admin-emails.ts).
+  isAdmin Boolean @default(false) @map("is_admin")
+
   // Opt-out consent for product/announcement emails (LGPD: legitimate interest
   // + one-click unsubscribe). Defaults true; flipped false on unsubscribe.
   marketingEmailConsent          Boolean   @default(true) @map("marketing_email_consent")
@@ -31,7 +35,6 @@ model User {
   aircraftProfiles       AircraftProfile[]
   activityLogs           ActivityLog[]
   integrationConnections IntegrationConnection[]
-  emailDeliveries        EmailDelivery[]
 
   @@map("users")
 }
@@ -399,57 +402,6 @@ model ActivityLog {
 
   @@index([createdAt])
   @@map("activity_logs")
-}
-
-/// Admin-authored broadcast (e.g. feature announcement) sent by email.
-model Communication {
-  id        String              @id @default(cuid())
-  type      CommunicationType
-  subject   String
-  body      String // markdown
-  /// Ordered list of { url, path, caption? } — screenshots in Supabase Storage.
-  images    Json                @default("[]")
-  status    CommunicationStatus @default(DRAFT)
-  createdByEmail String          @map("created_by_email")
-  createdAt DateTime            @default(now()) @map("created_at")
-  sentAt    DateTime?           @map("sent_at")
-
-  deliveries EmailDelivery[]
-
-  @@index([status])
-  @@map("communications")
-}
-
-/// Per-recipient delivery record — gives idempotency + auditability.
-model EmailDelivery {
-  id              String              @id @default(cuid())
-  status          EmailDeliveryStatus
-  providerId      String?             @map("provider_id") // Resend message id
-  error           String?
-  createdAt       DateTime            @default(now()) @map("created_at")
-
-  userId          String        @map("user_id")
-  user            User          @relation(fields: [userId], references: [id])
-  communicationId String        @map("communication_id")
-  communication   Communication @relation(fields: [communicationId], references: [id])
-
-  @@unique([userId, communicationId])
-  @@index([communicationId])
-  @@map("email_deliveries")
-}
-
-enum CommunicationType {
-  NEW_FEATURE
-}
-
-enum CommunicationStatus {
-  DRAFT
-  SENT
-}
-
-enum EmailDeliveryStatus {
-  SENT
-  FAILED
 }
 
 enum PlanStatus {

@@ -30,10 +30,10 @@ export default function AdminScreen(): JSX.Element {
         </Text>
 
         <Card className="active:opacity-80">
-          <Pressable onPress={() => router.push('/(auth)/admin/communications')}>
+          <Pressable onPress={() => router.push('/(auth)/admin/users')}>
             <CardContent className="md:px-8 md:py-6">
-              <Text className="text-base font-bold md:text-lg">{t('admin.communications')}</Text>
-              <Text variant="muted" className="mt-1">{t('admin.communicationsDesc')}</Text>
+              <Text className="text-base font-bold md:text-lg">{t('admin.usersCard')}</Text>
+              <Text variant="muted" className="mt-1">{t('admin.usersCardDesc')}</Text>
             </CardContent>
           </Pressable>
         </Card>
