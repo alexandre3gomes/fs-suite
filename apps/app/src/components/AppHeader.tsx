@@ -127,6 +127,14 @@ export function AppHeader() {
             >
               <Text className="text-sm font-medium text-foreground">{t('dashboard.profile')}</Text>
             </Pressable>
+            {user?.isAdmin ? (
+              <Pressable
+                className={`px-4 py-3 ${Platform.OS === 'web' ? 'cursor-pointer transition-colors hover:bg-secondary' : 'active:bg-secondary'}`}
+                onPress={() => { setMenuOpen(false); router.push('/(auth)/admin' as never); }}
+              >
+                <Text className="text-sm font-medium text-foreground">{t('admin.title')}</Text>
+              </Pressable>
+            ) : null}
             <Separator />
             <Pressable
               className={`px-4 py-3 ${Platform.OS === 'web' ? 'cursor-pointer transition-colors hover:bg-secondary' : 'active:bg-secondary'}`}

@@ -10,6 +10,8 @@ interface UserProfile {
   email: string;
   name: string;
   avatarUrl: string | null;
+  isAdmin?: boolean;
+  marketingEmailConsent?: boolean;
 }
 
 export function useCurrentUser(): {

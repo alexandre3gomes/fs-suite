@@ -5,6 +5,8 @@ interface AuthUser {
   email: string;
   name: string;
   avatarUrl: string | null;
+  isAdmin?: boolean;
+  marketingEmailConsent?: boolean;
 }
 
 interface AuthState {

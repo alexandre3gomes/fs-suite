@@ -12,6 +12,8 @@ import { AircraftProfilesModule } from './aircraft-profiles/aircraft-profiles.mo
 import { AirportsModule } from './airports/airports.module';
 import { AuthModule } from './auth/auth.module';
 import { SentryExceptionFilter } from './common/filters/sentry-exception.filter';
+import { CommunicationsModule } from './communications/communications.module';
+import { EmailModule } from './email/email.module';
 import { FlightPlansModule } from './flight-plans/flight-plans.module';
 import { HealthModule } from './health/health.module';
 import { IntegrationsModule } from './integrations/integrations.module';
@@ -65,6 +67,8 @@ import { WeatherModule } from './weather/weather.module';
     AircraftProfilesModule,
     AirportsModule,
     AuthModule,
+    CommunicationsModule,
+    EmailModule,
     FlightPlansModule,
     HealthModule,
     IntegrationsModule,

@@ -259,10 +259,14 @@ jobs:
           JWT_ACCESS_EXPIRES_IN=15m,\
           JWT_REFRESH_EXPIRES_IN=30d,\
           SENTRY_RELEASE=${{ needs.build.outputs.short_sha }},\
-          R2_BUCKET_NAME=fs-suite-charts" \
+          R2_BUCKET_NAME=fs-suite-charts,\
+          API_PUBLIC_URL=https://api.fs-suite.com,\
+          SUPABASE_URL=https://kottmfuncqyzwtweoquw.supabase.co" \
             --set-secrets "\
           DATABASE_URL=database-url:latest,\
           REDIS_URL=redis-url:latest,\
+          RESEND_API_KEY=resend-api-key:latest,\
+          SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest,\
           GOOGLE_CLIENT_ID=google-client-id:latest,\
           GOOGLE_CLIENT_SECRET=google-client-secret:latest,\
           JWT_PRIVATE_KEY=jwt-private-key:latest,\

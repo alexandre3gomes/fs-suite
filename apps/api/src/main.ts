@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as Sentry from '@sentry/node';
 import cookieParser = require('cookie-parser');
@@ -26,12 +27,16 @@ Sentry.init({
 });
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
   });
 
   // Use pino as the application logger
   app.useLogger(app.get(Logger));
+
+  // Raise the JSON body limit so admins can upload base64 screenshots for
+  // email communications (default is 100kb). Other routes send small payloads.
+  app.useBodyParser('json', { limit: '6mb' });
 
   // Security headers
   app.use(helmet());

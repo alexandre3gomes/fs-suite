@@ -1,4 +1,5 @@
 import { Input } from '@fs-suite/ui';
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
@@ -6,6 +7,7 @@ import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native'
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
 import { isOptedOut, setFeatureContext, setOptOut, trackAction, trackFailure, trackSuccess, categorizeError } from '../../../src/services/analytics';
 import { apiClient } from '../../../src/services/api.client';
+import { useAuthStore } from '../../../src/stores/auth.store';
 import {
   useUnitsStore,
   type WeightUnit,
@@ -60,8 +62,34 @@ function UnitsSection() {
 export default function ProfileScreen() {
   const { t } = useTranslation();
   const { user } = useCurrentUser();
+  const setStoredUser = useAuthStore((s) => s.setUser);
+  const router = useRouter();
 
   useEffect(() => { setFeatureContext('profile'); return () => setFeatureContext(null); }, []);
+
+  // Email announcements opt-out (defaults on — legitimate interest, LGPD).
+  const [emailConsent, setEmailConsent] = useState(true);
+  const [emailConsentSaving, setEmailConsentSaving] = useState(false);
+  useEffect(() => {
+    if (user?.marketingEmailConsent !== undefined) setEmailConsent(user.marketingEmailConsent);
+  }, [user?.marketingEmailConsent]);
+
+  const handleToggleEmailConsent = useCallback(async () => {
+    const next = !emailConsent;
+    setEmailConsent(next); // optimistic
+    setEmailConsentSaving(true);
+    try {
+      await apiClient.patch('/users/me', { marketingEmailConsent: next });
+      if (user) setStoredUser({ ...user, marketingEmailConsent: next });
+      trackAction(next ? 'email_consent_opt_in' : 'email_consent_opt_out');
+    } catch (err) {
+      setEmailConsent(!next); // revert
+      const { errorType, statusCode } = categorizeError(err);
+      trackFailure('email_consent_save_failed', errorType, { status_code: statusCode });
+      Alert.alert(t('common.error'), t('profile.emailConsentError'));
+    }
+    setEmailConsentSaving(false);
+  }, [emailConsent, user, setStoredUser, t]);
 
   // Analytics opt-out
   const [analyticsOptedOut, setAnalyticsOptedOut] = useState(isOptedOut());
@@ -176,6 +204,22 @@ export default function ProfileScreen() {
             ) : null}
           </View>
 
+          {/* Admin area — only for admins (isAdmin from /users/me) */}
+          {user?.isAdmin ? (
+            <Pressable
+              className="border-b border-border px-4 py-5 active:opacity-70 md:px-6"
+              onPress={() => router.push('/(auth)/admin')}
+            >
+              <View className="flex-row items-center justify-between">
+                <View>
+                  <Text className="text-base font-bold text-foreground">{t('admin.title')}</Text>
+                  <Text className="mt-1 text-xs text-muted-foreground">{t('admin.communicationsDesc')}</Text>
+                </View>
+                <Text className="text-muted-foreground">›</Text>
+              </View>
+            </Pressable>
+          ) : null}
+
           {/* Units */}
           <UnitsSection />
 
@@ -194,6 +238,23 @@ export default function ProfileScreen() {
               >
                 <Text className={`text-xs font-medium ${analyticsOptedOut ? 'text-foreground' : 'text-primary'}`}>
                   {analyticsOptedOut ? t('profile.analyticsOff') : t('profile.analyticsOn')}
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* Product announcement emails (opt-out) */}
+            <View className="mt-3 flex-row items-center justify-between rounded-md border border-border bg-surface-muted px-4 py-3">
+              <View className="flex-1 pr-3">
+                <Text className="text-sm font-semibold text-foreground">{t('profile.emailConsentToggle')}</Text>
+                <Text className="mt-1 text-xs text-muted-foreground">{t('profile.emailConsentDescription')}</Text>
+              </View>
+              <Pressable
+                onPress={() => { void handleToggleEmailConsent(); }}
+                disabled={emailConsentSaving}
+                className={`rounded-md border px-3 py-1.5 ${emailConsent ? 'border-primary bg-primary/10' : 'border-border'} ${emailConsentSaving ? 'opacity-50' : ''}`}
+              >
+                <Text className={`text-xs font-medium ${emailConsent ? 'text-primary' : 'text-foreground'}`}>
+                  {emailConsent ? t('profile.emailConsentOn') : t('profile.emailConsentOff')}
                 </Text>
               </Pressable>
             </View>
