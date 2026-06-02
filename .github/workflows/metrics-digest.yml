@@ -118,19 +118,18 @@ jobs:
           cat body.md
 
           # HTML email body — same metrics, aviation/cockpit dark theme matching
-          # the unsubscribe page. Inline CSS only (email clients strip <style>).
-          # A red "%" cell flags caps over 80%.
+          # Light theme. Inline CSS only (email clients strip <style>).
           row() { # label value
-            printf '<tr><td style="padding:8px 14px;border-bottom:1px solid #1c2940;color:#9fb0c3;font-size:13px;">%s</td><td style="padding:8px 14px;border-bottom:1px solid #1c2940;color:#e7edf5;font-size:13px;font-weight:600;text-align:right;">%s</td></tr>' "$1" "$2"
+            printf '<tr><td style="padding:8px 14px;border-bottom:1px solid #eef2f6;color:#64748b;font-size:13px;">%s</td><td style="padding:8px 14px;border-bottom:1px solid #eef2f6;color:#1a2433;font-size:13px;font-weight:600;text-align:right;">%s</td></tr>' "$1" "$2"
           }
           cat > body.html <<HTML
           <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/>
           <meta name="viewport" content="width=device-width, initial-scale=1"/></head>
-          <body style="margin:0;background:#0b1320;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+          <body style="margin:0;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
           <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
-            <div style="font-size:12px;letter-spacing:2px;color:#5b9bd5;text-transform:uppercase;margin-bottom:6px;">FS Suite</div>
-            <h1 style="font-size:20px;color:#e7edf5;margin:0 0 20px;">Métricas diárias · ${DATE}</h1>
-            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background:#0f1a2e;border:1px solid #1c2940;border-radius:8px;overflow:hidden;">
+            <div style="font-size:12px;letter-spacing:2px;color:#2563eb;text-transform:uppercase;margin-bottom:6px;">FS Suite</div>
+            <h1 style="font-size:20px;color:#1a2433;margin:0 0 20px;">Métricas diárias · ${DATE}</h1>
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
               $(row "EC2 disk" "${HOST_PCT}% de ${HOST_SIZE} · ${HOST_IMAGES} imagens")
               $(row "Database" "${DB_MB} MB / ${CAP_MB} MB (${DB_PCT}%)")
               $(row "Redis" "${REDIS_MB} MB / ${REDIS_CAP_MB} MB (${REDIS_PCT}%) · ${REDIS_KEYS} keys")
@@ -141,12 +140,12 @@ jobs:
               $(row "Validações IA (7d)" "${AI_7D}")
               $(row "Cache de cartas" "${OVERLAYS} entradas")
             </table>
-            <p style="font-size:11px;color:#5b6b80;margin:14px 0 0;">Definições das métricas em <a href="https://github.com/${GITHUB_REPOSITORY}/blob/main/infra/README.md#metrics-digest" style="color:#5b9bd5;">infra/README.md</a>.</p>
-            <div style="margin-top:32px;padding-top:20px;border-top:1px solid #1c2940;">
-              <img src="${LOGO_URL}" alt="FS Suite" width="120" style="display:block;height:auto;margin-bottom:10px;border:0;"/>
-              <div style="color:#e7edf5;font-size:14px;font-weight:600;">Alexandre Silva</div>
-              <div style="color:#9fb0c3;font-size:12px;">Founder &amp; Lead Engineer | FS Suite</div>
-              <a href="https://github.com/alexandre3gomes/fs-suite/" style="color:#5b9bd5;font-size:12px;text-decoration:none;">https://github.com/alexandre3gomes/fs-suite/</a>
+            <p style="font-size:11px;color:#94a3b8;margin:14px 0 0;">Definições das métricas em <a href="https://github.com/${GITHUB_REPOSITORY}/blob/main/infra/README.md#metrics-digest" style="color:#2563eb;">infra/README.md</a>.</p>
+            <div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;text-align:left;">
+              <img src="${LOGO_URL}" alt="FS Suite" width="180" style="display:block;height:auto;margin:0 0 12px;border:0;"/>
+              <div style="color:#1a2433;font-size:14px;font-weight:600;">Alexandre Silva</div>
+              <div style="color:#64748b;font-size:12px;">Founder &amp; Lead Engineer | FS Suite</div>
+              <a href="https://github.com/alexandre3gomes/fs-suite/" style="color:#2563eb;font-size:12px;text-decoration:none;">https://github.com/alexandre3gomes/fs-suite/</a>
             </div>
           </div></body></html>
           HTML
