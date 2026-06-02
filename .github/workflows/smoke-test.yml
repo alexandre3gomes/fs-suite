@@ -1,14 +1,13 @@
 name: Smoke Test
 
-# Daily reachability check across api primary, api candidate, and
-# frontend. Runs at 06:30 UTC, 30 minutes before metrics-digest, so
-# the failure modes interleave usefully: if smoke fails at 06:30, the
-# 07:00 digest will likely also be incomplete — second confirmation.
+# Daily reachability check across the api (EC2) and frontend. Runs at
+# 06:30 UTC, 30 minutes before metrics-digest, so the failure modes
+# interleave usefully: if smoke fails at 06:30, the 07:00 digest will
+# likely also be incomplete — second confirmation.
 #
 # This catches passive breakage between deploys: expired TLS certs,
-# Cloud Run quotas hit, Cloudflare config drift, etc. Real uptime
-# monitoring is configured separately at UptimeRobot (see
-# docs/monitoring/uptimerobot.md).
+# Cloudflare config drift, etc. Real uptime monitoring is configured
+# separately at UptimeRobot (see docs/monitoring/uptimerobot.md).
 
 on:
   schedule:

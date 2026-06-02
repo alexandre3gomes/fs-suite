@@ -1,6 +1,7 @@
 # Infrastructure — FS Suite
 
-EC2 (primary) + Cloud Run (candidate). Single build, parallel deploy.
+API runs on EC2 (the only paid resource; everything else is free-tier).
+Build once on GitHub Actions, deploy to EC2.
 
 ## Structure
 
@@ -10,9 +11,6 @@ infra/
 │   ├── docker-compose.yml   # Production services: nginx (TLS) + api
 │   ├── .env.example         # Template for required environment variables
 │   └── setup.sh             # File-driven one-time EC2 provisioning
-├── cloudrun/
-│   ├── setup.sh             # GCP setup (Artifact Registry, Secret Manager, IAM)
-│   └── setup-wif.sh         # Workload Identity Federation (replaces SA key)
 └── README.md
 ```
 
@@ -35,19 +33,18 @@ pnpm dev
 ```
 Internet → Cloudflare (TLS termination + proxy)
                 │
-     ┌──────────┼──────────────────┐
-     │          │                  │
-fs-suite.com  api.fs-suite.com  api-candidate.fs-suite.com
-     │          │                  │
-  CF Pages   EC2 t3.small     Cloud Run
-  (static)   (primary)        (candidate)
-             eu-west-1        europe-west2
-             ┌──────────┐
-             │  nginx   │ :443 (Origin Cert)
-             │    ↓     │
-             │   API    │ :3001
-             └────┬─────┘
-                  │
+     ┌──────────┴──────────┐
+     │                     │
+fs-suite.com         api.fs-suite.com
+     │                     │
+  CF Pages           EC2 t3.small
+  (static)           eu-west-1
+                     ┌──────────┐
+                     │  nginx   │ :443 (Origin Cert)
+                     │    ↓     │
+                     │   API    │ :3001
+                     └────┬─────┘
+                          │
      ┌────────────┼────────────┐
      │            │            │
 Supabase (PG) Upstash    Google
@@ -59,25 +56,22 @@ Supabase (PG) Upstash    Google
 | Component | Service | Role | Details |
 |-----------|---------|------|---------|
 | Frontend | Cloudflare Pages | Static hosting | `fs-suite.com` |
-| API | EC2 t3.small | **Primary** | Amazon Linux 2023, `eu-west-1` |
-| API | Cloud Run | **Candidate** | `europe-west2`, `min-instances: 0` |
+| API | EC2 t3.small | Production | Amazon Linux 2023, `eu-west-1` |
 | Database | Supabase | Shared | PostgreSQL, `eu-central-1`, accessed via Supavisor session-mode pooler (IPv4) |
 | Cache | Upstash | Shared | Serverless Redis, TLS |
 | DNS/TLS | Cloudflare | Edge | Proxied, Full (Strict) mode |
 
-### Container Registries
+### Container Registry
 
 | Registry | Used by | Image |
 |----------|---------|-------|
 | GHCR | EC2 | `ghcr.io/alexandre3gomes/fs-suite-api` |
-| Artifact Registry | Cloud Run | `europe-west2-docker.pkg.dev/fs-suite/fs-suite/api` |
 
 ### Secrets Management
 
 | Runtime | Where | How |
 |---------|-------|-----|
 | EC2 | `/opt/fs-suite/.env` | File on disk, `chmod 600` |
-| Cloud Run | GCP Secret Manager | Injected via `--set-secrets` at deploy |
 
 ### DNS Records
 
@@ -85,7 +79,6 @@ Supabase (PG) Upstash    Google
 |--------|------|--------|-------|
 | `fs-suite.com` | CNAME | `fs-suite-app.pages.dev` | Proxied |
 | `api.fs-suite.com` | A | EC2 Elastic IP (`52.18.13.237`) | Proxied |
-| `api-candidate.fs-suite.com` | — | Cloudflare Worker → Cloud Run | — _(Workers handles routing)_ |
 
 **Email sending (Resend).** Resend is configured and ready, **reserved for
 future user communications** — there is no email-sending feature in the app
@@ -139,9 +132,8 @@ Generate the certificate at: Cloudflare > SSL/TLS > Origin Server > Create Certi
 
 ### JWT Keys
 
-The JWT RS256 keypair is shared by both runtimes (EC2 + Cloud Run). The
-canonical `.env` in your password manager holds the values; both setup
-scripts propagate them to their respective runtimes.
+The JWT RS256 keypair lives in the canonical `.env` (your password
+manager) and is propagated to EC2 by `infra/ec2/setup.sh`.
 
 **First-time provisioning** (`JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` blank
 in canonical `.env`):
@@ -155,20 +147,16 @@ in canonical `.env`):
    ```
 
 3. Paste both lines into the canonical `.env` (Bitwarden).
-4. Run `infra/cloudrun/setup.sh /path/to/.env` so GCP Secret Manager
-   gets the same pair. Cloud Run picks it up at next deploy.
 
 **Subsequent reprovisioning** (`JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`
 populated in canonical `.env`): EC2 setup detects the existing values
-in the propagated `.env` and skips generation. Both runtimes converge
-on the keys from the canonical source. Sessions issued before the
-reprovisioning continue to validate — **no user re-login required**.
+in the propagated `.env` and skips generation. Sessions issued before
+the reprovisioning continue to validate — **no user re-login required**.
 
 **If you want to force a regenerate** (e.g. you suspect the private key
 was leaked): clear both fields in the canonical `.env`, run EC2 setup
-(generates fresh keys), capture back, run Cloud Run setup. Every active
-session is invalidated; users must sign in again via Google OAuth. No
-data is lost.
+(generates fresh keys), capture back. Every active session is
+invalidated; users must sign in again via Google OAuth. No data is lost.
 
 ### SSH Access
 
@@ -215,38 +203,6 @@ docker compose pull && docker compose up -d             # Manual deploy
 docker compose run --rm api npx prisma migrate deploy   # Run migrations
 ```
 
-## Cloud Run Setup
-
-```bash
-gcloud auth login
-gcloud config set project fs-suite
-./infra/cloudrun/setup.sh
-```
-
-### GCP Authentication Strategy
-
-**Recommended: Workload Identity Federation (WIF)**
-
-WIF provides keyless authentication from GitHub Actions to GCP — no long-lived JSON credentials
-to manage, rotate, or risk leaking. To set up:
-
-```bash
-./infra/cloudrun/setup-wif.sh
-```
-
-Then add GitHub Secrets `GCP_WIF_PROVIDER` and `GCP_WIF_SERVICE_ACCOUNT`.
-
-**Legacy: `GCP_SA_KEY`**
-
-The deploy workflow also accepts a service account JSON key (`GCP_SA_KEY`). This is a legacy
-approach — it works but introduces a long-lived credential that must be rotated manually.
-
-The workflow passes both WIF and `GCP_SA_KEY` parameters to `google-github-actions/auth@v2`.
-The precedence behavior between them is determined by that action, not by this project.
-Now that WIF is active, `GCP_SA_KEY` has been removed from GitHub Secrets. If the workflow
-is forked or WIF breaks, `GCP_SA_KEY` can be re-added as a fallback — the workflow accepts
-it without changes.
-
 ## CI/CD
 
 Branching model: **feature branches → PR → merge to main**.
@@ -258,8 +214,7 @@ push to main
     │
     ▼
 ┌─────────┐
-│  Build  │  Build Docker image once
-│         │  Push to GHCR + Artifact Registry
+│  Build  │  Build Docker image once, push to GHCR
 └────┬────┘
      │
      ▼
@@ -268,30 +223,27 @@ push to main
 │          │  Shared Supabase database — runs once
 └────┬─────┘
      │
-     ├──────────────────┐
-     ▼                  ▼
-┌──────────┐    ┌─────────────┐
-│ Deploy   │    │ Deploy      │
-│ EC2      │    │ Cloud Run   │
-│ (SSH)    │    │ (gcloud)    │
-└──────────┘    └─────────────┘
+     ▼
+┌──────────┐
+│ Deploy   │
+│ EC2 (SSH)│
+└──────────┘
 ```
 
-**Rollout order**: build → migrate → deploy (EC2 + Cloud Run in parallel).
-Migrations run against the shared Supabase database before any runtime is updated.
+**Rollout order**: build → migrate → deploy EC2. Migrations run against
+the shared Supabase database before the runtime is updated.
 
 ### Workflows
 
 | Workflow | Trigger | Action |
 |----------|---------|--------|
 | `ci.yml` | Push to `main` + PRs | Install, lint, typecheck, build, test |
-| `deploy.yml` | Push to `main` (API/packages paths) | Build → migrate → deploy EC2 + Cloud Run |
+| `deploy.yml` | Push to `main` (API/packages paths) | Build → migrate → deploy EC2 |
 | `deploy-app.yml` | Push to `main` (app/UI paths) | Expo web export → Cloudflare Pages |
-| `deploy-edge.yml` | Push to `main` (`apps/edge-*` paths) | Deploy Cloudflare Workers (api-candidate proxy) |
 | `db-backup.yml` | Daily 03:00 UTC + manual | `pg_dump` → Supabase Storage (90-day retention) |
 | `db-restore-drill.yml` | Weekly Mon 04:00 UTC + manual | Pull latest dump, restore into ephemeral Postgres, run schema sanity. Opens issue on failure |
-| `metrics-digest.yml` | Daily 07:00 UTC + manual | Fetch `/v1/admin/metrics` → post comment on the open metrics issue |
-| `smoke-test.yml` | Daily 06:30 UTC + manual + final step in every deploy | `scripts/smoke-test.sh` over api / candidate / frontend. Opens issue on failure |
+| `metrics-digest.yml` | Daily 07:00 UTC + manual | Email HTML digest via Resend to all DB admins |
+| `smoke-test.yml` | Daily 06:30 UTC + manual + final step in every deploy | `scripts/smoke-test.sh` over api / frontend. Opens issue on failure |
 
 ### GHCR Authentication
 
@@ -309,7 +261,7 @@ hand.
 
 | # | Category | Consumer | Lives in `.env`? | Replicates to |
 |---|----------|----------|------------------|---------------|
-| A | API runtime | NestJS process | Yes | EC2 `/opt/fs-suite/.env` (`infra/ec2/setup.sh`); GCP Secret Manager (`infra/cloudrun/setup.sh`) |
+| A | API runtime | NestJS process | Yes | EC2 `/opt/fs-suite/.env` (`infra/ec2/setup.sh`) |
 | B | Frontend build | Expo export | Yes (`EXPO_PUBLIC_*`) | GitHub Secrets (`infra/bootstrap-github-secrets.sh`); injected into Expo build at deploy time |
 | C | CI/CD pipeline auth | Actions runner | No | GitHub Secrets only — these authenticate the pipeline itself (chicken-and-egg) |
 | D | Workflow data | Actions runner (direct, not via API) | Yes | GitHub Secrets (`infra/bootstrap-github-secrets.sh`) |
@@ -333,17 +285,15 @@ hand.
 | `SUPABASE_SERVICE_ROLE_KEY` | D | — | — | ✅ (`db-backup.yml`) |
 | `EXPO_PUBLIC_POSTHOG_KEY` → `POSTHOG_KEY` | B | — | ✅ | ✅ (injected at build by `deploy-app.yml`) |
 | `EC2_HOST` / `EC2_SSH_KEY` / `EC2_USER` | C | — | — | ✅ (`deploy.yml`) |
-| `GCP_PROJECT_ID` / `GCP_WIF_PROVIDER` / `GCP_WIF_SERVICE_ACCOUNT` | C | — | — | ✅ (`deploy.yml`) |
 | `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | C | — | — | ✅ (`deploy-app.yml`) |
 | `TURBO_TEAM` / `TURBO_TOKEN` | C | — | — | ✅ (`ci.yml` remote cache) |
 
 Notes on JWT keys: the canonical `.env` is the source of truth. If the
 keys are blank, `infra/ec2/setup.sh` generates a fresh RS256 pair on
 first run; the operator then captures the generated values back into
-the canonical `.env` (one-line `ssh` printed in the setup output) and
-re-runs `infra/cloudrun/setup.sh` so both runtimes share the same pair.
-On subsequent reprovisions with the values already in `.env`, both
-runtimes pick them up and existing JWT tokens stay valid. See
+the canonical `.env` (one-line `ssh` printed in the setup output). On
+subsequent reprovisions with the values already in `.env`, EC2 picks
+them up and existing JWT tokens stay valid. See
 [JWT Keys](#jwt-keys) for the full flow.
 
 ### Provisioning a fresh environment
@@ -357,19 +307,15 @@ input. All three runtime surfaces are populated from it:
 scp .env origin.pem origin-key.pem fs-suite:~/
 ssh fs-suite './setup.sh'
 
-# 2. Cloud Run — file-driven, reads the same .env
-./infra/cloudrun/setup.sh /path/to/.env
-
-# 3. GitHub Secrets — categories B + D, derived from .env
+# 2. GitHub Secrets — workflow data + frontend build, derived from .env
 ./infra/bootstrap-github-secrets.sh /path/to/.env
 ```
 
 Category C (pipeline auth) is set once when first wiring up CI/CD and rarely
-changes. See [Cloud Run Setup](#cloud-run-setup) and the SSH key step in
-[EC2 Setup](#ec2-setup).
+changes. See the SSH key step in [EC2 Setup](#ec2-setup).
 
 For greenfield setup of the underlying managed services (Supabase, Upstash,
-Cloudflare, GCP, Google OAuth, Sentry, PostHog), see the runbooks under
+Cloudflare, Google OAuth, Sentry, PostHog), see the runbooks under
 [`docs/greenfield/`](../docs/greenfield/). Each runbook is greenfield-first
 with a "Reusing existing" callout at the top — if you already have the
 service provisioned and credentials in hand, you can skip straight to the
@@ -382,12 +328,12 @@ service provisioned and credentials in hand, you can skip straight to the
 | `DATABASE_URL` | Supabase Supavisor session-mode pooler URL (port 5432 on `aws-1-eu-central-1.pooler.supabase.com`). Required because Supabase's direct endpoint is IPv6-only and our runtimes don't route IPv6. Session mode supports prepared statements and advisory locks, so it works for both Prisma Client and Prisma Migrate without a separate `DIRECT_URL`. The `db-backup.yml` workflow strips the query string and replaces it with `sslmode=require`, so any query params are tolerated. |
 | `REDIS_URL` | Upstash Redis connection string (`rediss://` for TLS). |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials. |
-| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | RS256 keypair shared by EC2 and Cloud Run. Lives in the canonical `.env`. Generated by `infra/ec2/setup.sh` on first provision only; subsequent reprovisions reuse the values from `.env` (sessions stay valid). To force a rotation, clear both fields in `.env` before running setup. See [JWT Keys](#jwt-keys). |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | RS256 keypair. Lives in the canonical `.env`. Generated by `infra/ec2/setup.sh` on first provision only; subsequent reprovisions reuse the values from `.env` (sessions stay valid). To force a rotation, clear both fields in `.env` before running setup. See [JWT Keys](#jwt-keys). |
 | `ENCRYPTION_KEY` | AES-256-GCM 32-byte hex key. Persistent — regenerating breaks all encrypted OAuth tokens and BYOK API keys. |
 | `SENTRY_DSN` | Sentry project DSN — shared by backend and frontend (`deploy-app.yml` injects it as `EXPO_PUBLIC_SENTRY_DSN` at Expo build time). Errors are separable in Sentry by SDK tag (`javascript` for web, `node` for API). |
 | `GEMINI_API_KEY` / `GROQ_API_KEY` | Free-tier AI provider keys for flight-plan validation. |
-| `OWM_API_KEY` | OpenWeatherMap key — precipitation tile proxy. Optional; not currently wired into `deploy.yml --set-secrets`. If you start using it, create `owm-api-key` in GCP Secret Manager and add the mapping to `deploy.yml`. |
-| `AVWX_TOKEN` | AVWX token — enriched METAR decoding. Same caveat as `OWM_API_KEY`. |
+| `OWM_API_KEY` | OpenWeatherMap key — precipitation tile proxy. Optional; if you start using it, add it to the EC2 `.env`. |
+| `AVWX_TOKEN` | AVWX token — enriched METAR decoding. Optional; same as `OWM_API_KEY`. |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare R2 credentials for chart overlay cache. |
 | `ADMIN_METRICS_TOKEN` | Header-token auth for `GET /v1/admin/metrics` (consumed by `metrics-digest.yml`). Generate with `openssl rand -hex 32`. |
 | `RESEND_API_KEY` | [Resend](https://resend.com) API key. Used by `metrics-digest.yml` to email the daily operational digest (sender on the Resend-verified `fs-suite.com` domain). Still **reserved for future user communications** — the app itself sends no user-facing email yet. As a GitHub Actions secret it must be a Resend key (`re_…`). |
@@ -400,11 +346,12 @@ Non-secret config (set as plain env vars, not in Secret Manager):
 | `EMAIL_FROM` / `EMAIL_REPLY_TO` | Optional sender/reply-to overrides, **reserved for future user communications** (Resend). Not read by the app today. The sender domain must be verified in Resend before use. |
 | `EXPO_PUBLIC_POSTHOG_KEY` (`.env`) → `POSTHOG_KEY` (GH Secret) | PostHog project key. **Frontend only** — embedded into the Expo web bundle at build time via `deploy-app.yml`. The API does not use PostHog. |
 | `EC2_HOST` / `EC2_SSH_KEY` / `EC2_USER` | SSH access to the EC2 deploy target. |
-| `GCP_PROJECT_ID` / `GCP_WIF_PROVIDER` / `GCP_WIF_SERVICE_ACCOUNT` | GCP project + Workload Identity Federation for Cloud Run deploy. `GCP_SA_KEY` is the legacy fallback; remove once WIF is active. |
-| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | Cloudflare credentials. Token must include scopes **Account → Cloudflare Pages: Edit** (for `deploy-app.yml`) and **Account → Workers Scripts: Edit** (for `deploy-edge.yml` / api-candidate Worker). |
+| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | Cloudflare credentials. Token must include scope **Account → Cloudflare Pages: Edit** (for `deploy-app.yml`). |
 | `TURBO_TEAM` / `TURBO_TOKEN` | Turborepo remote cache (optional). |
 
-**Deprecated**: `GCP_REGION` (hardcoded to `europe-west2`), `BACKUP_DATABASE_URL` (replaced by `DATABASE_URL`).
+**Deprecated**: `BACKUP_DATABASE_URL` (replaced by `DATABASE_URL`). The
+GCP/Cloud Run candidate was decommissioned (2026-06) — `GCP_PROJECT_ID`,
+`GCP_WIF_PROVIDER`, `GCP_WIF_SERVICE_ACCOUNT`, `GCP_SA_KEY` are no longer used.
 
 **Never commit real secrets.**
 
@@ -422,10 +369,9 @@ from the public Supabase `communications` bucket at `email/fs-suite-logo.png`.
 `workflow_dispatch`). It calls `GET /v1/admin/metrics` with the
 `X-Admin-Token` header; the API gates the endpoint by comparing the
 header to `process.env.ADMIN_METRICS_TOKEN`. The shared token lives in
-your `.env` (category A + D) and is replicated to EC2, GCP Secret
-Manager, and GitHub Secrets by the scripts in
-[Provisioning](#provisioning-a-fresh-environment). The email step needs
-`RESEND_API_KEY` set as a GitHub Actions secret.
+your `.env` (category A + D) and is replicated to EC2 and GitHub Secrets
+by the scripts in [Provisioning](#provisioning-a-fresh-environment). The
+email step needs `RESEND_API_KEY` set as a GitHub Actions secret.
 
 ```bash
 # Manual run (after a provisioning change, for example):
@@ -458,15 +404,15 @@ The implementation lives in [`apps/api/src/admin/admin.controller.ts`](../apps/a
 | Layer | Tool | Cadence | Failure mode |
 |---|---|---|---|
 | Backups verified-restorable | `db-restore-drill.yml` | Weekly (Mon 04:00 UTC) | GitHub issue labelled `restore-drill-failure` |
-| Reachability (api / candidate / frontend) | `smoke-test.yml` + post-deploy step | Daily 06:30 UTC + every deploy | GitHub issue labelled `smoke-failure`; fails the deploy run that triggered it |
+| Reachability (api / frontend) | `smoke-test.yml` + post-deploy step | Daily 06:30 UTC + every deploy | GitHub issue labelled `smoke-failure`; fails the deploy run that triggered it |
 | Operational metrics snapshot | `metrics-digest.yml` | Daily 07:00 UTC | HTML email via Resend to all DB admins |
 | External uptime (every 5 min) | UptimeRobot | Every 5 minutes | Email / Slack / SMS — configured outside this repo, see [`docs/monitoring/uptimerobot.md`](../docs/monitoring/uptimerobot.md) |
 
 `scripts/smoke-test.sh` is the reusable check core. Run locally:
 
 ```bash
-./scripts/smoke-test.sh                 # all three surfaces
-./scripts/smoke-test.sh api candidate   # only API endpoints
+./scripts/smoke-test.sh                 # api + frontend
+./scripts/smoke-test.sh api             # only the API
 ./scripts/smoke-test.sh frontend        # only the Pages bundle
 ```
 
@@ -545,67 +491,12 @@ ssh fs-suite "
 "
 ```
 
-## Failover: EC2 → Cloud Run
-
-Cloud Run is always deployed in parallel and ready to serve traffic.
-
-### Activate candidate
-
-1. In Cloudflare DNS, change `api.fs-suite.com`:
-   - Delete the A record pointing to EC2 Elastic IP
-   - Create a CNAME pointing to the Cloud Run URL (from `gcloud run services describe fs-suite-api --region europe-west2 --format 'value(status.url)'`)
-   - Or switch the app to use `api-candidate.fs-suite.com` directly
-2. Verify: `curl https://api.fs-suite.com/v1/health`
-
-Note: Cloud Run runs with `min-instances: 0`. The first request after failover may experience
-a cold start (typically 5–10s). Subsequent requests are served normally.
-
-### Return to primary
-
-1. In Cloudflare DNS, change `api.fs-suite.com` back:
-   - Delete the CNAME
-   - Create A record → `52.18.13.237` (Proxied)
-2. Verify: `curl https://api.fs-suite.com/v1/health`
-
-### api-candidate worker
-
-`api-candidate.fs-suite.com` is a stable hostname that always proxies
-to Cloud Run, independent of the `api.fs-suite.com` DNS swap above. The
-frontend can be repointed at it in seconds (change `EXPO_PUBLIC_API_URL`
-in `deploy-app.yml` and push) for a permanent fallback path that
-continues working even when EC2 is down.
-
-The implementation is a Cloudflare Worker at
-[`apps/edge-api-candidate/`](../apps/edge-api-candidate/) — a thin reverse
-proxy whose `UPSTREAM_ORIGIN` env var holds the Cloud Run service URL.
-Deploys via `.github/workflows/deploy-edge.yml` on any push that touches
-the Worker.
-
-If Cloud Run is recreated (rare), the service URL's random component
-changes; update `wrangler.toml` accordingly:
-
-```bash
-gcloud run services describe fs-suite-api --region europe-west2 \
-  --format 'value(status.url)'
-# → paste into apps/edge-api-candidate/wrangler.toml UPSTREAM_ORIGIN
-```
-
-To swap the frontend to the candidate manually (e.g. EC2 down):
-
-```bash
-# In deploy-app.yml, change:
-#   EXPO_PUBLIC_API_URL: https://api.fs-suite.com
-# to:
-#   EXPO_PUBLIC_API_URL: https://api-candidate.fs-suite.com
-# then push to trigger a rebuild.
-```
-
-### What stays intact during failover
-
-- Database (Supabase) — shared, no migration needed
-- Redis (Upstash) — shared, sessions persist
-- OAuth callbacks — `GOOGLE_CALLBACK_URL` points to `api.fs-suite.com` on both runtimes
-- Secrets — independent copies (`.env` on EC2, Secret Manager on GCP)
+> **Note (2026-06):** the Cloud Run candidate and its `api-candidate.fs-suite.com`
+> Cloudflare Worker were decommissioned to keep cost at zero (EC2 is the only
+> paid resource). EC2 is the sole API runtime. If a managed-runtime path is
+> wanted later (e.g. to drop the always-on EC2 cost), it can be re-provisioned
+> from scratch — but resolve the Cloud Run cold-start startup-probe behaviour
+> first.
 
 ### What changes on EC2 reprovisioning
 
@@ -644,8 +535,7 @@ Summary of deliberate tradeoffs accepted at the current product stage.
 
 | Decision | Tradeoff | Rationale |
 |----------|----------|-----------|
-| JWT keypair lives in canonical `.env` | Operator must capture the pair into `.env` after the first-ever EC2 setup | Symmetric source of truth across EC2 + Cloud Run; reprovisions preserve sessions; intentional rotation is a single-line edit |
+| JWT keypair lives in canonical `.env` | Operator must capture the pair into `.env` after the first-ever EC2 setup | Single source of truth; reprovisions preserve sessions; intentional rotation is a single-line edit |
 | SSH port 22 open to `0.0.0.0/0` | Broader attack surface on SSH | GitHub Actions runners have unpredictable IPs; key-only auth mitigates |
 | `ENCRYPTION_KEY` is a persistent secret | Must be preserved across reprovisions | Regenerating would break encrypted OAuth tokens and BYOK API keys |
-| Cloud Run `min-instances: 0` | Cold start on first request after failover | Keeps candidate runtime at zero cost when not in use |
-| GCP auth via WIF (active) | Requires OIDC setup on GCP | Keyless auth; `GCP_SA_KEY` removed but workflow still accepts it if re-added |
+| EC2 is the only API runtime | No instant managed-runtime failover | Keeps cost at zero beyond the EC2 instance; the Cloud Run candidate was decommissioned (2026-06) |

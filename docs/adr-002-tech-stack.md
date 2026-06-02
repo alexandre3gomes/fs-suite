@@ -3,6 +3,13 @@
 **Date:** 2026-05-27 (retrospective — decisions taken at project inception)
 **Status:** Accepted
 
+> **Update (2026-06):** the Cloud Run candidate / failover surface described
+> below was **decommissioned** to keep cost at zero beyond the EC2 instance
+> (it incurred Secret Manager + Artifact Registry charges while unused, and
+> its deploys failed intermittently). EC2 is now the sole API runtime. The
+> reasoning below is preserved as the original decision record; a managed
+> runtime can be re-provisioned later if the goal becomes cutting the EC2 cost.
+
 ## Context
 
 FS Suite is a flight simulation planning and management platform for the

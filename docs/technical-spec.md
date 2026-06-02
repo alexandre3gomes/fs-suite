@@ -637,12 +637,12 @@ Single-region production deployment (EU-West).
 
 | Component    | Service                                         | Notes                                                                                   |
 |--------------|-------------------------------------------------|-----------------------------------------------------------------------------------------|
-| API          | EC2 t3.small (primary) + Cloud Run (candidate)  | EC2 `eu-west-1` serves prod; Cloud Run `europe-west2` deployed in parallel as failover  |
+| API          | EC2 t3.small                                    | `eu-west-1` serves prod (sole API runtime; the Cloud Run candidate was decommissioned 2026-06) |
 | Web (app)    | Cloudflare Pages                                | Expo web export, automatic deploys via `deploy-app.yml`                                 |
 | iOS          | Expo EAS Build + App Store *(post-MVP)*         | OTA via EAS Update; not in current pipeline                                             |
 | Android      | Expo EAS Build + Play Store *(post-MVP)*        | OTA via EAS Update; not in current pipeline                                             |
 | Database     | Supabase Postgres 16                            | Connected via Supavisor session-mode pooler (IPv4); `eu-central-1`                      |
-| Redis        | Upstash Redis 7                                 | Serverless, TLS (`rediss://`); shared across EC2 and Cloud Run                          |
+| Redis        | Upstash Redis 7                                 | Serverless, TLS (`rediss://`)                                                           |
 | File storage | Cloudflare R2                                   | Aerodrome chart overlay cache; bucket `fs-suite-charts`                                 |
 | DNS / TLS    | Cloudflare                                      | Proxied, Full (Strict) mode; Origin Certificate terminates TLS at EC2 nginx             |
 | Observability| Sentry + PostHog                                | Sentry for backend + frontend errors (shared DSN); PostHog for client product analytics |

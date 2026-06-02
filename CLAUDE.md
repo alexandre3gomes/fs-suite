@@ -17,7 +17,7 @@ fs-suite/
 │   ├── ui/        # Shared design system (NativeWind components)
 │   ├── types/     # Shared Zod schemas and TypeScript types
 │   └── config/    # Shared ESLint, TypeScript, and Tailwind configs
-├── infra/         # Cloud Run setup scripts and deployment config
+├── infra/         # EC2 deployment config and provisioning scripts
 └── docs/          # Product and technical specifications
 ```
 
@@ -32,7 +32,7 @@ fs-suite/
 | Auth        | Google OAuth 2.0 (Passport.js)       |
 | Monorepo    | Turborepo + pnpm                     |
 | CI/CD       | GitHub Actions                       |
-| Hosting     | Cloudflare Pages (frontend), EC2 primary + Cloud Run candidate (API) |
+| Hosting     | Cloudflare Pages (frontend), EC2 (API) |
 | DNS/TLS     | Cloudflare (proxied, Full Strict)    |
 
 ## Development Commands

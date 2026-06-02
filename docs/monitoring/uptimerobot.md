@@ -33,21 +33,11 @@ Create one HTTP(s) — Keyword monitor per hostname.
 | Custom HTTP Headers | (none — the endpoint is public) |
 | Alert Contacts | your default email (plus Slack/SMS if configured) |
 
-### Monitor 2 — API candidate (Cloud Run via Worker)
+> **Note (2026-06):** a second monitor for the Cloud Run candidate
+> (`api-candidate.fs-suite.com`) used to live here. The candidate was
+> decommissioned — delete that UptimeRobot monitor if it still exists.
 
-Same as Monitor 1, except:
-
-| Field | Value |
-|---|---|
-| Friendly Name | `fs-suite · api-candidate` |
-| URL | `https://api-candidate.fs-suite.com/v1/health` |
-
-> Why monitor the candidate? It's the failover surface. If it's down
-> when you need it, the failover plan is useless. The whole point of
-> the candidate is silent readiness — monitoring is what makes the
-> silence audible.
-
-### Monitor 3 — Frontend (Cloudflare Pages)
+### Monitor 2 — Frontend (Cloudflare Pages)
 
 | Field | Value |
 |---|---|

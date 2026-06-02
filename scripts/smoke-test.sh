@@ -4,13 +4,11 @@
 #
 # Read-only sanity checks across production-facing surfaces:
 #   - api        → api.fs-suite.com           (EC2 primary)
-#   - candidate  → api-candidate.fs-suite.com (Cloud Run via Worker)
 #   - frontend   → fs-suite.com               (Cloudflare Pages)
 #
 # Usage:
-#   ./scripts/smoke-test.sh             # check all three
+#   ./scripts/smoke-test.sh             # check all
 #   ./scripts/smoke-test.sh api         # check only the primary API
-#   ./scripts/smoke-test.sh api candidate
 #
 # Run after every deploy (post-deploy step in workflows) and once a
 # day (smoke-test.yml). Exit code 0 means all selected checks passed;
@@ -32,7 +30,6 @@ TIMEOUT_PER_CALL=10
 # body_pattern is a grep -E regex; pass `.` to skip body check.
 ALL_CHECKS=(
   "api|https://api.fs-suite.com/v1/health|api primary (EC2)|200|\"status\":\"ok\""
-  "candidate|https://api-candidate.fs-suite.com/v1/health|api candidate (Cloud Run via Worker)|200|\"status\":\"ok\""
   "frontend|https://fs-suite.com/|frontend (Cloudflare Pages)|200|<!DOCTYPE html"
 )
 
@@ -40,7 +37,7 @@ ALL_CHECKS=(
 if [[ $# -gt 0 ]]; then
   SELECTED=("$@")
 else
-  SELECTED=(api candidate frontend)
+  SELECTED=(api frontend)
 fi
 
 FAILURES=0
