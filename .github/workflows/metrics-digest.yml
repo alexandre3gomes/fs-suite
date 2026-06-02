@@ -1,12 +1,12 @@
 name: Metrics Digest
 
-# Daily snapshot of operational metrics, posted as a comment on a single
-# pinned GitHub issue (one issue, many comments — easy visual comparison
-# across days; GitHub emails subscribers on each new comment).
+# Daily snapshot of operational metrics, emailed via Resend as an HTML
+# digest to all DB admins (recipients come from /v1/admin/metrics →
+# admin_recipients; granting admin in-app auto-subscribes).
 #
 # Required GitHub secrets:
-#   - ADMIN_METRICS_TOKEN — must match the value of $ADMIN_METRICS_TOKEN
-#     set on the API server (header-token auth for /v1/admin/metrics).
+#   - ADMIN_METRICS_TOKEN — header-token auth for /v1/admin/metrics.
+#   - RESEND_API_KEY      — Resend key (re_…) for sending the email.
 
 on:
   schedule:
@@ -21,15 +21,13 @@ env:
   API_URL: https://api.fs-suite.com
   DB_CAP_BYTES: 524288000 # 500 MB — Supabase free-tier cap
   REDIS_CAP_BYTES: 268435456 # 256 MB — Upstash free-tier cap
-  ISSUE_LABEL: metrics
-  ISSUE_TITLE: Daily Metrics Digest
   # Logo for the email signature — served from the public Supabase
   # `communications` bucket. (From/To live on the send step; the recipient
   # is a secret since this repo is public.)
   LOGO_URL: https://kottmfuncqyzwtweoquw.supabase.co/storage/v1/object/public/communications/email/fs-suite-logo.png
 
 permissions:
-  issues: write
+  contents: read
 
 jobs:
   digest:
@@ -69,7 +67,7 @@ jobs:
           echo "host.txt:"
           cat host.txt
 
-      - name: Build digest bodies (markdown + HTML email)
+      - name: Build digest body (HTML email)
         run: |
           DATE=$(date -u +%Y-%m-%d)
           DB_BYTES=$(jq -r '.database.size_bytes' metrics.json)
@@ -99,26 +97,7 @@ jobs:
           HOST_SIZE=$(awk '{print $2}' host.txt)
           HOST_IMAGES=$(awk '{print $3}' host.txt)
 
-          {
-            echo "## ${DATE} — Daily Metrics"
-            echo ""
-            echo "**EC2 disk**: ${HOST_PCT}% of ${HOST_SIZE} used · ${HOST_IMAGES} docker images"
-            echo "**Database**: ${DB_MB} MB / ${CAP_MB} MB cap (${DB_PCT}%)"
-            echo "**Redis**: ${REDIS_MB} MB / ${REDIS_CAP_MB} MB cap (${REDIS_PCT}%) · ${REDIS_KEYS} keys"
-            echo "**Users**: ${USERS_TOTAL} total · ${USERS_NEW} new in 7d · ${USERS_ACTIVE} active in 7d"
-            echo "**Flight plans**: ${PLANS_TOTAL} total · ${PLANS_NEW} new in 7d"
-            echo "**Sessions**: ${SESSIONS} active"
-            echo "**Activity**: ${ACT_24H} events in 24h, ${ACT_7D} in 7d"
-            echo "**AI validations (7d)**: ${AI_7D}"
-            echo "**Chart overlay cache**: ${OVERLAYS} entries"
-            echo ""
-            echo "_Metric definitions: see [Metrics Digest](https://github.com/${GITHUB_REPOSITORY}/blob/main/infra/README.md#metrics-digest) in infra/README.md._"
-          } > body.md
-          echo "Comment body:"
-          cat body.md
-
-          # HTML email body — same metrics, aviation/cockpit dark theme matching
-          # Light theme. Inline CSS only (email clients strip <style>).
+          # HTML email body. Light theme; inline CSS only (clients strip <style>).
           row() { # label value
             printf '<tr><td style="padding:8px 14px;border-bottom:1px solid #eef2f6;color:#64748b;font-size:13px;">%s</td><td style="padding:8px 14px;border-bottom:1px solid #eef2f6;color:#1a2433;font-size:13px;font-weight:600;text-align:right;">%s</td></tr>' "$1" "$2"
           }
@@ -141,11 +120,17 @@ jobs:
               $(row "Cache de cartas" "${OVERLAYS} entradas")
             </table>
             <p style="font-size:11px;color:#94a3b8;margin:14px 0 0;">Definições das métricas em <a href="https://github.com/${GITHUB_REPOSITORY}/blob/main/infra/README.md#metrics-digest" style="color:#2563eb;">infra/README.md</a>.</p>
-            <div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;text-align:left;">
-              <img src="${LOGO_URL}" alt="FS Suite" width="180" style="display:block;height:auto;margin:0 0 12px;border:0;"/>
-              <div style="color:#1a2433;font-size:14px;font-weight:600;">Alexandre Silva</div>
-              <div style="color:#64748b;font-size:12px;">Founder &amp; Lead Engineer | FS Suite</div>
-              <a href="https://github.com/alexandre3gomes/fs-suite/" style="color:#2563eb;font-size:12px;text-decoration:none;">https://github.com/alexandre3gomes/fs-suite/</a>
+            <div style="margin-top:32px;padding-top:24px;border-top:1px solid #e2e8f0;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+                <td style="vertical-align:middle;padding-right:14px;">
+                  <img src="${LOGO_URL}" alt="FS Suite" width="72" style="display:block;height:auto;border:0;"/>
+                </td>
+                <td style="vertical-align:middle;">
+                  <div style="color:#1a2433;font-size:14px;font-weight:600;">Alexandre Silva</div>
+                  <div style="color:#64748b;font-size:12px;">Founder &amp; Lead Engineer | FS Suite</div>
+                  <a href="https://github.com/alexandre3gomes/fs-suite/" style="color:#2563eb;font-size:12px;text-decoration:none;">https://github.com/alexandre3gomes/fs-suite/</a>
+                </td>
+              </tr></table>
             </div>
           </div></body></html>
           HTML
@@ -197,35 +182,3 @@ jobs:
             exit 1
           fi
           echo "Email digest sent (recipient redacted)"
-
-      - name: Ensure label and issue exist; post comment
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Label is idempotent; --force updates if color drifts.
-          gh label create "${ISSUE_LABEL}" --color 0E8A16 \
-            --description "Automated metrics digest" --force \
-            --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || true
-
-          ISSUE_NUMBER=$(gh issue list \
-            --repo "${GITHUB_REPOSITORY}" \
-            --label "${ISSUE_LABEL}" \
-            --state open \
-            --json number \
-            --jq '.[0].number')
-
-          if [[ -z "$ISSUE_NUMBER" ]]; then
-            echo "No open metrics issue — creating one"
-            ISSUE_URL=$(gh issue create \
-              --repo "${GITHUB_REPOSITORY}" \
-              --title "${ISSUE_TITLE}" \
-              --label "${ISSUE_LABEL}" \
-              --body "Daily operational snapshot. New comment appended on each run; subscribe to receive emails.")
-            ISSUE_NUMBER="${ISSUE_URL##*/}"
-            echo "Created issue #${ISSUE_NUMBER}"
-          fi
-
-          gh issue comment "${ISSUE_NUMBER}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --body-file body.md
-          echo "Posted digest to issue #${ISSUE_NUMBER}"

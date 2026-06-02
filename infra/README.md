@@ -418,11 +418,6 @@ bootstrap list), so granting admin in the in-app user-management area
 auto-subscribes that person to the digest. The signature logo is served
 from the public Supabase `communications` bucket at `email/fs-suite-logo.png`.
 
-> **Transitional:** the workflow also still posts the digest as a comment
-> on the open GitHub issue labelled `metrics` (auto-created on first run).
-> This dual output is kept until the email path is validated; the issue
-> comment step will then be removed.
-
 `metrics-digest.yml` runs daily at 07:00 UTC (and via
 `workflow_dispatch`). It calls `GET /v1/admin/metrics` with the
 `X-Admin-Token` header; the API gates the endpoint by comparing the
@@ -464,7 +459,7 @@ The implementation lives in [`apps/api/src/admin/admin.controller.ts`](../apps/a
 |---|---|---|---|
 | Backups verified-restorable | `db-restore-drill.yml` | Weekly (Mon 04:00 UTC) | GitHub issue labelled `restore-drill-failure` |
 | Reachability (api / candidate / frontend) | `smoke-test.yml` + post-deploy step | Daily 06:30 UTC + every deploy | GitHub issue labelled `smoke-failure`; fails the deploy run that triggered it |
-| Operational metrics snapshot | `metrics-digest.yml` | Daily 07:00 UTC | HTML email via Resend + (transitional) comment on the open metrics issue |
+| Operational metrics snapshot | `metrics-digest.yml` | Daily 07:00 UTC | HTML email via Resend to all DB admins |
 | External uptime (every 5 min) | UptimeRobot | Every 5 minutes | Email / Slack / SMS — configured outside this repo, see [`docs/monitoring/uptimerobot.md`](../docs/monitoring/uptimerobot.md) |
 
 `scripts/smoke-test.sh` is the reusable check core. Run locally:
