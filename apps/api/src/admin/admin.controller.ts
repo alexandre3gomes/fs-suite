@@ -8,7 +8,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 
-import { ADMIN_EMAILS } from '../auth/admin-emails';
+import { getAdminRecipients } from '../auth/admin-recipients';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
@@ -88,7 +88,7 @@ export class AdminController {
       chartOverlays,
       redisInfo,
       redisKeys,
-      adminUsers,
+      adminRecipients,
     ] = await Promise.all([
       this.prisma.$queryRaw<{ size: bigint }[]>`
         SELECT pg_database_size(current_database())::bigint AS size
@@ -111,20 +111,8 @@ export class AdminController {
       this.prisma.aerodromeChartOverlay.count(),
       this.redis.getClient().info('memory'),
       this.redis.getClient().dbSize(),
-      this.prisma.user.findMany({
-        where: { isAdmin: true, deletedAt: null },
-        select: { email: true },
-      }),
+      getAdminRecipients(this.prisma),
     ]);
-
-    // Union of persisted admins and the bootstrap allow-list, deduped
-    // case-insensitively. ADMIN_EMAILS is already lowercase.
-    const adminRecipients = Array.from(
-      new Set([
-        ...adminUsers.map((u) => u.email.trim().toLowerCase()),
-        ...ADMIN_EMAILS,
-      ]),
-    );
 
     return {
       snapshot_at: now.toISOString(),

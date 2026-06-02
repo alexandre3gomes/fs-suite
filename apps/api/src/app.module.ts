@@ -13,6 +13,7 @@ import { AirportsModule } from './airports/airports.module';
 import { AuthModule } from './auth/auth.module';
 import { SentryExceptionFilter } from './common/filters/sentry-exception.filter';
 import { EmailModule } from './email/email.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { FlightPlansModule } from './flight-plans/flight-plans.module';
 import { HealthModule } from './health/health.module';
 import { IntegrationsModule } from './integrations/integrations.module';
@@ -67,6 +68,7 @@ import { WeatherModule } from './weather/weather.module';
     AirportsModule,
     AuthModule,
     EmailModule,
+    FeedbackModule,
     FlightPlansModule,
     HealthModule,
     IntegrationsModule,

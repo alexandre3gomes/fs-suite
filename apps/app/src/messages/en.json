@@ -14,7 +14,8 @@
     "back": "Back",
     "optional": "optional",
     "noResults": "No results",
-    "clear": "Clear"
+    "clear": "Clear",
+    "close": "Close"
   },
   "login": {
     "signInButton": "Sign in with Google",
@@ -25,6 +26,8 @@
     "title": "Admin",
     "usersCard": "Users",
     "usersCardDesc": "Manage users: grant admin or delete",
+    "feedbackCard": "User feedback",
+    "feedbackCardDesc": "Triage bugs and suggestions; reply by email",
     "comingSoon": "Coming soon.",
     "users": {
       "title": "User management",
@@ -37,7 +40,46 @@
       "makeAdmin": "Make admin",
       "revokeAdmin": "Revoke admin",
       "confirmDelete": "Confirm"
+    },
+    "feedback": {
+      "title": "User feedback",
+      "empty": "No feedback yet.",
+      "loadError": "Could not load feedback.",
+      "attachmentError": "Could not open the attachment.",
+      "status": {
+        "OPEN": "Open",
+        "ANSWERED": "Answered",
+        "RESOLVED": "Resolved"
+      },
+      "filterAll": "All",
+      "replyHeading": "Reply from {{name}}",
+      "replyLabel": "Reply",
+      "replyPlaceholder": "Write a reply to the user…",
+      "sendReply": "Send reply",
+      "replySentTitle": "Reply sent",
+      "replySentBody": "The user received your reply by email.",
+      "replyError": "Could not send the reply.",
+      "statusError": "Could not update the status.",
+      "markResolved": "Mark as resolved",
+      "reopen": "Reopen"
     }
+  },
+  "feedback": {
+    "title": "Send feedback",
+    "typeLabel": "Contact type",
+    "typeBug": "Report a bug",
+    "typeSuggestion": "Send a suggestion",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Tell us what happened or your suggestion…",
+    "descriptionRequired": "Please write a description.",
+    "attach": "Attach files ({{count}}/{{max}})",
+    "tooManyFiles": "At most {{max}} files.",
+    "invalidType": "Unsupported file type (use PNG, JPG, WEBP or PDF).",
+    "fileTooLarge": "Each file must be at most 5 MB.",
+    "submit": "Send",
+    "submitError": "Could not send. Please try again.",
+    "successTitle": "Thanks for your feedback!",
+    "successBody": "We received your message and will review it."
   },
   "dashboard": {
     "title": "Dashboard",

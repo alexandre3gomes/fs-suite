@@ -29,14 +29,25 @@ export default function AdminScreen(): JSX.Element {
           {t('admin.title')}
         </Text>
 
-        <Card className="active:opacity-80">
-          <Pressable onPress={() => router.push('/(auth)/admin/users')}>
-            <CardContent className="md:px-8 md:py-6">
-              <Text className="text-base font-bold md:text-lg">{t('admin.usersCard')}</Text>
-              <Text variant="muted" className="mt-1">{t('admin.usersCardDesc')}</Text>
-            </CardContent>
-          </Pressable>
-        </Card>
+        <View className="gap-3">
+          <Card className="active:opacity-80">
+            <Pressable onPress={() => router.push('/(auth)/admin/users')}>
+              <CardContent className="md:px-8 md:py-6">
+                <Text className="text-base font-bold md:text-lg">{t('admin.usersCard')}</Text>
+                <Text variant="muted" className="mt-1">{t('admin.usersCardDesc')}</Text>
+              </CardContent>
+            </Pressable>
+          </Card>
+
+          <Card className="active:opacity-80">
+            <Pressable onPress={() => router.push('/(auth)/admin/feedback')}>
+              <CardContent className="md:px-8 md:py-6">
+                <Text className="text-base font-bold md:text-lg">{t('admin.feedbackCard')}</Text>
+                <Text variant="muted" className="mt-1">{t('admin.feedbackCardDesc')}</Text>
+              </CardContent>
+            </Pressable>
+          </Card>
+        </View>
       </View>
     </View>
   );

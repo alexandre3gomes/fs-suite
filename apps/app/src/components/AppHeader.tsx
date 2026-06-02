@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { Avatar, Logo, Separator } from '@fs-suite/ui';
 import { usePathname, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
@@ -7,6 +8,8 @@ import { Modal, Platform, Pressable, Text, View } from 'react-native';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { setLanguage, type SupportedLocale } from '../i18n';
 import { signOut } from '../services/auth.service';
+
+import { FeedbackModal } from './feedback/FeedbackModal';
 
 const LANGUAGES: { code: SupportedLocale; flag: string }[] = [
   { code: 'pt-BR', flag: '\u{1F1E7}\u{1F1F7}' },
@@ -38,6 +41,7 @@ export function AppHeader() {
   const { user } = useCurrentUser();
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const avatarRef = useRef<View>(null);
 
   const isDashboard = pathname === '/dashboard' || pathname === '/dashboard/';
@@ -103,6 +107,16 @@ export function AppHeader() {
 
         {/* Right */}
         <View className="flex-row items-center gap-2.5 shrink">
+          {user ? (
+            <Pressable
+              onPress={() => setFeedbackOpen(true)}
+              hitSlop={8}
+              accessibilityLabel={t('feedback.title')}
+              style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as never) : undefined}
+            >
+              <Feather name="message-circle" size={20} color="#6b7280" />
+            </Pressable>
+          ) : null}
           {user?.name ? (
             <Text className="hidden text-xs text-muted-foreground md:flex" numberOfLines={1}>{user.name}</Text>
           ) : null}
@@ -113,6 +127,8 @@ export function AppHeader() {
           </Pressable>
         </View>
       </View>
+
+      <FeedbackModal visible={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
       {/* Avatar dropdown menu */}
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
