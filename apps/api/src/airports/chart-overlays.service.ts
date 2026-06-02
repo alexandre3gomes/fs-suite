@@ -222,6 +222,90 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
 
+/** Count `/Type /Page` objects (same page detection parseGeoPdfPage uses). */
+function countPdfPageObjects(pdfBuffer: Buffer): number {
+  const text = pdfBuffer.toString('latin1');
+  const objPattern = /\d+\s+\d+\s+obj([\s\S]*?)endobj/g;
+  let count = 0;
+  let m: RegExpExecArray | null;
+  while ((m = objPattern.exec(text)) !== null) {
+    if (/\/Type\s*\/Page(?!s)/.test(m[1] ?? '')) count++;
+  }
+  return count;
+}
+
+/** Axis-aligned geographic bounds of a page's GPTS control points. */
+export function gptsBounds(geo: GeoPdfMetadata): Bounds {
+  const lats: number[] = [];
+  const lons: number[] = [];
+  for (let i = 0; i < geo.gpts.length; i += 2) {
+    lats.push(geo.gpts[i]!);
+    lons.push(geo.gpts[i + 1]!);
+  }
+  return {
+    south: Math.min(...lats),
+    north: Math.max(...lats),
+    west: Math.min(...lons),
+    east: Math.max(...lons),
+  };
+}
+
+/**
+ * Pick the GeoPDF page whose frame actually covers the aerodrome.
+ *
+ * Multi-page DECEA charts can embed several georeferenced frames (e.g. an
+ * area/approach inset PLUS the aerodrome VAC), each with its own /VP /GPTS.
+ * Blindly taking page 0 plotted the SBJD VAC ~16 NM south of the field
+ * because page 0 was a different frame and the aerodrome page was index 1.
+ *
+ * Selection: prefer a page whose bounds CONTAIN the ARP; among those, the
+ * smallest-area frame (most field-specific). If none contain the ARP, fall
+ * back to the page whose bounds-center is nearest the ARP. Returns null geo
+ * when no page carries GeoPDF metadata at all.
+ */
+/**
+ * Pure selection core: given the georeferenced pages, return the index of the
+ * one that best covers the ARP. Prefer pages whose bounds CONTAIN the ARP
+ * (smallest-area wins among those); otherwise the nearest bounds-center.
+ * Returns -1 when there are no georeferenced pages.
+ */
+export function choosePageForArp(
+  pages: { pageIndex: number; geo: GeoPdfMetadata }[],
+  arpLat: number,
+  arpLon: number,
+): number {
+  let best: { pageIndex: number; contains: boolean; area: number; dist: number } | null = null;
+  for (const { pageIndex, geo } of pages) {
+    const b = gptsBounds(geo);
+    const contains = arpLat >= b.south && arpLat <= b.north && arpLon >= b.west && arpLon <= b.east;
+    const area = (b.north - b.south) * (b.east - b.west);
+    const cLat = (b.south + b.north) / 2;
+    const cLon = (b.west + b.east) / 2;
+    const dist = Math.hypot(arpLat - cLat, arpLon - cLon);
+    const cand = { pageIndex, contains, area, dist };
+    if (!best) { best = cand; continue; }
+    if (cand.contains !== best.contains) { if (cand.contains) best = cand; continue; }
+    if (cand.contains ? cand.area < best.area : cand.dist < best.dist) best = cand;
+  }
+  return best ? best.pageIndex : -1;
+}
+
+function selectAerodromePage(
+  pdfBuffer: Buffer,
+  arpLat: number,
+  arpLon: number,
+): { pageIndex: number; geo: GeoPdfMetadata | null } {
+  const count = countPdfPageObjects(pdfBuffer);
+  const pages: { pageIndex: number; geo: GeoPdfMetadata }[] = [];
+  for (let p = 0; p < count; p++) {
+    const geo = parseGeoPdfPage(pdfBuffer, p);
+    if (geo) pages.push({ pageIndex: p, geo });
+  }
+  const chosen = choosePageForArp(pages, arpLat, arpLon);
+  if (chosen < 0) return { pageIndex: 0, geo: null };
+  return { pageIndex: chosen, geo: pages.find((p) => p.pageIndex === chosen)!.geo };
+}
+
 // ---- PDF rasterization ----
 
 async function rasterizePdfPage(pdfBuffer: Buffer, pageIndex: number): Promise<RasterResult> {
@@ -309,9 +393,22 @@ export class ChartOverlaysService {
     if (!airport) throw new NotFoundException(`Aerodrome ${normalizedIcao} not found`);
 
     const pdfBuffer = await this.downloadPdf(args.chartUrl);
-    const pageIndex = args.pageIndex ?? 0;
 
-    const geo = parseGeoPdfPage(pdfBuffer, pageIndex);
+    // Page selection: honour an explicit caller-provided pageIndex, otherwise
+    // auto-select the page whose GeoPDF frame covers the aerodrome ARP. DECEA
+    // charts can embed multiple georeferenced frames and the field is not
+    // always on page 0 (e.g. SBJD's VAC is page 1).
+    let pageIndex: number;
+    let geo: GeoPdfMetadata | null;
+    if (args.pageIndex != null) {
+      pageIndex = args.pageIndex;
+      geo = parseGeoPdfPage(pdfBuffer, pageIndex);
+    } else {
+      const selected = selectAerodromePage(pdfBuffer, airport.latitude, airport.longitude);
+      pageIndex = selected.pageIndex;
+      geo = selected.geo;
+    }
+
     if (!geo) {
       throw new BadRequestException(
         'Chart PDF has no embedded geographic metadata (GeoPDF); cannot project on map.',

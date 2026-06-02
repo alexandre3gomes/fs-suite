@@ -274,9 +274,14 @@ export class AirportsController {
     if (!url || !type || !name) {
       throw new BadRequestException('url, type, and name are required');
     }
-    const pageIndex = page ? parseInt(page, 10) : 0;
-    if (Number.isNaN(pageIndex) || pageIndex < 0) {
-      throw new BadRequestException('page must be a non-negative integer');
+    // Omit pageIndex unless the caller explicitly asks for a page — the service
+    // then auto-selects the page whose GeoPDF frame covers the aerodrome.
+    let pageIndex: number | undefined;
+    if (page !== undefined) {
+      pageIndex = parseInt(page, 10);
+      if (Number.isNaN(pageIndex) || pageIndex < 0) {
+        throw new BadRequestException('page must be a non-negative integer');
+      }
     }
     return this.chartOverlaysService.getOrCompute({
       icao,
