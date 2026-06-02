@@ -22,7 +22,10 @@ From the VFR planning flow, a pilot should be able to:
 | ADC | no | Aerodrome ground layout — doesn't georeference cleanly to the route map |
 | IAC / SID / STAR / MIN | no | Not visual-flight charts |
 
-Only one overlay is active at a time.
+Multiple overlays can be active at once (e.g. the origin, destination, and
+alternate VACs) — they sit over different aerodromes so they don't visually
+clash. A single global opacity slider controls all of them; each has its own
+toggle (show/remove) in the chart panel and its own row in the map control.
 
 ## Architecture: on-demand, automatic, cached
 
@@ -124,13 +127,14 @@ self-contained npm packages with prebuilt binaries.
 - Click → `requestOverlay(chart)` calls the on-demand endpoint, shows a
   loading state for the ~1–3s first-render case, then lifts the result
   into `VfrPlanForm`.
-- `VfrPlanForm` holds the single active overlay and passes it to
-  `AerodromeMap`. When origin/destination/alternate changes and the
-  active overlay's ICAO drops off the plan, the overlay clears silently.
-- `AerodromeMap` renders the overlay via `L.imageOverlay` with `zIndex:
-  500` (above tiles, below markers and route).
+- `VfrPlanForm` holds the list of active overlays and passes it to
+  `AerodromeMap`. When origin/destination/alternate changes, any overlay
+  whose ICAO drops off the plan clears silently.
+- `AerodromeMap` renders one `L.imageOverlay` per active overlay (a layer
+  map keyed by overlay id) with `zIndex: 500` (above tiles, below markers
+  and route).
 
-The active overlay is identified to ChartsPanel by `sourceUrl`, which is
+Each active overlay is identified to ChartsPanel by `sourceUrl`, which is
 stable across re-fetches and survives the round-trip through the backend.
 
 ## Backend contract
@@ -159,7 +163,7 @@ side-effect-free from the caller's perspective.
 ## Out of scope (deliberately)
 
 - Client-side recalibration (drag handles, anchor points, blend modes).
-- Multiple simultaneous overlays.
+- Per-overlay opacity (opacity is a single global control across all active overlays).
 - Admin/curation UI.
 - Native (iOS/Android) builds of the map — overlay inherits the map's
   web-only state. Will revisit alongside any native map effort.

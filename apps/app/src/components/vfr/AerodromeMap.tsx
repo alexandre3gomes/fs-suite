@@ -113,8 +113,8 @@ interface Props {
   flightRules?: 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
   tocTodPositions?: TocTodPosition[];
   hazardSegments?: { fromIdx: number; toIdx: number; hazardType: string; severity: string }[];
-  aerodromeOverlay?: AerodromeOverlay | null;
-  onCloseAerodromeOverlay?: () => void;
+  aerodromeOverlays?: AerodromeOverlay[];
+  onCloseAerodromeOverlay?: (id: string) => void;
 }
 
 export interface AerodromeOverlay {
@@ -246,7 +246,7 @@ export function AerodromeMap({
   onSetAltitudeAtWaypoint, defaultCruiseAltFt, waypointAltitudesFt,
   alternateRouteWaypoints, onRemoveAlternateWaypoint, onUpdateAlternateWaypoint,
   reaSegments, selectedReaCorridorName, flightRules, tocTodPositions, hazardSegments,
-  aerodromeOverlay, onCloseAerodromeOverlay,
+  aerodromeOverlays, onCloseAerodromeOverlay,
 }: Props) {
   const { t } = useTranslation();
   const wrapperRef = useRef<View>(null);
@@ -261,8 +261,10 @@ export function AerodromeMap({
   const sigmetLayerRef = useRef<L.GeoJSON | null>(null);
   const radarLayerRef = useRef<L.TileLayer | null>(null);
   const satelliteLayerRef = useRef<L.TileLayer | null>(null);
-  const aerodromeOverlayLayerRef = useRef<L.ImageOverlay | null>(null);
-  const [aerodromeOverlayOpacity, setAerodromeOverlayOpacity] = useState<number | null>(null);
+  // Multiple chart overlays can be plotted at once (e.g. origin + destination +
+  // alternate VACs). One Leaflet layer per overlay id; a single global opacity.
+  const aerodromeOverlayLayersRef = useRef<Map<string, L.ImageOverlay>>(new Map());
+  const [aerodromeOverlayOpacity, setAerodromeOverlayOpacity] = useState<number>(0.7);
   const [ready, setReady] = useState(false);
   const [mapInitialized, setMapInitialized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -729,71 +731,66 @@ export function AerodromeMap({
     };
   }, [showSatellite, mapInitialized]);
 
-  // Aerodrome chart overlay (VAC/PDC) — renders the prepared raster as an L.imageOverlay
+  // Aerodrome chart overlays (VAC) — one L.imageOverlay per active chart.
+  // Diffs the desired set against the live layers: add new, remove gone.
   useEffect(() => {
     if (!mapInitialized || !mapRef.current || Platform.OS !== 'web') return;
     const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
+    const layers = aerodromeOverlayLayersRef.current;
+    const overlays = aerodromeOverlays ?? [];
+    const wanted = new Set(overlays.map((o) => o.id));
 
-    if (aerodromeOverlayLayerRef.current) {
-      map.removeLayer(aerodromeOverlayLayerRef.current);
-      aerodromeOverlayLayerRef.current = null;
-    }
-    if (!aerodromeOverlay) {
-      setAerodromeOverlayOpacity(null);
-      return;
-    }
-
-    const { bounds } = aerodromeOverlay;
-    const latLngBounds = Leaf.latLngBounds(
-      [bounds.south, bounds.west],
-      [bounds.north, bounds.east],
-    );
-    const imageUrl = `${API_URL}/v1/aerodromes/chart-overlays/${aerodromeOverlay.id}/image`;
-    const opacity = aerodromeOverlayOpacity ?? aerodromeOverlay.opacityDefault;
-
-    aerodromeOverlayLayerRef.current = Leaf.imageOverlay(imageUrl, latLngBounds, {
-      opacity,
-      interactive: false,
-      crossOrigin: 'anonymous',
-    }).addTo(map);
-
-    // Place below markers but above base tiles and weather layers
-    const el = aerodromeOverlayLayerRef.current.getElement() as unknown as DomElement | null;
-    if (el) {
-      el.style.zIndex = '500';
-      if (aerodromeOverlay.rotationDeg && aerodromeOverlay.rotationDeg !== 0) {
-        el.style.transformOrigin = 'center center';
-        const existing = el.style.transform ?? '';
-        el.style.transform = `${existing} rotate(${aerodromeOverlay.rotationDeg}deg)`;
+    // Remove layers whose overlay is no longer active.
+    for (const [id, layer] of layers) {
+      if (!wanted.has(id)) {
+        map.removeLayer(layer);
+        layers.delete(id);
       }
     }
 
-    if (aerodromeOverlayOpacity === null) {
-      setAerodromeOverlayOpacity(aerodromeOverlay.opacityDefault);
-    }
-
-    return () => {
-      if (aerodromeOverlayLayerRef.current) {
-        map.removeLayer(aerodromeOverlayLayerRef.current);
-        aerodromeOverlayLayerRef.current = null;
+    // Add layers for newly-activated overlays.
+    for (const o of overlays) {
+      if (layers.has(o.id)) continue;
+      const latLngBounds = Leaf.latLngBounds(
+        [o.bounds.south, o.bounds.west],
+        [o.bounds.north, o.bounds.east],
+      );
+      const imageUrl = `${API_URL}/v1/aerodromes/chart-overlays/${o.id}/image`;
+      const layer = Leaf.imageOverlay(imageUrl, latLngBounds, {
+        opacity: aerodromeOverlayOpacity,
+        interactive: false,
+        crossOrigin: 'anonymous',
+      }).addTo(map);
+      // Place below markers but above base tiles and weather layers
+      const el = layer.getElement() as unknown as DomElement | null;
+      if (el) {
+        el.style.zIndex = '500';
+        if (o.rotationDeg && o.rotationDeg !== 0) {
+          el.style.transformOrigin = 'center center';
+          const existing = el.style.transform ?? '';
+          el.style.transform = `${existing} rotate(${o.rotationDeg}deg)`;
+        }
       }
-    };
-  }, [aerodromeOverlay, mapInitialized]);
+      layers.set(o.id, layer);
+    }
+    return undefined;
+  }, [aerodromeOverlays, mapInitialized]);
 
-  // Live-update opacity on slider drag without rebuilding the overlay
+  // Live-update opacity on slider drag (global — applies to every overlay).
   useEffect(() => {
-    if (!aerodromeOverlayLayerRef.current || aerodromeOverlayOpacity === null) return;
-    aerodromeOverlayLayerRef.current.setOpacity(aerodromeOverlayOpacity);
+    for (const layer of aerodromeOverlayLayersRef.current.values()) {
+      layer.setOpacity(aerodromeOverlayOpacity);
+    }
   }, [aerodromeOverlayOpacity]);
 
-  const fitToAerodromeOverlay = useCallback(() => {
-    if (!mapRef.current || !aerodromeOverlay) return;
+  const fitToAerodromeOverlay = useCallback((id: string) => {
+    const o = (aerodromeOverlays ?? []).find((x) => x.id === id);
+    if (!mapRef.current || !o) return;
     const Leaf = require('leaflet') as LeafletModule;
-    const { bounds } = aerodromeOverlay;
-    const b = Leaf.latLngBounds([bounds.south, bounds.west], [bounds.north, bounds.east]);
+    const b = Leaf.latLngBounds([o.bounds.south, o.bounds.west], [o.bounds.north, o.bounds.east]);
     mapRef.current.fitBounds(b, { padding: [20, 20] });
-  }, [aerodromeOverlay]);
+  }, [aerodromeOverlays]);
 
   // ResizeObserver — invalidate map size when container resizes (sidebar collapse, etc.)
   useEffect(() => {
@@ -1553,52 +1550,52 @@ export function AerodromeMap({
     >
       <View ref={containerRef} collapsable={false} style={{ width: '100%', height: '100%' }} />
 
-      {/* Aerodrome chart overlay card — top-left, visible only when an overlay is active */}
-      {aerodromeOverlay ? (
+      {/* Aerodrome chart overlay card — top-left, visible when ≥1 overlay is active */}
+      {aerodromeOverlays && aerodromeOverlays.length > 0 ? (
         <View
           style={{
             position: 'absolute', top: 10, left: 10, zIndex: 1000,
             backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 4,
             borderWidth: 1, borderColor: '#dfe2e8',
-            padding: 8, gap: 6, minWidth: 220,
+            padding: 8, gap: 6, minWidth: 220, maxWidth: 300,
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: '#1f2937', flex: 1 }} numberOfLines={1}>
-              {aerodromeOverlay.icao} · {aerodromeOverlay.chartType} — {aerodromeOverlay.chartName}
-            </Text>
-            <Pressable
-              onPress={fitToAerodromeOverlay}
-              style={{
-                paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3,
-                borderWidth: 1, borderColor: '#dfe2e8',
-              }}
-            >
-              <Text style={{ fontSize: 10, color: '#374151' }}>{t('vfr.chartOverlayFit')}</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => onCloseAerodromeOverlay?.()}
-              style={{
-                paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3,
-                borderWidth: 1, borderColor: '#dfe2e8',
-              }}
-            >
-              <Text style={{ fontSize: 12, color: '#374151', lineHeight: 12 }}>✕</Text>
-            </Pressable>
-          </View>
-          {aerodromeOverlay.approximate ? (
-            <View style={{ backgroundColor: '#fef3c7', borderRadius: 3, paddingHorizontal: 6, paddingVertical: 3 }}>
-              <Text style={{ fontSize: 10, color: '#92400e' }}>
-                ⚠ {t('vfr.chartOverlayApproximate')}
-              </Text>
+          {/* One row per active chart */}
+          {aerodromeOverlays.map((o) => (
+            <View key={o.id} style={{ gap: 3 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#1f2937', flex: 1 }} numberOfLines={1}>
+                  {o.icao} · {o.chartType} — {o.chartName}
+                </Text>
+                <Pressable
+                  onPress={() => fitToAerodromeOverlay(o.id)}
+                  style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3, borderWidth: 1, borderColor: '#dfe2e8' }}
+                >
+                  <Text style={{ fontSize: 10, color: '#374151' }}>{t('vfr.chartOverlayFit')}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => onCloseAerodromeOverlay?.(o.id)}
+                  style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3, borderWidth: 1, borderColor: '#dfe2e8' }}
+                >
+                  <Text style={{ fontSize: 12, color: '#374151', lineHeight: 12 }}>✕</Text>
+                </Pressable>
+              </View>
+              {o.approximate ? (
+                <View style={{ backgroundColor: '#fef3c7', borderRadius: 3, paddingHorizontal: 6, paddingVertical: 3 }}>
+                  <Text style={{ fontSize: 10, color: '#92400e' }}>
+                    ⚠ {t('vfr.chartOverlayApproximate')}
+                  </Text>
+                </View>
+              ) : null}
             </View>
-          ) : null}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          ))}
+
+          {/* Single opacity slider — global to all plotted charts */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderTopWidth: 1, borderTopColor: '#eef1f5', paddingTop: 6 }}>
             <Text style={{ fontSize: 10, color: '#6b7280', width: 64 }}>
               {t('vfr.chartOverlayOpacity')}
             </Text>
             <View
-              key={aerodromeOverlay.id}
               style={{ flex: 1 }}
               ref={(el) => {
                 if (!el || Platform.OS !== 'web') return;
@@ -1615,7 +1612,7 @@ export function AerodromeMap({
                 input.min = '10';
                 input.max = '100';
                 input.step = '5';
-                input.value = String(Math.round((aerodromeOverlayOpacity ?? aerodromeOverlay.opacityDefault) * 100));
+                input.value = String(Math.round(aerodromeOverlayOpacity * 100));
                 input.style.cssText = 'width:100%;';
                 input.oninput = (e) => {
                   const raw = e.target?.value;
@@ -1626,7 +1623,7 @@ export function AerodromeMap({
               }}
             />
             <Text style={{ fontSize: 10, color: '#6b7280', width: 30, textAlign: 'right' }}>
-              {Math.round((aerodromeOverlayOpacity ?? aerodromeOverlay.opacityDefault) * 100)}%
+              {Math.round(aerodromeOverlayOpacity * 100)}%
             </Text>
           </View>
         </View>
@@ -1763,15 +1760,20 @@ export function AerodromeMap({
         </View>
       </View>
 
-      {/* Right-click hint */}
+      {/* Right-click hint — top-centred and below the overlay/control cards
+          (zIndex 999 < 1000) so it never sits on top of the opacity control. */}
       <View
-        style={{
-          position: 'absolute', top: 10, left: 50, zIndex: 1000,
-          backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 4,
-          paddingHorizontal: 8, paddingVertical: 3,
-        }}
+        pointerEvents="none"
+        style={{ position: 'absolute', top: 10, left: 0, right: 0, zIndex: 999, alignItems: 'center' }}
       >
-        <Text style={{ fontSize: 10, color: '#9ca3af' }}>{t('vfr.rightClickHint')}</Text>
+        <View
+          style={{
+            backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 4,
+            paddingHorizontal: 8, paddingVertical: 3,
+          }}
+        >
+          <Text style={{ fontSize: 10, color: '#9ca3af' }}>{t('vfr.rightClickHint')}</Text>
+        </View>
       </View>
 
       {/* Weather layer legends */}

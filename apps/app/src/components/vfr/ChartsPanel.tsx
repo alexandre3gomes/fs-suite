@@ -46,12 +46,12 @@ interface Props {
   icao: string;
   flightRules?: 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
   fullscreen?: boolean;
-  /** Source URL of the currently active overlay (so we can highlight the matching chip) */
-  activeOverlayChartUrl?: string | null;
-  /** Called when the user toggles the overlay on the map for a chart */
+  /** Source URLs of the charts currently plotted (to highlight matching chips) */
+  activeOverlayChartUrls?: string[];
+  /** Called when the user toggles a chart overlay on the map */
   onShowOverlay?: (overlay: ChartOverlay) => void;
-  /** Called when the user removes the currently active overlay */
-  onHideOverlay?: () => void;
+  /** Called when the user removes a specific chart overlay (by its source URL) */
+  onHideOverlay?: (chartUrl: string) => void;
 }
 
 const VFR_CHART_TYPES = new Set(['ADC', 'PDC', 'VAC', 'INFO', 'OTHER']);
@@ -77,7 +77,7 @@ function useViewerHeight(base: number): number {
   return height < 700 ? Math.round(height * 0.45) : base;
 }
 
-export function ChartsPanel({ icao, flightRules, fullscreen, activeOverlayChartUrl, onShowOverlay, onHideOverlay }: Props) {
+export function ChartsPanel({ icao, flightRules, fullscreen, activeOverlayChartUrls, onShowOverlay, onHideOverlay }: Props) {
   const { t } = useTranslation();
   const viewerHeight = useViewerHeight(450);
   const [data, setData] = useState<ChartSearchResult | null>(null);
@@ -327,12 +327,12 @@ export function ChartsPanel({ icao, flightRules, fullscreen, activeOverlayChartU
                 </Text>
                 {OVERLAY_ELIGIBLE_TYPES.has(selectedChart.type) && onShowOverlay ? (
                   (() => {
-                    const isActive = !!activeOverlayChartUrl && activeOverlayChartUrl === selectedChart.url;
+                    const isActive = !!activeOverlayChartUrls?.includes(selectedChart.url);
                     return (
                       <Pressable
                         disabled={overlayLoading}
                         onPress={() => {
-                          if (isActive) onHideOverlay?.();
+                          if (isActive) onHideOverlay?.(selectedChart.url);
                           else void requestOverlay(selectedChart);
                         }}
                         className={`rounded-sm border px-2 py-0.5 active:bg-muted ${

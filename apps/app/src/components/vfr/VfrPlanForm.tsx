@@ -381,13 +381,19 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const [destDetail, setDestDetail] = useState<AerodromeWithRunways | null>(null);
 
   // Active aerodrome chart overlay shown on the map (single-overlay MVP)
-  const [activeAerodromeOverlay, setActiveAerodromeOverlay] = useState<AerodromeOverlay | null>(null);
+  // Multiple chart overlays plot at once (origin / destination / alternate VACs).
+  const [activeAerodromeOverlays, setActiveAerodromeOverlays] = useState<AerodromeOverlay[]>([]);
   const handleShowAerodromeOverlay = useCallback((o: ChartOverlay) => {
-    setActiveAerodromeOverlay(o);
+    setActiveAerodromeOverlays((prev) => (prev.some((x) => x.id === o.id) ? prev : [...prev, o]));
     trackAction('aerodrome_overlay_shown', { icao: o.icao, chart_type: o.chartType });
   }, []);
-  const handleHideAerodromeOverlay = useCallback(() => {
-    setActiveAerodromeOverlay(null);
+  // Remove a specific overlay by its chart source URL (ChartsPanel toggle).
+  const handleHideAerodromeOverlay = useCallback((chartUrl: string) => {
+    setActiveAerodromeOverlays((prev) => prev.filter((x) => x.sourceUrl !== chartUrl));
+  }, []);
+  // Remove a specific overlay by its id (the map control's ✕ button).
+  const handleCloseAerodromeOverlay = useCallback((id: string) => {
+    setActiveAerodromeOverlays((prev) => prev.filter((x) => x.id !== id));
   }, []);
 
   // Map state
@@ -663,16 +669,16 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     }
   }, [origin?.icao, destination?.icao, alternate?.icao, fetchMetars, fetchTafs]);
 
-  // Silently clear the active aerodrome overlay when its ICAO drops off the plan
+  // Silently drop overlays whose ICAO is no longer on the plan
   useEffect(() => {
-    if (!activeAerodromeOverlay) return;
     const planIcaos = new Set(
       [origin?.icao, destination?.icao, alternate?.icao].filter(Boolean) as string[],
     );
-    if (!planIcaos.has(activeAerodromeOverlay.icao)) {
-      setActiveAerodromeOverlay(null);
-    }
-  }, [origin?.icao, destination?.icao, alternate?.icao, activeAerodromeOverlay]);
+    setActiveAerodromeOverlays((prev) => {
+      const next = prev.filter((o) => planIcaos.has(o.icao));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [origin?.icao, destination?.icao, alternate?.icao]);
 
   // Auto-suggest runway from METAR wind
   useEffect(() => {
@@ -2103,8 +2109,8 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       flightRules={flightRules}
       tocTodPositions={tocTodPositions}
       hazardSegments={routeSafety?.hazardSegments}
-      aerodromeOverlay={activeAerodromeOverlay}
-      onCloseAerodromeOverlay={handleHideAerodromeOverlay}
+      aerodromeOverlays={activeAerodromeOverlays}
+      onCloseAerodromeOverlay={handleCloseAerodromeOverlay}
     />
   );
 
@@ -2237,7 +2243,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             onRunwayChange={setOriginRunway}
             flightRules={flightRules}
             runways={originDetail?.runways}
-            activeOverlay={activeAerodromeOverlay}
+            activeOverlays={activeAerodromeOverlays}
             onShowOverlay={handleShowAerodromeOverlay}
             onHideOverlay={handleHideAerodromeOverlay}
             t={t}
@@ -2264,7 +2270,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             onRunwayChange={setDestRunway}
             flightRules={flightRules}
             runways={destDetail?.runways}
-            activeOverlay={activeAerodromeOverlay}
+            activeOverlays={activeAerodromeOverlays}
             onShowOverlay={handleShowAerodromeOverlay}
             onHideOverlay={handleHideAerodromeOverlay}
             t={t}
@@ -2325,7 +2331,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             runway={altRunway}
             onRunwayChange={setAltRunway}
             flightRules={flightRules}
-            activeOverlay={activeAerodromeOverlay}
+            activeOverlays={activeAerodromeOverlays}
             onShowOverlay={handleShowAerodromeOverlay}
             onHideOverlay={handleHideAerodromeOverlay}
             t={t}
@@ -3828,7 +3834,7 @@ function AerodromeInfo({
   onRunwayChange,
   flightRules,
   runways,
-  activeOverlay,
+  activeOverlays,
   onShowOverlay,
   onHideOverlay,
   t,
@@ -3845,9 +3851,9 @@ function AerodromeInfo({
   onRunwayChange: (v: string) => void;
   flightRules?: 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
   runways?: AerodromeWithRunways['runways'];
-  activeOverlay: AerodromeOverlay | null;
+  activeOverlays: AerodromeOverlay[];
   onShowOverlay: (o: ChartOverlay) => void;
-  onHideOverlay: () => void;
+  onHideOverlay: (chartUrl: string) => void;
   t: (key: string) => string;
 }) {
   const [chartsOpen, setChartsOpen] = useState(false);
@@ -3929,7 +3935,7 @@ function AerodromeInfo({
         <ChartsPanel
           icao={aerodrome.icao}
           flightRules={flightRules}
-          activeOverlayChartUrl={activeOverlay?.icao === aerodrome.icao ? activeOverlay.sourceUrl : null}
+          activeOverlayChartUrls={activeOverlays.filter((o) => o.icao === aerodrome.icao).map((o) => o.sourceUrl)}
           onShowOverlay={onShowOverlay}
           onHideOverlay={onHideOverlay}
         />
