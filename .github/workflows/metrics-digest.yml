@@ -23,6 +23,10 @@ env:
   REDIS_CAP_BYTES: 268435456 # 256 MB — Upstash free-tier cap
   ISSUE_LABEL: metrics
   ISSUE_TITLE: Daily Metrics Digest
+  # Logo for the email signature — served from the public Supabase
+  # `communications` bucket. (From/To live on the send step; the recipient
+  # is a secret since this repo is public.)
+  LOGO_URL: https://kottmfuncqyzwtweoquw.supabase.co/storage/v1/object/public/communications/email/fs-suite-logo.png
 
 permissions:
   issues: write
@@ -65,7 +69,7 @@ jobs:
           echo "host.txt:"
           cat host.txt
 
-      - name: Build comment body
+      - name: Build digest bodies (markdown + HTML email)
         run: |
           DATE=$(date -u +%Y-%m-%d)
           DB_BYTES=$(jq -r '.database.size_bytes' metrics.json)
@@ -112,6 +116,88 @@ jobs:
           } > body.md
           echo "Comment body:"
           cat body.md
+
+          # HTML email body — same metrics, aviation/cockpit dark theme matching
+          # the unsubscribe page. Inline CSS only (email clients strip <style>).
+          # A red "%" cell flags caps over 80%.
+          row() { # label value
+            printf '<tr><td style="padding:8px 14px;border-bottom:1px solid #1c2940;color:#9fb0c3;font-size:13px;">%s</td><td style="padding:8px 14px;border-bottom:1px solid #1c2940;color:#e7edf5;font-size:13px;font-weight:600;text-align:right;">%s</td></tr>' "$1" "$2"
+          }
+          cat > body.html <<HTML
+          <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/>
+          <meta name="viewport" content="width=device-width, initial-scale=1"/></head>
+          <body style="margin:0;background:#0b1320;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+          <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
+            <div style="font-size:12px;letter-spacing:2px;color:#5b9bd5;text-transform:uppercase;margin-bottom:6px;">FS Suite</div>
+            <h1 style="font-size:20px;color:#e7edf5;margin:0 0 20px;">Métricas diárias · ${DATE}</h1>
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background:#0f1a2e;border:1px solid #1c2940;border-radius:8px;overflow:hidden;">
+              $(row "EC2 disk" "${HOST_PCT}% de ${HOST_SIZE} · ${HOST_IMAGES} imagens")
+              $(row "Database" "${DB_MB} MB / ${CAP_MB} MB (${DB_PCT}%)")
+              $(row "Redis" "${REDIS_MB} MB / ${REDIS_CAP_MB} MB (${REDIS_PCT}%) · ${REDIS_KEYS} keys")
+              $(row "Usuários" "${USERS_TOTAL} total · ${USERS_NEW} novos 7d · ${USERS_ACTIVE} ativos 7d")
+              $(row "Planos de voo" "${PLANS_TOTAL} total · ${PLANS_NEW} novos 7d")
+              $(row "Sessões ativas" "${SESSIONS}")
+              $(row "Atividade" "${ACT_24H} eventos 24h · ${ACT_7D} 7d")
+              $(row "Validações IA (7d)" "${AI_7D}")
+              $(row "Cache de cartas" "${OVERLAYS} entradas")
+            </table>
+            <p style="font-size:11px;color:#5b6b80;margin:14px 0 0;">Definições das métricas em <a href="https://github.com/${GITHUB_REPOSITORY}/blob/main/infra/README.md#metrics-digest" style="color:#5b9bd5;">infra/README.md</a>.</p>
+            <div style="margin-top:32px;padding-top:20px;border-top:1px solid #1c2940;">
+              <img src="${LOGO_URL}" alt="FS Suite" width="120" style="display:block;height:auto;margin-bottom:10px;border:0;"/>
+              <div style="color:#e7edf5;font-size:14px;font-weight:600;">Alexandre Silva</div>
+              <div style="color:#9fb0c3;font-size:12px;">Founder &amp; Lead Engineer | FS Suite</div>
+              <a href="https://github.com/alexandre3gomes/fs-suite/" style="color:#5b9bd5;font-size:12px;text-decoration:none;">https://github.com/alexandre3gomes/fs-suite/</a>
+            </div>
+          </div></body></html>
+          HTML
+          echo "HTML body bytes: $(wc -c < body.html)"
+
+      - name: Send email digest (Resend)
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          # Sender is on the Resend-verified fs-suite.com domain. Recipients are
+          # NOT hard-coded — they come from metrics.json (.admin_recipients),
+          # populated by GET /v1/admin/metrics from the DB (User.isAdmin ∪
+          # ADMIN_EMAILS). So granting admin in-app auto-subscribes the digest.
+          EMAIL_FROM: FS Suite Metrics <metrics@fs-suite.com>
+          EMAIL_REPLY_TO: metrics@fs-suite.com
+        run: |
+          if [[ -z "$RESEND_API_KEY" ]]; then
+            echo "::error::RESEND_API_KEY secret is not set"
+            exit 1
+          fi
+          RECIPIENTS=$(jq -r '.admin_recipients // [] | length' metrics.json)
+          if [[ "$RECIPIENTS" -eq 0 ]]; then
+            echo "::error::No admin recipients in metrics.json — is the API deployed with admin_recipients?"
+            exit 1
+          fi
+          echo "Sending to ${RECIPIENTS} admin recipient(s)"
+
+          DATE=$(date -u +%Y-%m-%d)
+          # Build the JSON with jq so the HTML is escaped correctly (--rawfile),
+          # never by hand. `to` is the admin list straight from metrics.json.
+          jq -n \
+            --arg from "$EMAIL_FROM" \
+            --arg reply "$EMAIL_REPLY_TO" \
+            --arg subject "FS Suite — Métricas ${DATE}" \
+            --rawfile html body.html \
+            --slurpfile m metrics.json \
+            '{from:$from, to:($m[0].admin_recipients), reply_to:$reply, subject:$subject, html:$html}' \
+            > payload.json
+
+          # -sS shows errors; -f makes curl exit non-zero on HTTP >=400 so the
+          # step fails loudly if Resend rejects (bad key, unverified domain…).
+          HTTP=$(curl -sS -w '%{http_code}' -o resend-resp.json -X POST \
+            https://api.resend.com/emails \
+            -H "Authorization: Bearer ${RESEND_API_KEY}" \
+            -H "Content-Type: application/json" \
+            --data @payload.json)
+          echo "Resend HTTP ${HTTP}:"; cat resend-resp.json; echo
+          if [[ "$HTTP" -ge 400 ]]; then
+            echo "::error::Resend send failed (HTTP ${HTTP})"
+            exit 1
+          fi
+          echo "Email digest sent (recipient redacted)"
 
       - name: Ensure label and issue exist; post comment
         env:

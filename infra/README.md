@@ -329,7 +329,7 @@ hand.
 | `AVWX_TOKEN` | A (optional) | if enriched METAR enabled | — | — |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | A | ✅ | — | — |
 | `ADMIN_METRICS_TOKEN` | A + D | ✅ | — | ✅ (`metrics-digest.yml`) |
-| `RESEND_API_KEY` | A (optional) | reserved for future user comms | — | — |
+| `RESEND_API_KEY` | A + D | reserved for future user comms | — | ✅ (`metrics-digest.yml`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | D | — | — | ✅ (`db-backup.yml`) |
 | `EXPO_PUBLIC_POSTHOG_KEY` → `POSTHOG_KEY` | B | — | ✅ | ✅ (injected at build by `deploy-app.yml`) |
 | `EC2_HOST` / `EC2_SSH_KEY` / `EC2_USER` | C | — | — | ✅ (`deploy.yml`) |
@@ -390,7 +390,7 @@ service provisioned and credentials in hand, you can skip straight to the
 | `AVWX_TOKEN` | AVWX token — enriched METAR decoding. Same caveat as `OWM_API_KEY`. |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare R2 credentials for chart overlay cache. |
 | `ADMIN_METRICS_TOKEN` | Header-token auth for `GET /v1/admin/metrics` (consumed by `metrics-digest.yml`). Generate with `openssl rand -hex 32`. |
-| `RESEND_API_KEY` | [Resend](https://resend.com) API key. **Configured and reserved for future user communications** — no email is sent by the app today. When that feature is built it will require the `fs-suite.com` domain verified in Resend (DKIM/SPF, see [DNS Records](#dns-records)). |
+| `RESEND_API_KEY` | [Resend](https://resend.com) API key. Used by `metrics-digest.yml` to email the daily operational digest (sender on the Resend-verified `fs-suite.com` domain). Still **reserved for future user communications** — the app itself sends no user-facing email yet. As a GitHub Actions secret it must be a Resend key (`re_…`). |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side full-access key (bypasses RLS). On the **new** Supabase key system this is the **secret key** (`sb_secret_…`) from dashboard → Settings → API Keys → Secret key; on legacy projects it's the `service_role` JWT. Used by `db-backup.yml` to upload DB dumps. (The API no longer uses Supabase — the communications screenshot storage was removed.) The env var name is kept for continuity even when the value is an `sb_secret_…` key. |
 
 Non-secret config (set as plain env vars, not in Secret Manager):
@@ -410,9 +410,18 @@ Non-secret config (set as plain env vars, not in Secret Manager):
 
 ## Metrics Digest
 
-A daily snapshot of operational metrics is posted as a comment on a
-single open GitHub issue labelled `metrics`. The issue is auto-created
-on first run; GitHub emails subscribers on each new comment.
+A daily snapshot of operational metrics is **emailed via Resend** as an
+HTML digest (sender `metrics@fs-suite.com`). **Recipients are not
+hard-coded** — they come from `GET /v1/admin/metrics` (`.admin_recipients`,
+the union of persisted `User.isAdmin` accounts and the `ADMIN_EMAILS`
+bootstrap list), so granting admin in the in-app user-management area
+auto-subscribes that person to the digest. The signature logo is served
+from the public Supabase `communications` bucket at `email/fs-suite-logo.png`.
+
+> **Transitional:** the workflow also still posts the digest as a comment
+> on the open GitHub issue labelled `metrics` (auto-created on first run).
+> This dual output is kept until the email path is validated; the issue
+> comment step will then be removed.
 
 `metrics-digest.yml` runs daily at 07:00 UTC (and via
 `workflow_dispatch`). It calls `GET /v1/admin/metrics` with the
@@ -420,7 +429,8 @@ on first run; GitHub emails subscribers on each new comment.
 header to `process.env.ADMIN_METRICS_TOKEN`. The shared token lives in
 your `.env` (category A + D) and is replicated to EC2, GCP Secret
 Manager, and GitHub Secrets by the scripts in
-[Provisioning](#provisioning-a-fresh-environment).
+[Provisioning](#provisioning-a-fresh-environment). The email step needs
+`RESEND_API_KEY` set as a GitHub Actions secret.
 
 ```bash
 # Manual run (after a provisioning change, for example):
@@ -454,7 +464,7 @@ The implementation lives in [`apps/api/src/admin/admin.controller.ts`](../apps/a
 |---|---|---|---|
 | Backups verified-restorable | `db-restore-drill.yml` | Weekly (Mon 04:00 UTC) | GitHub issue labelled `restore-drill-failure` |
 | Reachability (api / candidate / frontend) | `smoke-test.yml` + post-deploy step | Daily 06:30 UTC + every deploy | GitHub issue labelled `smoke-failure`; fails the deploy run that triggered it |
-| Operational metrics snapshot | `metrics-digest.yml` | Daily 07:00 UTC | Comment on the open metrics issue, you receive email via subscription |
+| Operational metrics snapshot | `metrics-digest.yml` | Daily 07:00 UTC | HTML email via Resend + (transitional) comment on the open metrics issue |
 | External uptime (every 5 min) | UptimeRobot | Every 5 minutes | Email / Slack / SMS — configured outside this repo, see [`docs/monitoring/uptimerobot.md`](../docs/monitoring/uptimerobot.md) |
 
 `scripts/smoke-test.sh` is the reusable check core. Run locally:
