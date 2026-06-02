@@ -125,7 +125,7 @@
     "cloudNSC": "No significant clouds",
     "metarSource": "Source: aviationweather.gov",
     "metarNearby": "METAR from {{station}} ({{distance}} nm) — nearest station",
-    "metarStale": "METAR is {{hours}}h old",
+    "metarStale": "METAR issued {{hours}}h ago",
     "derivedCategory": "Estimated category (regional reference)",
     "referenceStation": "Ref: {{station}} ({{distance}} nm)",
     "route": "Route",

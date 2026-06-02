@@ -15,7 +15,7 @@ in this repo are required.
    intervals, no credit card.
 2. Verify email.
 
-## 2. Configure the 3 monitors
+## 2. Configure the 2 monitors
 
 Create one HTTP(s) — Keyword monitor per hostname.
 
@@ -32,10 +32,6 @@ Create one HTTP(s) — Keyword monitor per hostname.
 | HTTP Method | GET |
 | Custom HTTP Headers | (none — the endpoint is public) |
 | Alert Contacts | your default email (plus Slack/SMS if configured) |
-
-> **Note (2026-06):** a second monitor for the Cloud Run candidate
-> (`api-candidate.fs-suite.com`) used to live here. The candidate was
-> decommissioned — delete that UptimeRobot monitor if it still exists.
 
 ### Monitor 2 — Frontend (Cloudflare Pages)
 
