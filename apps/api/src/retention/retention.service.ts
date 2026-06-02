@@ -13,6 +13,11 @@ const CHART_OVERLAY_RETENTION_DAYS = 60;
 // thousands of R2 objects in a single tick.
 const CHART_OVERLAY_PURGE_BATCH = 500;
 
+// Attachments of resolved feedback are dropped this long after resolution. The
+// feedback row itself is kept for audit; only the heavy R2 blobs + their rows go.
+const FEEDBACK_ATTACHMENT_RETENTION_DAYS = 90;
+const FEEDBACK_ATTACHMENT_PURGE_BATCH = 500;
+
 @Injectable()
 export class RetentionService {
   private readonly logger = new Logger(RetentionService.name);
@@ -22,13 +27,14 @@ export class RetentionService {
     private readonly r2: R2StorageService,
   ) {}
 
-  /** Runs daily at 02:00 UTC — purges expired sessions, old activity logs, and stale chart overlays. */
+  /** Runs daily at 02:00 UTC — purges expired sessions, old activity logs, stale chart overlays, and old feedback attachments. */
   @Cron('0 2 * * *', { timeZone: 'UTC' })
   async handleRetention(): Promise<void> {
     await Promise.all([
       this.purgeExpiredSessions(),
       this.purgeOldActivityLogs(),
       this.purgeStaleChartOverlays(),
+      this.purgeResolvedFeedbackAttachments(),
     ]);
   }
 
@@ -78,6 +84,35 @@ export class RetentionService {
     });
     this.logger.log(
       `Purged ${result.count} chart overlay(s) older than ${CHART_OVERLAY_RETENTION_DAYS} days`,
+    );
+  }
+
+  /**
+   * Drop R2 objects + rows for attachments of feedback that's been RESOLVED for
+   * more than ~90 days. The feedback record stays (audit), but its heavy blobs
+   * no longer need to live in storage. This is the cleanup owner for the
+   * attachments the feedback upload pipeline produces.
+   */
+  async purgeResolvedFeedbackAttachments(): Promise<void> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - FEEDBACK_ATTACHMENT_RETENTION_DAYS);
+
+    const stale = await this.prisma.feedbackAttachment.findMany({
+      where: {
+        feedback: { status: 'RESOLVED', resolvedAt: { lt: cutoff } },
+      },
+      select: { id: true, storageKey: true },
+      take: FEEDBACK_ATTACHMENT_PURGE_BATCH,
+    });
+    if (stale.length === 0) return;
+
+    await Promise.all(stale.map((row) => this.r2.deleteObject(row.storageKey)));
+
+    const result = await this.prisma.feedbackAttachment.deleteMany({
+      where: { id: { in: stale.map((row) => row.id) } },
+    });
+    this.logger.log(
+      `Purged ${result.count} feedback attachment(s) from feedback resolved over ${FEEDBACK_ATTACHMENT_RETENTION_DAYS} days ago`,
     );
   }
 }

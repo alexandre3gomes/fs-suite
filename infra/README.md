@@ -80,11 +80,12 @@ Supabase (PG) Upstash    Google
 | `fs-suite.com` | CNAME | `fs-suite-app.pages.dev` | Proxied |
 | `api.fs-suite.com` | A | EC2 Elastic IP (`52.18.13.237`) | Proxied |
 
-**Email sending (Resend).** Resend is configured and ready, **reserved for
-future user communications** — there is no email-sending feature in the app
-today (the earlier announcement/broadcast feature was removed). When that
-feature is built, to send from `@fs-suite.com`, verify the domain in Resend and
-add the records it generates to Cloudflare (all **DNS-only / unproxied**):
+**Email sending (Resend).** Resend powers the **feedback feature** — admin
+notifications on new feedback and replies sent to users (operational email,
+default sender `feedback@fs-suite.com`). It is also **reserved for future
+marketing/user communications**. To send from `@fs-suite.com`, verify the domain
+in Resend and add the records it generates to Cloudflare (all **DNS-only /
+unproxied**):
 
 | Record | Type | Notes |
 |--------|------|-------|
@@ -281,7 +282,7 @@ hand.
 | `AVWX_TOKEN` | A (optional) | if enriched METAR enabled | — | — |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | A | ✅ | — | — |
 | `ADMIN_METRICS_TOKEN` | A + D | ✅ | — | ✅ (`metrics-digest.yml`) |
-| `RESEND_API_KEY` | A + D | reserved for future user comms | — | ✅ (`metrics-digest.yml`) |
+| `RESEND_API_KEY` | A + D | ✅ (feedback emails) | — | ✅ (`metrics-digest.yml`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | D | — | — | ✅ (`db-backup.yml`) |
 | `EXPO_PUBLIC_POSTHOG_KEY` → `POSTHOG_KEY` | B | — | ✅ | ✅ (injected at build by `deploy-app.yml`) |
 | `EC2_HOST` / `EC2_SSH_KEY` / `EC2_USER` | C | — | — | ✅ (`deploy.yml`) |
@@ -334,16 +335,17 @@ service provisioned and credentials in hand, you can skip straight to the
 | `GEMINI_API_KEY` / `GROQ_API_KEY` | Free-tier AI provider keys for flight-plan validation. |
 | `OWM_API_KEY` | OpenWeatherMap key — precipitation tile proxy. Optional; if you start using it, add it to the EC2 `.env`. |
 | `AVWX_TOKEN` | AVWX token — enriched METAR decoding. Optional; same as `OWM_API_KEY`. |
-| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare R2 credentials for chart overlay cache. |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare R2 credentials for the chart-overlay cache **and feedback attachments** (same bucket; attachments live under the `feedback/` key prefix). |
 | `ADMIN_METRICS_TOKEN` | Header-token auth for `GET /v1/admin/metrics` (consumed by `metrics-digest.yml`). Generate with `openssl rand -hex 32`. |
-| `RESEND_API_KEY` | [Resend](https://resend.com) API key. Used by `metrics-digest.yml` to email the daily operational digest (sender on the Resend-verified `fs-suite.com` domain). Still **reserved for future user communications** — the app itself sends no user-facing email yet. As a GitHub Actions secret it must be a Resend key (`re_…`). |
+| `RESEND_API_KEY` | [Resend](https://resend.com) API key. Used by the **feedback feature** (admin notifications + replies to users) and by `metrics-digest.yml` for the daily digest. Sender on the Resend-verified `fs-suite.com` domain. As a GitHub Actions secret it must be a Resend key (`re_…`). |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side full-access key (bypasses RLS). On the **new** Supabase key system this is the **secret key** (`sb_secret_…`) from dashboard → Settings → API Keys → Secret key; on legacy projects it's the `service_role` JWT. Used by `db-backup.yml` to upload DB dumps. (The API no longer uses Supabase — the communications screenshot storage was removed.) The env var name is kept for continuity even when the value is an `sb_secret_…` key. |
 
 Non-secret config (plain env vars / GitHub Secrets, not app secrets):
 
 | Var | Description |
 |-----|-------------|
-| `EMAIL_FROM` / `EMAIL_REPLY_TO` | Optional sender/reply-to overrides, **reserved for future user communications** (Resend). Not read by the app today. The sender domain must be verified in Resend before use. |
+| `EMAIL_FROM` / `EMAIL_REPLY_TO` | Optional sender/reply-to overrides, **reserved for future marketing communications** (Resend). The sender domain must be verified in Resend before use. |
+| `FEEDBACK_EMAIL_FROM` / `FEEDBACK_EMAIL_REPLY_TO` | Optional overrides for the feedback feature's sender (defaults `FS Suite <feedback@fs-suite.com>` / `feedback@fs-suite.com`). Sender must be on the verified `fs-suite.com` domain. |
 | `EXPO_PUBLIC_POSTHOG_KEY` (`.env`) → `POSTHOG_KEY` (GH Secret) | PostHog project key. **Frontend only** — embedded into the Expo web bundle at build time via `deploy-app.yml`. The API does not use PostHog. |
 | `EC2_HOST` / `EC2_SSH_KEY` / `EC2_USER` | SSH access to the EC2 deploy target. |
 | `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | Cloudflare credentials. Token must include scope **Account → Cloudflare Pages: Edit** (for `deploy-app.yml`). |

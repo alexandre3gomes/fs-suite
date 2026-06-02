@@ -19,20 +19,30 @@ export class R2StorageService implements OnModuleInit {
     const accountId = this.config.get<string>('R2_ACCOUNT_ID');
     const accessKeyId = this.config.get<string>('R2_ACCESS_KEY_ID');
     const secretAccessKey = this.config.get<string>('R2_SECRET_ACCESS_KEY');
+    // Optional endpoint override for local dev — points at the MinIO container
+    // instead of Cloudflare R2. When set, S3 path-style addressing is required.
+    const endpointOverride = this.config.get<string>('R2_ENDPOINT');
     this.bucket = this.config.get<string>('R2_BUCKET_NAME', 'fs-suite-charts');
 
-    if (!accountId || !accessKeyId || !secretAccessKey) {
-      this.logger.warn('R2 disabled — no credentials configured');
+    const endpoint =
+      endpointOverride ??
+      (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : undefined);
+
+    if (!accessKeyId || !secretAccessKey || !endpoint) {
+      this.logger.warn('R2 disabled — no credentials/endpoint configured');
       return;
     }
 
     this.client = new S3Client({
       region: 'auto',
-      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      endpoint,
       credentials: { accessKeyId, secretAccessKey },
+      // MinIO (and most non-AWS S3) need path-style; Cloudflare R2 uses the
+      // virtual-hosted default, so only force it for the local override.
+      forcePathStyle: Boolean(endpointOverride),
     });
     this.enabled = true;
-    this.logger.log(`R2 enabled — bucket: ${this.bucket}`);
+    this.logger.log(`R2 enabled — endpoint: ${endpoint}, bucket: ${this.bucket}`);
   }
 
   isEnabled(): boolean {
@@ -74,6 +84,29 @@ export class R2StorageService implements OnModuleInit {
     } catch (err: unknown) {
       this.logger.warn(`R2 PUT failed for ${key}: ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * Required PUT: throws if storage is unavailable or the upload fails. Use for
+   * data that must be durably stored before we record it (e.g. feedback
+   * attachments) — unlike `putObject`, which is best-effort for cache writes.
+   */
+  async putObjectOrThrow(key: string, body: Buffer, contentType: string): Promise<void> {
+    if (!this.enabled || !this.client) {
+      throw new Error('Object storage is not configured');
+    }
+    if (body.length > MAX_STORAGE_BYTES) {
+      throw new Error('Object exceeds maximum storage size');
+    }
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+    this.logger.debug(`R2 PUT(required) ${key} (${(body.length / 1024).toFixed(0)} KB)`);
   }
 
   /** Best-effort delete. A missing object is treated as a successful no-op. */

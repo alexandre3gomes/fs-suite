@@ -83,6 +83,7 @@ src/
 │   ├── simbrief/   # SimBrief OFP import adapter (generation pending validation — see Section 8)
 │   └── skyvector/  # SkyVector contextual URL builder
 ├── email/          # One-click unsubscribe token + public unsubscribe endpoint
+├── feedback/       # User bug reports / suggestions: submit + attachments, admin triage, Resend reply
 ├── activity/       # ActivityLog writes
 └── common/         # Guards, interceptors, filters, decorators
 ```
@@ -362,6 +363,36 @@ area (the earlier announcement/broadcast feature was removed).
 | GET    | /v1/admin/users     | List all users with effective admin status    |
 | PATCH  | /v1/admin/users/:id | Grant or revoke admin access (`{ isAdmin }`)  |
 | DELETE | /v1/admin/users/:id | Soft-delete a user (LGPD-consistent)          |
+
+### Feedback
+
+See `docs/feedback-feature-spec.md` for the full design. User endpoint is
+`JwtAuthGuard`; admin endpoints add `AdminGuard`. Attachments (≤3 files, ≤5 MB,
+`png/jpeg/webp/pdf`) are validated by magic bytes, images re-encoded via `sharp`,
+stored privately in R2 under a `feedback/` prefix, and streamed back only through
+the admin-gated endpoint with `Content-Disposition: attachment`.
+
+| Method | Path                                          | Description                                                        |
+|--------|-----------------------------------------------|--------------------------------------------------------------------|
+| POST   | /v1/feedback                                  | Submit a bug/suggestion (`multipart/form-data`: `type`, `description`, `files[]`); emails admins via Resend |
+| GET    | /v1/admin/feedback?status=&type=              | List feedback, newest first, optional filters                      |
+| GET    | /v1/admin/feedback/:id                        | Feedback detail with attachments + reply                           |
+| POST   | /v1/admin/feedback/:id/reply                  | Persist reply, set `ANSWERED`, email the reporter via Resend       |
+| PATCH  | /v1/admin/feedback/:id/status                 | Update status (`OPEN`/`ANSWERED`/`RESOLVED`); no email             |
+| GET    | /v1/admin/feedback/:id/attachments/:attId     | Stream an attachment (admin only)                                  |
+
+**Email flow:** feedback emails are operational/transactional (no
+`marketingEmailConsent` gate, no unsubscribe link), built and handed to the
+central `MailerService` (`email` module). In **production** it sends via the
+Resend SDK from `FEEDBACK_EMAIL_FROM` (default `FS Suite <feedback@fs-suite.com>`);
+**outside production** it captures the email into a dev inbox at `GET /v1/dev/emails`
+(dev-only) instead of sending — set `MAIL_FORCE_SEND=true` to send for real from
+a non-prod env. Admin recipients use the shared `getAdminRecipients()` helper
+(`User.isAdmin ∪ ADMIN_EMAILS`) — the same source the metrics digest uses.
+
+**Attachment lifecycle:** `RetentionService.purgeResolvedFeedbackAttachments()`
+drops R2 objects + attachment rows for feedback `RESOLVED` more than 90 days ago
+(the feedback row is kept for audit).
 
 ### Email
 

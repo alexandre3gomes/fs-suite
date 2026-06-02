@@ -35,6 +35,8 @@ model User {
   aircraftProfiles       AircraftProfile[]
   activityLogs           ActivityLog[]
   integrationConnections IntegrationConnection[]
+  feedbacks              Feedback[]              @relation("FeedbackAuthor")
+  feedbackReplies        Feedback[]              @relation("FeedbackResponder")
 
   @@map("users")
 }
@@ -405,6 +407,67 @@ model ActivityLog {
 
   @@index([createdAt])
   @@map("activity_logs")
+}
+
+// ---------------------------------------------------------------------------
+// User feedback (bug reports / suggestions) — see docs/feedback-feature-spec.md
+// ---------------------------------------------------------------------------
+
+model Feedback {
+  id          String         @id @default(cuid())
+  type        FeedbackType
+  description String // free text, required
+  status      FeedbackStatus @default(OPEN)
+
+  // Author. FK kept for joins, but email/name are snapshotted at submit time so
+  // the record survives a rename / soft-delete (LGPD-consistent audit trail).
+  userId        String @map("user_id")
+  user          User   @relation("FeedbackAuthor", fields: [userId], references: [id])
+  reporterEmail String @map("reporter_email")
+  reporterName  String @map("reporter_name")
+
+  // Admin response
+  adminReply  String?   @map("admin_reply")
+  repliedById String?   @map("replied_by_id")
+  repliedBy   User?     @relation("FeedbackResponder", fields: [repliedById], references: [id])
+  repliedAt   DateTime? @map("replied_at")
+  resolvedAt  DateTime? @map("resolved_at")
+
+  attachments FeedbackAttachment[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at") // soft delete for LGPD
+
+  @@index([status, createdAt])
+  @@map("feedback")
+}
+
+model FeedbackAttachment {
+  id         String   @id @default(cuid())
+  feedbackId String   @map("feedback_id")
+  feedback   Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+
+  storageKey  String @map("storage_key") // R2 key: feedback/{feedbackId}/{id}-{safeName}
+  fileName    String @map("file_name") // original name, sanitized
+  contentType String @map("content_type") // validated MIME
+  sizeBytes   Int    @map("size_bytes")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([feedbackId])
+  @@map("feedback_attachments")
+}
+
+enum FeedbackType {
+  BUG_REPORT
+  SUGGESTION
+}
+
+enum FeedbackStatus {
+  OPEN // submitted, untouched
+  ANSWERED // admin replied
+  RESOLVED // admin closed it
 }
 
 enum PlanStatus {

@@ -49,7 +49,7 @@ echo "→ build shared packages  (types, ui, ...)"
 # so this is a no-op when nothing in packages/ changed.
 pnpm turbo build --filter='./packages/*'
 
-echo "→ docker compose up  (postgres + redis)"
+echo "→ docker compose up  (postgres + redis + minio)"
 docker compose up -d
 
 current_schema=$(sha256sum apps/api/prisma/schema.prisma | cut -d' ' -f1)

@@ -50,6 +50,24 @@ pnpm --filter @fs-suite/api dev
 pnpm --filter @fs-suite/app dev
 ```
 
+## Local services (Docker)
+
+`docker compose up -d` starts Postgres, Redis, and **MinIO** (S3-compatible
+object storage). MinIO stands in for Cloudflare R2 locally — the chart-overlay
+cache and feedback attachments — so dev never hits real R2 or the API's disk.
+The same `@aws-sdk/client-s3` path is exercised; the API points at it via
+`R2_ENDPOINT=http://localhost:9000` (see `apps/api/.env.example`). Buckets
+(`fs-suite-charts`, `communications`) are auto-created by the `minio-setup`
+one-shot. Console: http://localhost:9001 (user/pass `fssuite` /
+`fssuite_dev_secret`). The API does **not** read `communications` at runtime —
+it exists only for parity with the Supabase bucket used outside the API.
+
+**Email in dev:** the central `MailerService` only sends via Resend when
+`NODE_ENV === 'production'`. Outside prod it **captures** every email into an
+in-memory dev inbox instead of sending — view the rendered HTML at
+http://localhost:3001/v1/dev/emails. Force a real send from dev with
+`MAIL_FORCE_SEND=true` (needs `RESEND_API_KEY`).
+
 ## Remote dev environment (WSL)
 
 `scripts/dev-remote/` runs the heavy stack (Postgres, Redis, NestJS API) on a
@@ -83,25 +101,31 @@ shows the live diff between prod and the WSL test environment.
 | SimBrief    | Active   | Import OFP flight plan data              |
 | SkyVector   | Active   | Contextual route and airport visualization |
 | DECEA/AIS   | Active   | Aerodrome charts (ADC, VAC, PDC)         |
-| Resend      | Reserved | Email provider configured and ready for future user communications |
+| Resend      | Active   | Feedback emails (admin notifications + replies to users); reserved for future marketing comms |
 | FlightAware | Future   | Flight tracking and operational reference |
 
 ## Admin area & user communications
 
 The in-app admin area (gated by `User.isAdmin`, with the `ADMIN_EMAILS`
-allow-list as a bootstrap fallback) is a **user management** screen: list users,
-grant/revoke admin, and soft-delete accounts (LGPD-consistent).
+allow-list as a bootstrap fallback) covers **user management** (list users,
+grant/revoke admin, soft-delete accounts) and **feedback triage**.
 
 - **Admin access** is a persisted `User.isAdmin` flag, toggled from the admin
   area. `ADMIN_EMAILS` (`auth/admin-emails.ts`) are always admin so the instance
-  can't be locked out. `GET /users/me` returns the effective `isAdmin`.
-- **User communications are not built yet.** The earlier in-app announcement /
-  broadcast-email feature was removed. **Resend stays configured and ready**
-  (`RESEND_API_KEY` env) for future user communications — rebuild on top of it
-  when needed.
+  can't be locked out. `GET /users/me` returns the effective `isAdmin`. Effective
+  admin recipients for operational email come from the shared
+  `getAdminRecipients()` helper (`auth/admin-recipients.ts`).
+- **User feedback** (`feedback` module — see `docs/feedback-feature-spec.md`):
+  any authenticated user submits a bug report or suggestion from the header
+  (modal, no navigation), optionally with attachments (≤3 files, ≤5 MB,
+  png/jpeg/webp/pdf — validated by magic bytes, images re-encoded, stored
+  private in R2 under `feedback/`). Admins triage at `/admin/feedback`, reply
+  (emails the user via Resend), and mark resolved. New feedback emails all
+  admins. These emails are **transactional** (no marketing-consent gate).
 - **Marketing consent is retained:** users keep a `marketingEmailConsent`
   opt-in (default true) plus a one-click LGPD unsubscribe endpoint
-  (`GET /v1/email/unsubscribe`), so the future email feature is consent-ready.
+  (`GET /v1/email/unsubscribe`); a future marketing-email feature is
+  consent-ready. (Feedback emails are operational and do not use this gate.)
 
 ## Production URLs
 

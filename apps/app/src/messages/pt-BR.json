@@ -14,7 +14,8 @@
     "back": "Voltar",
     "optional": "opcional",
     "noResults": "Nenhum resultado",
-    "clear": "Limpar"
+    "clear": "Limpar",
+    "close": "Fechar"
   },
   "login": {
     "signInButton": "Entrar com Google",
@@ -25,6 +26,8 @@
     "title": "Admin",
     "usersCard": "Usuários",
     "usersCardDesc": "Gerenciar usuários: tornar admin ou excluir",
+    "feedbackCard": "Feedback dos usuários",
+    "feedbackCardDesc": "Triagem de bugs e sugestões; responder por email",
     "comingSoon": "Em breve.",
     "users": {
       "title": "Gestão de usuários",
@@ -37,7 +40,46 @@
       "makeAdmin": "Tornar admin",
       "revokeAdmin": "Revogar admin",
       "confirmDelete": "Confirmar"
+    },
+    "feedback": {
+      "title": "Feedback dos usuários",
+      "empty": "Nenhum feedback ainda.",
+      "loadError": "Não foi possível carregar os feedbacks.",
+      "attachmentError": "Não foi possível abrir o anexo.",
+      "status": {
+        "OPEN": "Aberto",
+        "ANSWERED": "Respondido",
+        "RESOLVED": "Resolvido"
+      },
+      "filterAll": "Todos",
+      "replyHeading": "Resposta de {{name}}",
+      "replyLabel": "Responder",
+      "replyPlaceholder": "Escreva uma resposta ao usuário…",
+      "sendReply": "Enviar resposta",
+      "replySentTitle": "Resposta enviada",
+      "replySentBody": "O usuário recebeu sua resposta por email.",
+      "replyError": "Não foi possível enviar a resposta.",
+      "statusError": "Não foi possível atualizar o status.",
+      "markResolved": "Marcar como resolvido",
+      "reopen": "Reabrir"
     }
+  },
+  "feedback": {
+    "title": "Enviar feedback",
+    "typeLabel": "Tipo de contato",
+    "typeBug": "Reportar erro",
+    "typeSuggestion": "Enviar sugestão",
+    "descriptionLabel": "Descrição",
+    "descriptionPlaceholder": "Conte o que aconteceu ou sua sugestão…",
+    "descriptionRequired": "Por favor, escreva uma descrição.",
+    "attach": "Anexar arquivos ({{count}}/{{max}})",
+    "tooManyFiles": "No máximo {{max}} arquivos.",
+    "invalidType": "Tipo de arquivo não suportado (use PNG, JPG, WEBP ou PDF).",
+    "fileTooLarge": "Cada arquivo deve ter no máximo 5 MB.",
+    "submit": "Enviar",
+    "submitError": "Não foi possível enviar. Tente novamente.",
+    "successTitle": "Obrigado pelo seu feedback!",
+    "successBody": "Recebemos sua mensagem e vamos analisá-la."
   },
   "dashboard": {
     "title": "Painel",

@@ -34,6 +34,47 @@ services:
       timeout: 5s
       retries: 5
 
+  # Local S3-compatible object storage. Stands in for Cloudflare R2 (chart
+  # overlay cache + feedback attachments) so nothing touches the API's disk and
+  # the same @aws-sdk/client-s3 code path is exercised locally. Point the API at
+  # it with R2_ENDPOINT=http://localhost:9000 (see apps/api/.env.example).
+  minio:
+    image: minio/minio:latest
+    container_name: fs-suite-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-fssuite}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-fssuite_dev_secret}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"          # S3 API
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"  # web console
+    volumes:
+      - minio_data:/data
+
+  # One-shot: waits for MinIO, then creates the buckets the stack expects.
+  # `communications` is created for parity with the Supabase bucket; the API
+  # does not read it at runtime today.
+  minio-setup:
+    image: minio/mc:latest
+    container_name: fs-suite-minio-setup
+    depends_on:
+      - minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-fssuite}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-fssuite_dev_secret}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-fs-suite-charts}
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\"; do
+        echo 'waiting for minio...'; sleep 1;
+      done;
+      mc mb -p \"local/$$R2_BUCKET_NAME\";
+      mc mb -p local/communications;
+      echo 'minio buckets ready';
+      "
+
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
