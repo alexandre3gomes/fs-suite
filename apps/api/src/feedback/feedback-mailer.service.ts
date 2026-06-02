@@ -48,6 +48,7 @@ export class FeedbackMailerService {
   private readonly logoUrl: string;
   private readonly siteUrl: string;
   private readonly github: string;
+  private readonly githubIconUrl: string;
   private readonly founderEmail: string;
   private readonly founderTitle: string;
   private readonly adminTitle: string;
@@ -65,14 +66,20 @@ export class FeedbackMailerService {
 
     // Signature footer config — same identity as the metrics digest. Title is
     // resolved per-replier (see titleFor); the rest is shared + env-overridable.
+    // Images are hosted on the sending domain (frontend public/email/) so they
+    // align with fs-suite.com (better deliverability — Resend's image insight).
     this.logoUrl = this.config.get<string>(
       'FEEDBACK_SIGNATURE_LOGO_URL',
-      'https://kottmfuncqyzwtweoquw.supabase.co/storage/v1/object/public/communications/email/fs-suite-logo.png',
+      'https://fs-suite.com/email/fs-suite-logo.png',
     );
     this.siteUrl = this.config.get<string>('FEEDBACK_SIGNATURE_SITE_URL', 'https://fs-suite.com');
     this.github = this.config.get<string>(
       'FEEDBACK_SIGNATURE_GITHUB',
       'https://github.com/alexandre3gomes/fs-suite/',
+    );
+    this.githubIconUrl = this.config.get<string>(
+      'FEEDBACK_SIGNATURE_GITHUB_ICON_URL',
+      'https://fs-suite.com/email/github-mark.png',
     );
     this.founderEmail = this.config
       .get<string>('FEEDBACK_SIGNATURE_FOUNDER_EMAIL', 'alexandre3gomes@gmail.com')
@@ -104,7 +111,7 @@ export class FeedbackMailerService {
         <td style="vertical-align:middle;">
           <div style="color:#1a2433;font-size:14px;font-weight:600;">${escapeHtml(name)}</div>
           ${title ? `<div style="color:#64748b;font-size:12px;">${escapeHtml(title)}</div>` : ''}
-          <a href="${escapeHtml(this.github)}" style="color:#2563eb;font-size:12px;text-decoration:none;">${escapeHtml(this.github)}</a>
+          <a href="${escapeHtml(this.github)}" target="_blank" style="display:inline-block;margin-top:4px;text-decoration:none;"><img src="${escapeHtml(this.githubIconUrl)}" alt="GitHub" width="18" height="18" style="display:block;border:0;"/></a>
         </td>
       </tr></table>
     </div>`;
