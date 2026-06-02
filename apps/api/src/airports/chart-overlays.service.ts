@@ -25,6 +25,8 @@ export interface ChartOverlayDto {
   bounds: { south: number; west: number; north: number; east: number };
   rotationDeg: number;
   opacityDefault: number;
+  /** True when bounds are the runway-scaled approximation (no usable georef). */
+  approximate: boolean;
   preparedAiracCycle: string;
   updatedAt: string;
 }
@@ -222,18 +224,6 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
 
-/** Count `/Type /Page` objects (same page detection parseGeoPdfPage uses). */
-function countPdfPageObjects(pdfBuffer: Buffer): number {
-  const text = pdfBuffer.toString('latin1');
-  const objPattern = /\d+\s+\d+\s+obj([\s\S]*?)endobj/g;
-  let count = 0;
-  let m: RegExpExecArray | null;
-  while ((m = objPattern.exec(text)) !== null) {
-    if (/\/Type\s*\/Page(?!s)/.test(m[1] ?? '')) count++;
-  }
-  return count;
-}
-
 /** Axis-aligned geographic bounds of a page's GPTS control points. */
 export function gptsBounds(geo: GeoPdfMetadata): Bounds {
   const lats: number[] = [];
@@ -250,60 +240,79 @@ export function gptsBounds(geo: GeoPdfMetadata): Bounds {
   };
 }
 
-/**
- * Pick the GeoPDF page whose frame actually covers the aerodrome.
- *
- * Multi-page DECEA charts can embed several georeferenced frames (e.g. an
- * area/approach inset PLUS the aerodrome VAC), each with its own /VP /GPTS.
- * Blindly taking page 0 plotted the SBJD VAC ~16 NM south of the field
- * because page 0 was a different frame and the aerodrome page was index 1.
- *
- * Selection: prefer a page whose bounds CONTAIN the ARP; among those, the
- * smallest-area frame (most field-specific). If none contain the ARP, fall
- * back to the page whose bounds-center is nearest the ARP. Returns null geo
- * when no page carries GeoPDF metadata at all.
- */
-/**
- * Pure selection core: given the georeferenced pages, return the index of the
- * one that best covers the ARP. Prefer pages whose bounds CONTAIN the ARP
- * (smallest-area wins among those); otherwise the nearest bounds-center.
- * Returns -1 when there are no georeferenced pages.
- */
-export function choosePageForArp(
-  pages: { pageIndex: number; geo: GeoPdfMetadata }[],
-  arpLat: number,
-  arpLon: number,
-): number {
-  let best: { pageIndex: number; contains: boolean; area: number; dist: number } | null = null;
-  for (const { pageIndex, geo } of pages) {
-    const b = gptsBounds(geo);
-    const contains = arpLat >= b.south && arpLat <= b.north && arpLon >= b.west && arpLon <= b.east;
-    const area = (b.north - b.south) * (b.east - b.west);
-    const cLat = (b.south + b.north) / 2;
-    const cLon = (b.west + b.east) / 2;
-    const dist = Math.hypot(arpLat - cLat, arpLon - cLon);
-    const cand = { pageIndex, contains, area, dist };
-    if (!best) { best = cand; continue; }
-    if (cand.contains !== best.contains) { if (cand.contains) best = cand; continue; }
-    if (cand.contains ? cand.area < best.area : cand.dist < best.dist) best = cand;
-  }
-  return best ? best.pageIndex : -1;
+export function boundsContain(b: Bounds, lat: number, lon: number): boolean {
+  return lat >= b.south && lat <= b.north && lon >= b.west && lon <= b.east;
 }
 
-function selectAerodromePage(
+/** True when two LPTS arrays match within a small tolerance. */
+export function lptsEqual(a: number[], b: number[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((v, i) => Math.abs(v - b[i]!) < 1e-4);
+}
+
+/** Count `/Type /Page` objects (same page detection parseGeoPdfPage uses). */
+function countPdfPageObjects(pdfBuffer: Buffer): number {
+  const text = pdfBuffer.toString('latin1');
+  const objPattern = /\d+\s+\d+\s+obj([\s\S]*?)endobj/g;
+  let count = 0;
+  let m: RegExpExecArray | null;
+  while ((m = objPattern.exec(text)) !== null) {
+    if (/\/Type\s*\/Page(?!s)/.test(m[1] ?? '')) count++;
+  }
+  return count;
+}
+
+/**
+ * When the page we render (the VAC graphic) has a wrong/missing georeference,
+ * borrow a CORRECT one from a sibling page of the same PDF — but only if that
+ * sibling's georef (a) actually covers the ARP and (b) shares the render
+ * page's LPTS (same viewport geometry → same chart frame). DECEA ships some
+ * charts whose graphic-page GPTS are offset by a constant while another page
+ * carries the right corners for the identical frame (SBJD: page 0 graphic is
+ * +0.27° lat off; page 1 has the correct GPTS, same LPTS/span). Calibrated
+ * against the render page's raster dimensions. Returns null if no such page.
+ */
+function findSiblingGeoref(
   pdfBuffer: Buffer,
+  renderPageIndex: number,
+  renderLpts: number[],
   arpLat: number,
   arpLon: number,
-): { pageIndex: number; geo: GeoPdfMetadata | null } {
+  rasterWidth: number,
+  rasterHeight: number,
+): GeoCalibration | null {
   const count = countPdfPageObjects(pdfBuffer);
-  const pages: { pageIndex: number; geo: GeoPdfMetadata }[] = [];
   for (let p = 0; p < count; p++) {
+    if (p === renderPageIndex) continue;
     const geo = parseGeoPdfPage(pdfBuffer, p);
-    if (geo) pages.push({ pageIndex: p, geo });
+    if (!geo) continue;
+    if (!boundsContain(gptsBounds(geo), arpLat, arpLon)) continue;
+    if (!lptsEqual(geo.lpts, renderLpts)) continue;
+    return computeGeoCalibration(geo, rasterWidth, rasterHeight);
   }
-  const chosen = choosePageForArp(pages, arpLat, arpLon);
-  if (chosen < 0) return { pageIndex: 0, geo: null };
-  return { pageIndex: chosen, geo: pages.find((p) => p.pageIndex === chosen)!.geo };
+  return null;
+}
+
+/**
+ * Runway-scaled square box centred on the ARP — the last-resort fallback when
+ * NO page of the chart carries a georeference that covers the field. North-up
+ * (DECEA VAC charts publish north-up). Approximate by design; the overlay is
+ * flagged `approximate` so the UI can say so, and the opacity slider lets the
+ * pilot judge the fit (see docs/aerodrome-chart-overlay.md).
+ */
+export function heuristicBounds(lat: number, lon: number, longestRunwayFt: number | null): Bounds {
+  const FT_PER_NM = 6076.12;
+  const longestNm = (longestRunwayFt ?? 0) / FT_PER_NM;
+  const sideNm = Math.max(longestNm * 4, 3); // empirical scale factor
+  const halfNm = sideNm / 2;
+  const latDelta = halfNm / 60;
+  const lonDelta = halfNm / (60 * Math.cos((lat * Math.PI) / 180));
+  return {
+    south: lat - latDelta,
+    north: lat + latDelta,
+    west: lon - lonDelta,
+    east: lon + lonDelta,
+  };
 }
 
 // ---- PDF rasterization ----
@@ -394,30 +403,61 @@ export class ChartOverlaysService {
 
     const pdfBuffer = await this.downloadPdf(args.chartUrl);
 
-    // Page selection: honour an explicit caller-provided pageIndex, otherwise
-    // auto-select the page whose GeoPDF frame covers the aerodrome ARP. DECEA
-    // charts can embed multiple georeferenced frames and the field is not
-    // always on page 0 (e.g. SBJD's VAC is page 1).
-    let pageIndex: number;
-    let geo: GeoPdfMetadata | null;
-    if (args.pageIndex != null) {
-      pageIndex = args.pageIndex;
-      geo = parseGeoPdfPage(pdfBuffer, pageIndex);
-    } else {
-      const selected = selectAerodromePage(pdfBuffer, airport.latitude, airport.longitude);
-      pageIndex = selected.pageIndex;
-      geo = selected.geo;
-    }
-
-    if (!geo) {
-      throw new BadRequestException(
-        'Chart PDF has no embedded geographic metadata (GeoPDF); cannot project on map.',
-      );
-    }
-
+    // DECEA convention: the VAC graphic is the front page (index 0); the
+    // reverse side is the textual/procedures page. Honour an explicit ?page=.
+    const pageIndex = args.pageIndex ?? 0;
+    const geo = parseGeoPdfPage(pdfBuffer, pageIndex);
     const original = await rasterizePdfPage(pdfBuffer, pageIndex);
-    const calibration = computeGeoCalibration(geo, original.width, original.height);
-    const rotated = await cropAndRotate(original.buffer, calibration.crop, calibration.rotationDeg);
+    const calibration = geo ? computeGeoCalibration(geo, original.width, original.height) : null;
+
+    // Trust the embedded GeoPDF georeference only when its bounds actually
+    // cover the aerodrome. Some DECEA charts ship a wrong georeference (SBJD's
+    // VAC GPTS sit ~16 NM south, leaving the field outside the frame) — in
+    // that case, and when there's no GeoPDF at all, fall back to the
+    // runway-scaled heuristic centred on the ARP (docs/aerodrome-chart-overlay).
+    let bounds: Bounds;
+    let crop: GeoCalibration['crop'];
+    let rotationDeg: number;
+    let georef: 'geopdf' | 'geopdf-sibling' | 'heuristic';
+    let approximate: boolean;
+    if (calibration && boundsContain(calibration.bounds, airport.latitude, airport.longitude)) {
+      // The graphic page's own georeference covers the field — exact placement.
+      bounds = calibration.bounds;
+      crop = calibration.crop;
+      rotationDeg = calibration.rotationDeg;
+      georef = 'geopdf';
+      approximate = false;
+    } else {
+      // The graphic page's georef is wrong/missing. Borrow a correct one from a
+      // sibling page of the same frame (real control points, exact placement).
+      const sibling = geo
+        ? findSiblingGeoref(pdfBuffer, pageIndex, geo.lpts, airport.latitude, airport.longitude, original.width, original.height)
+        : null;
+      if (sibling) {
+        bounds = sibling.bounds;
+        crop = sibling.crop;
+        rotationDeg = sibling.rotationDeg;
+        georef = 'geopdf-sibling';
+        approximate = false;
+        this.logger.warn(`${normalizedIcao} graphic-page georef is off — using a sibling page's valid georef`);
+      } else {
+        // No page carries a georeference that covers the field. Plot the
+        // runway-scaled box centred on the ARP, flagged approximate.
+        const longest = await this.prisma.runway.findFirst({
+          where: { airportIcao: normalizedIcao },
+          orderBy: { lengthFt: 'desc' },
+          select: { lengthFt: true },
+        });
+        bounds = heuristicBounds(airport.latitude, airport.longitude, longest?.lengthFt ?? null);
+        crop = calibration?.crop ?? { left: 0, top: 0, width: original.width, height: original.height };
+        rotationDeg = 0;
+        georef = 'heuristic';
+        approximate = true;
+        this.logger.warn(`${normalizedIcao} chart has no usable georef — approximate runway-box placement`);
+      }
+    }
+
+    const rotated = await cropAndRotate(original.buffer, crop, rotationDeg);
 
     const imageKey = this.r2KeyFor(normalizedIcao, args.chartUrl, cycle);
     await this.r2.putObject(imageKey, rotated.buffer, 'image/png');
@@ -434,12 +474,13 @@ export class ChartOverlaysService {
         imageContentType: 'image/png',
         imageWidth: rotated.width,
         imageHeight: rotated.height,
-        boundsSouth: calibration.bounds.south,
-        boundsWest: calibration.bounds.west,
-        boundsNorth: calibration.bounds.north,
-        boundsEast: calibration.bounds.east,
+        boundsSouth: bounds.south,
+        boundsWest: bounds.west,
+        boundsNorth: bounds.north,
+        boundsEast: bounds.east,
         rotationDeg: 0,
         opacityDefault: 0.7,
+        approximate,
       },
       create: {
         icao: normalizedIcao,
@@ -452,19 +493,20 @@ export class ChartOverlaysService {
         imageContentType: 'image/png',
         imageWidth: rotated.width,
         imageHeight: rotated.height,
-        boundsSouth: calibration.bounds.south,
-        boundsWest: calibration.bounds.west,
-        boundsNorth: calibration.bounds.north,
-        boundsEast: calibration.bounds.east,
+        boundsSouth: bounds.south,
+        boundsWest: bounds.west,
+        boundsNorth: bounds.north,
+        boundsEast: bounds.east,
         rotationDeg: 0,
         opacityDefault: 0.7,
+        approximate,
         preparedAiracCycle: cycle,
       },
     });
 
     this.logger.log(
       `prepared overlay ${row.id} for ${normalizedIcao} ${args.chartType} ` +
-      `(GeoPDF: rotation=${calibration.rotationDeg.toFixed(1)}°, crop=${calibration.crop.width}×${calibration.crop.height}, ` +
+      `(georef=${georef}, rotation=${rotationDeg.toFixed(1)}°, crop=${crop.width}×${crop.height}, ` +
       `final=${rotated.width}×${rotated.height}, ${(rotated.buffer.length / 1024).toFixed(0)} KB)`,
     );
 
@@ -537,6 +579,7 @@ export class ChartOverlaysService {
       },
       rotationDeg: r.rotationDeg,
       opacityDefault: r.opacityDefault,
+      approximate: r.approximate,
       preparedAiracCycle: r.preparedAiracCycle,
       updatedAt: r.updatedAt.toISOString(),
     };

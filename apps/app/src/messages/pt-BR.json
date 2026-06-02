@@ -286,6 +286,7 @@
     "chartHideFromMap": "Remover do mapa",
     "chartOverlayOpacity": "Opacidade",
     "chartOverlayFit": "Centralizar carta",
+    "chartOverlayApproximate": "Posição aproximada — carta sem georreferência confiável",
     "altitudeFt": "Altitude (ft)",
     "altitudePlaceholderCruise": "cruzeiro",
     "simbrief": "SimBrief",

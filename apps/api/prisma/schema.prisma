@@ -153,6 +153,9 @@ model AerodromeChartOverlay {
   boundsEast         Float    @map("bounds_east")
   rotationDeg        Float    @default(0) @map("rotation_deg")
   opacityDefault     Float    @default(0.7) @map("opacity_default")
+  // True when no page carried a georeference covering the field and the bounds
+  // are the runway-scaled approximation — the UI flags these as approximate.
+  approximate        Boolean  @default(false) @map("approximate")
   preparedAiracCycle String   @map("prepared_airac_cycle") // cycle in which this cache row was produced
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")

@@ -128,6 +128,7 @@ export interface AerodromeOverlay {
   opacityDefault: number;
   imageWidth: number;
   imageHeight: number;
+  approximate?: boolean;
 }
 
 // --------------- Constants ---------------
@@ -1585,6 +1586,13 @@ export function AerodromeMap({
               <Text style={{ fontSize: 12, color: '#374151', lineHeight: 12 }}>✕</Text>
             </Pressable>
           </View>
+          {aerodromeOverlay.approximate ? (
+            <View style={{ backgroundColor: '#fef3c7', borderRadius: 3, paddingHorizontal: 6, paddingVertical: 3 }}>
+              <Text style={{ fontSize: 10, color: '#92400e' }}>
+                ⚠ {t('vfr.chartOverlayApproximate')}
+              </Text>
+            </View>
+          ) : null}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Text style={{ fontSize: 10, color: '#6b7280', width: 64 }}>
               {t('vfr.chartOverlayOpacity')}

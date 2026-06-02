@@ -34,6 +34,9 @@ export interface ChartOverlay {
   opacityDefault: number;
   imageWidth: number;
   imageHeight: number;
+  /** True when the chart lacked a usable georeference and the placement is a
+   *  runway-scaled approximation centred on the field. */
+  approximate?: boolean;
 }
 
 /** Chart types eligible to be projected on the map (MVP: VAC only). */
