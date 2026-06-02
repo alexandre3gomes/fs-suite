@@ -3,9 +3,10 @@ import { Button, Card, CardContent, Spinner, Text } from '@fs-suite/ui';
 import { Redirect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
+import { notify } from '../../../src/lib/notify';
 import { usersAdminApi, type AdminUser } from '../../../src/services/users-admin.service';
 
 export default function AdminUsersScreen(): JSX.Element {
@@ -22,7 +23,7 @@ export default function AdminUsersScreen(): JSX.Element {
     try {
       setUsers(await usersAdminApi.list());
     } catch {
-      Alert.alert(t('common.error'), t('admin.users.loadError'));
+      notify(t('common.error'), t('admin.users.loadError'));
     } finally {
       setLoading(false);
     }
@@ -39,7 +40,7 @@ export default function AdminUsersScreen(): JSX.Element {
         await usersAdminApi.setAdmin(u.id, !u.isAdmin);
         await refresh();
       } catch {
-        Alert.alert(t('common.error'), t('admin.users.adminError'));
+        notify(t('common.error'), t('admin.users.adminError'));
       } finally {
         setBusyId(null);
       }
@@ -55,7 +56,7 @@ export default function AdminUsersScreen(): JSX.Element {
         await usersAdminApi.remove(u.id);
         await refresh();
       } catch {
-        Alert.alert(t('common.error'), t('admin.users.deleteError'));
+        notify(t('common.error'), t('admin.users.deleteError'));
       } finally {
         setBusyId(null);
       }

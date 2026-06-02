@@ -2,9 +2,10 @@ import { Card, CardContent, Spinner, Text } from '@fs-suite/ui';
 import { Redirect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { useCurrentUser } from '../../../../src/hooks/useCurrentUser';
+import { notify } from '../../../../src/lib/notify';
 import {
   feedbackApi,
   type AdminFeedbackSummary,
@@ -31,7 +32,7 @@ export default function AdminFeedbackScreen(): JSX.Element {
     try {
       setItems(await feedbackApi.listAdmin(statusFilter ? { status: statusFilter } : undefined));
     } catch {
-      Alert.alert(t('common.error'), t('admin.feedback.loadError'));
+      notify(t('common.error'), t('admin.feedback.loadError'));
     } finally {
       setLoading(false);
     }

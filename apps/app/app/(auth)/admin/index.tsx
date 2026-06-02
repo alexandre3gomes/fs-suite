@@ -2,9 +2,10 @@ import { Card, CardContent, Spinner, Text } from '@fs-suite/ui';
 import { Redirect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
+import { notify } from '../../../src/lib/notify';
 import { audienceAdminApi } from '../../../src/services/audience-admin.service';
 
 export default function AdminScreen(): JSX.Element {
@@ -17,12 +18,12 @@ export default function AdminScreen(): JSX.Element {
     setSyncing(true);
     try {
       const r = await audienceAdminApi.sync();
-      Alert.alert(
+      notify(
         t('admin.audienceSyncCard'),
         t('admin.audienceSyncDone', { ok: r.ok, total: r.total, failed: r.failed }),
       );
     } catch {
-      Alert.alert(t('common.error'), t('admin.audienceSyncError'));
+      notify(t('common.error'), t('admin.audienceSyncError'));
     } finally {
       setSyncing(false);
     }
