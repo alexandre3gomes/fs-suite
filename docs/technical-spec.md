@@ -76,12 +76,13 @@ Modules:
 ```
 src/
 ├── auth/           # Google OAuth, JWT issue/refresh, session management
-├── users/          # User profile CRUD, preferences
+├── users/          # User profile CRUD, preferences, admin user management
 ├── airports/       # Airport lookup by ICAO/name, data caching
 ├── flight-plans/   # FlightPlan CRUD, duplication, history
 ├── integrations/
 │   ├── simbrief/   # SimBrief OFP import adapter (generation pending validation — see Section 8)
 │   └── skyvector/  # SkyVector contextual URL builder
+├── email/          # One-click unsubscribe token + public unsubscribe endpoint
 ├── activity/       # ActivityLog writes
 └── common/         # Guards, interceptors, filters, decorators
 ```
@@ -169,6 +170,9 @@ model User {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   deletedAt       DateTime?        // soft delete for LGPD
+  isAdmin         Boolean          @default(false)
+  marketingEmailConsent          Boolean   @default(true)
+  marketingEmailConsentUpdatedAt DateTime?
 
   oauthAccounts        OAuthAccount[]
   sessions             Session[]
@@ -337,11 +341,37 @@ enum FlightRules {
 
 ### Users
 
-| Method | Path           | Description                          |
-|--------|----------------|--------------------------------------|
-| GET    | /v1/users/me   | Get authenticated user profile       |
-| PATCH  | /v1/users/me   | Update name, preferences             |
-| DELETE | /v1/users/me   | Request account deletion (LGPD)      |
+| Method | Path           | Description                                                  |
+|--------|----------------|--------------------------------------------------------------|
+| GET    | /v1/users/me   | Get authenticated user profile (response includes effective `isAdmin`) |
+| PATCH  | /v1/users/me   | Update name or `marketingEmailConsent`                       |
+| DELETE | /v1/users/me   | Request account deletion (LGPD)                              |
+
+Admin access is the persisted `User.isAdmin` flag (toggled from the in-app
+admin area), with the `ADMIN_EMAILS` allow-list (`auth/admin-emails.ts`) as a
+bootstrap fallback so the instance can never be locked out. The effective
+status is computed by `isUserAdmin()` and enforced by `AdminGuard`.
+
+### Admin — User management
+
+Gated by `JwtAuthGuard` + `AdminGuard`. This is the in-app **user management**
+area (the earlier announcement/broadcast feature was removed).
+
+| Method | Path                | Description                                   |
+|--------|---------------------|-----------------------------------------------|
+| GET    | /v1/admin/users     | List all users with effective admin status    |
+| PATCH  | /v1/admin/users/:id | Grant or revoke admin access (`{ isAdmin }`)  |
+| DELETE | /v1/admin/users/:id | Soft-delete a user (LGPD-consistent)          |
+
+### Email
+
+Public, HMAC-token-authenticated. The `email` module exposes **only** the LGPD
+one-click unsubscribe; there is no active email sending today (Resend stays
+configured and reserved for future user communications).
+
+| Method | Path                                   | Description                                                            |
+|--------|----------------------------------------|------------------------------------------------------------------------|
+| GET    | /v1/email/unsubscribe?u=&lt;id&gt;&t=&lt;hmac&gt; | One-click unsubscribe — sets `marketingEmailConsent=false`; renders an HTML page |
 
 ### Airports
 

@@ -17,7 +17,7 @@ export default function AdminScreen(): JSX.Element {
       </View>
     );
   }
-  // Gate: only admins (see ADMIN_EMAILS on the API) — non-admins bounce home.
+  // Gate: only admins (persisted flag with ADMIN_EMAILS bootstrap fallback).
   if (user && !user.isAdmin) {
     return <Redirect href="/(auth)/dashboard" />;
   }
