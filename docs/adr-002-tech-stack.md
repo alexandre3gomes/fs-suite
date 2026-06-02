@@ -76,14 +76,14 @@ The stack chosen and its rationale, layer by layer:
 
 - **End-to-end type safety.** A field rename in a Zod schema breaks both API validation and app compile-time. Catches integration bugs at PR time, not in production.
 - **Single brain, single language.** Frontend and backend share idioms, tooling (pnpm, ESLint, Prettier, TS config), testing patterns. Context-switching cost is minimal.
-- **Operational floor of ~$15/month.** EC2 t3.small is the only standing charge. Supabase, Upstash, Cloudflare, Cloud Run, GitHub Actions, Sentry, PostHog all run on free tiers at current usage.
+- **Operational floor of ~$15/month.** EC2 t3.small is the only standing charge. Supabase, Upstash, Cloudflare, GitHub Actions, Sentry, PostHog all run on free tiers at current usage. _(Update 2026-06: Cloud Run was dropped — it was the one surface drifting above $0, so EC2 is now strictly the only paid resource.)_
 - **Multi-platform shipping path.** Web is live today; iOS and Android are an EAS build away from the same codebase.
-- **Failover is real, not paper.** EC2 → Cloud Run swap is one DNS change or one `EXPO_PUBLIC_API_URL` edit. Cloud Run is continuously deployed, smoke-tested, and reachable via `api-candidate.fs-suite.com`.
+- ~~**Failover is real, not paper.** EC2 → Cloud Run swap is one DNS change or one `EXPO_PUBLIC_API_URL` edit. Cloud Run is continuously deployed, smoke-tested, and reachable via `api-candidate.fs-suite.com`.~~ _(No longer applies — the Cloud Run candidate was decommissioned 2026-06; EC2 is the sole API runtime. See the Update note at the top.)_
 
 ### Negative
 
 - **Vendor concentration on Cloudflare.** DNS, TLS, CDN, Pages, R2, Workers all on one provider. If Cloudflare degrades, multiple layers degrade together. Mitigated by Cloudflare's own SLO and by the fact that the blast radius is shared with ~25% of the public web.
-- **Free-tier cliff.** Several providers hit upgrade limits roughly simultaneously as the product grows (Supabase at 500 MB, Upstash at 256 MB, Cloud Run egress, PostHog at 1M events). Need a pricing-aware capacity plan before public launch.
+- **Free-tier cliff.** Several providers hit upgrade limits roughly simultaneously as the product grows (Supabase at 500 MB, Upstash at 256 MB, PostHog at 1M events). Need a pricing-aware capacity plan before public launch.
 - **NestJS verbosity.** A route + DTO + service + module in Nest is more code than the equivalent in Hono or Fastify. Trade taken on purpose — the structure pays off as the codebase grows.
 - **JVM strengths are absent.** If the domain evolves toward computation-heavy work (multi-aircraft route optimisation, simulation), Node may not be the right home for that subsystem. Acceptable today; a re-evaluation trigger to keep in mind.
 - **Expo Web ≠ native performance.** The web bundle is React Native rendered through `react-native-web`, not a Next.js-style SSR app. Initial load is heavier than a pure web framework would deliver. Tolerable for a planning tool, not for a content-marketing landing page.

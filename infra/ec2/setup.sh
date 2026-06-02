@@ -220,9 +220,8 @@ process_env "$ENV_FILE" "$APP_DIR/.env"
 # JWT_PUBLIC_KEY are both already present (preserved from a previous
 # reprovision or provided by the operator), keep them — sessions
 # survive the reprovisioning. Otherwise generate fresh keys and tell
-# the operator to capture them back into the canonical .env so
-# Cloud Run can use the same pair and the next EC2 reprovision is
-# session-preserving.
+# the operator to capture them back into the canonical .env so the
+# next EC2 reprovision is session-preserving.
 
 if grep -q '^JWT_PRIVATE_KEY=' "$APP_DIR/.env" && \
    grep -q '^JWT_PUBLIC_KEY=' "$APP_DIR/.env"; then
@@ -284,14 +283,11 @@ echo ""
 
 if [[ "${GENERATED_JWT:-false}" == "true" ]]; then
   echo "⚠  FRESH JWT KEYS GENERATED — capture them into the canonical .env"
-  echo "   (Bitwarden) so Cloud Run uses the same pair and future EC2"
-  echo "   reprovisions preserve sessions:"
+  echo "   (Bitwarden) so future EC2 reprovisions preserve sessions:"
   echo ""
   echo "     ssh fs-suite \"sudo grep -E '^JWT_(PRIVATE|PUBLIC)_KEY=' /opt/fs-suite/.env\""
   echo ""
-  echo "   Paste both lines into the canonical .env, then re-run"
-  echo "   ./infra/cloudrun/setup.sh /path/to/.env to sync GCP Secret"
-  echo "   Manager with the new keys."
+  echo "   Paste both lines into the canonical .env."
   echo ""
 fi
 

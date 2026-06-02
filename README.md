@@ -36,7 +36,7 @@ fs-suite/
 │   ├── ui/            # Shared design system (NativeWind)
 │   ├── types/         # Shared Zod schemas and TypeScript types
 │   └── config/        # Shared ESLint, TypeScript, and Tailwind configs
-├── infra/             # Cloud Run setup scripts and deployment config
+├── infra/             # EC2 deployment config and provisioning scripts
 └── docs/              # Product and technical specifications
 ```
 
@@ -173,7 +173,7 @@ GitHub Actions workflows on push to `main`:
 | Workflow | Trigger paths | Action |
 |----------|--------------|--------|
 | `ci.yml` | All code | Lint, typecheck, build, test |
-| `deploy.yml` | `apps/api/`, `packages/` | Build → migrate → deploy EC2 + Cloud Run in parallel |
+| `deploy.yml` | `apps/api/`, `packages/` | Build → migrate → deploy EC2 |
 | `deploy-app.yml` | `apps/app/`, `packages/ui/`, `packages/types/` | Expo web export → Cloudflare Pages |
 
 ## Production Infrastructure
@@ -181,13 +181,12 @@ GitHub Actions workflows on push to `main`:
 | Component | Service |
 |-----------|---------|
 | Frontend | Cloudflare Pages (`fs-suite.com`) |
-| API (primary) | EC2 t3.small, Amazon Linux 2023 (`api.fs-suite.com`) |
-| API (candidate) | Google Cloud Run (`api-candidate.fs-suite.com`) |
+| API | EC2 t3.small, Amazon Linux 2023 (`api.fs-suite.com`) |
 | Database | Supabase (PostgreSQL, `eu-central-1`, via session-mode pooler) |
 | Cache | Upstash (serverless Redis, TLS) |
 | DNS/TLS | Cloudflare (proxied, Full Strict mode) |
-| Container Registry | GHCR (EC2) + Artifact Registry (Cloud Run) |
-| Secrets | `.env` on EC2 / Secret Manager on GCP |
+| Container Registry | GHCR |
+| Secrets | `.env` on EC2 |
 
 See [`infra/README.md`](infra/README.md) for detailed infrastructure documentation.
 

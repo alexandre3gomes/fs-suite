@@ -25,8 +25,7 @@ Create the following records (all proxied, the orange cloud is on):
 |---------------------------------|--------|-------------------------------------------|---------|
 | `fs-suite.com`                  | CNAME  | `fs-suite-app.pages.dev`                  | Proxied |
 | `www.fs-suite.com`              | CNAME  | `fs-suite.com`                            | Proxied |
-| `api.fs-suite.com`              | A      | EC2 Elastic IP (from [gcp.md] you'll get one later if you also use Cloud Run, but for EC2-primary this is the EC2 IP) | Proxied |
-| `api-candidate.fs-suite.com`    | —      | route-bound to the api-candidate Worker (no DNS record needed — Workers handle it)  | —       |
+| `api.fs-suite.com`              | A      | EC2 Elastic IP                            | Proxied |
 
 > The Pages CNAME target (`fs-suite-app.pages.dev`) only exists after the
 > Pages project is created (step 4 below). Create the DNS record afterwards.
@@ -89,13 +88,11 @@ Then create an API token scoped to that bucket:
 
 ## 6. Account-level token (for GitHub Actions)
 
-A separate, broader token is needed for the workflows that deploy Pages
-and the api-candidate Worker.
+A separate, broader token is needed for the workflow that deploys Pages.
 
 1. Cloudflare dashboard → **My Profile → API Tokens → Create Token**.
 2. Use the **Custom Token** template with permissions:
    - **Account → Cloudflare Pages → Edit**
-   - **Account → Workers Scripts → Edit**
    - **Zone → DNS → Read** (lets wrangler auto-resolve the zone)
 3. **Account Resources**: include the FS Suite account.
 4. **Zone Resources**: include `fs-suite.com`.

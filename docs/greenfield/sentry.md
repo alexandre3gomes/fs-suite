@@ -68,8 +68,7 @@ SENTRY_DSN=https://<key>@<org>.ingest.de.sentry.io/<project-id>
 
 The same value reaches:
 
-- **Backend**: via EC2 `.env` (propagated by `ec2/setup.sh`) and GCP
-  Secret Manager (propagated by `cloudrun/setup.sh`).
+- **Backend**: via EC2 `.env` (propagated by `ec2/setup.sh`).
 - **Frontend**: via the GitHub Secret `SENTRY_DSN` (pushed by
   `bootstrap-github-secrets.sh`), injected at Expo build time as
   `EXPO_PUBLIC_SENTRY_DSN`.

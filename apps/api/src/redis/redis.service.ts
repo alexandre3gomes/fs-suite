@@ -25,8 +25,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     // Connect in the BACKGROUND — don't block app startup (and the HTTP
-    // listener) on Redis reachability. Cloud Run kills a container that doesn't
-    // bind its port within the startup timeout; the client retries on its own.
+    // listener) on Redis reachability. Boot should never hang on a slow or
+    // unreachable dependency; the client retries on its own.
     this.client.connect()
       .then(() => this.logger.log('Redis connected'))
       .catch((err: Error) => this.logger.error(`Initial Redis connect failed (will retry): ${err.message}`));

@@ -339,7 +339,7 @@ service provisioned and credentials in hand, you can skip straight to the
 | `RESEND_API_KEY` | [Resend](https://resend.com) API key. Used by `metrics-digest.yml` to email the daily operational digest (sender on the Resend-verified `fs-suite.com` domain). Still **reserved for future user communications** — the app itself sends no user-facing email yet. As a GitHub Actions secret it must be a Resend key (`re_…`). |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side full-access key (bypasses RLS). On the **new** Supabase key system this is the **secret key** (`sb_secret_…`) from dashboard → Settings → API Keys → Secret key; on legacy projects it's the `service_role` JWT. Used by `db-backup.yml` to upload DB dumps. (The API no longer uses Supabase — the communications screenshot storage was removed.) The env var name is kept for continuity even when the value is an `sb_secret_…` key. |
 
-Non-secret config (set as plain env vars, not in Secret Manager):
+Non-secret config (plain env vars / GitHub Secrets, not app secrets):
 
 | Var | Description |
 |-----|-------------|

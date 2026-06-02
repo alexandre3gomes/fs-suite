@@ -23,8 +23,7 @@ pooler used by the API, and the Storage bucket consumed by `db-backup.yml`.
 ## 2. Build the `DATABASE_URL`
 
 We use the **Supavisor session-mode pooler** because:
-- Supabase's direct endpoint is IPv6-only; EC2 and Cloud Run runtimes
-  are IPv4-only.
+- Supabase's direct endpoint is IPv6-only; the EC2 runtime is IPv4-only.
 - Session mode supports prepared statements and advisory locks, so Prisma
   Client and Prisma Migrate both work with a single connection string
   (no separate `DIRECT_URL` needed).

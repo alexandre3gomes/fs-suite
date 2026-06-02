@@ -72,7 +72,7 @@ UptimeRobot's free tier includes a public status page:
 2. **Friendly Name**: `FS Suite Status`
 3. **Custom Domain**: `status.fs-suite.com` (requires a CNAME in
    Cloudflare to UptimeRobot's status-page host).
-4. **Monitors**: add all three.
+4. **Monitors**: add both.
 5. Visibility: Public.
 
 Skip this initially — useful once you have external users.
@@ -80,12 +80,12 @@ Skip this initially — useful once you have external users.
 ## 5. Validation
 
 Right after creating each monitor, UptimeRobot probes immediately and
-displays the status. All three should turn green within ~30s. If any
+displays the status. Both should turn green within ~30s. If any
 sits in "pending" or goes red:
 
 - Check the Keyword Value matches the body literally (smart quotes vs
   straight quotes are a common gotcha).
-- The 3 hostnames are proxied via Cloudflare — UptimeRobot's probes
+- The hostnames are proxied via Cloudflare — UptimeRobot's probes
   will reach Cloudflare edges, not your origin directly. If Cloudflare
   is blocking the probe (unlikely on default rules), exempt
   UptimeRobot's IP ranges in Cloudflare's WAF rules.

@@ -9,11 +9,10 @@ Suite frontend.
 
 ## Prerequisite
 
-A GCP project. If you're following the runbook order in
-[README.md](README.md), the project from [gcp.md](gcp.md) is reused here
-— OAuth clients live under a GCP project but are conceptually a separate
-concern (you can also create OAuth clients in a stand-alone "API project"
-without Cloud Run).
+A GCP project. OAuth clients live under a GCP project (the Google Cloud
+Console is just where Google OAuth credentials are managed — unrelated to
+hosting). Create a stand-alone project for the OAuth client if you don't
+already have one.
 
 ## 1. Configure the OAuth consent screen
 
@@ -67,7 +66,7 @@ GOOGLE_CLIENT_SECRET=GOCSPX-<secret>
 
 > `GOOGLE_CALLBACK_URL` is not in the `.env` — it's set to
 > `https://api.fs-suite.com/v1/auth/google/callback` automatically by the
-> EC2 and Cloud Run setup scripts (production hostname is fixed).
+> EC2 setup script (production hostname is fixed).
 
 ## Validation
 
