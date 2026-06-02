@@ -3,9 +3,10 @@ import { Button, Card, CardContent, Spinner, Text } from '@fs-suite/ui';
 import { Redirect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Image, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { useCurrentUser } from '../../../../src/hooks/useCurrentUser';
+import { notify } from '../../../../src/lib/notify';
 import {
   feedbackApi,
   type AdminFeedbackDetail,
@@ -52,7 +53,7 @@ function AttachmentPreview({
       const win = (globalThis as { open?: (u: string, target?: string) => unknown }).open;
       win?.(objectUrl, '_blank');
     } catch {
-      Alert.alert(t('common.error'), t('admin.feedback.attachmentError'));
+      notify(t('common.error'), t('admin.feedback.attachmentError'));
     }
   }, [feedbackId, attachment.id, t]);
 
@@ -73,7 +74,7 @@ function AttachmentPreview({
         setTimeout(() => URL.revokeObjectURL(objectUrl), 4000);
       }
     } catch {
-      Alert.alert(t('common.error'), t('admin.feedback.attachmentError'));
+      notify(t('common.error'), t('admin.feedback.attachmentError'));
     }
   }, [feedbackId, attachment.id, attachment.fileName, t]);
 
@@ -125,7 +126,7 @@ export default function AdminFeedbackDetailScreen(): JSX.Element {
     try {
       setDetail(await feedbackApi.getAdmin(id));
     } catch {
-      Alert.alert(t('common.error'), t('admin.feedback.loadError'));
+      notify(t('common.error'), t('admin.feedback.loadError'));
     } finally {
       setLoading(false);
     }
@@ -142,9 +143,9 @@ export default function AdminFeedbackDetailScreen(): JSX.Element {
       const updated = await feedbackApi.reply(id, reply.trim());
       setDetail(updated);
       setReply('');
-      Alert.alert(t('admin.feedback.replySentTitle'), t('admin.feedback.replySentBody'));
+      notify(t('admin.feedback.replySentTitle'), t('admin.feedback.replySentBody'));
     } catch {
-      Alert.alert(t('common.error'), t('admin.feedback.replyError'));
+      notify(t('common.error'), t('admin.feedback.replyError'));
     } finally {
       setBusy(false);
     }
@@ -157,7 +158,7 @@ export default function AdminFeedbackDetailScreen(): JSX.Element {
       const next = detail.status === 'RESOLVED' ? 'OPEN' : 'RESOLVED';
       setDetail(await feedbackApi.setStatus(id, next));
     } catch {
-      Alert.alert(t('common.error'), t('admin.feedback.statusError'));
+      notify(t('common.error'), t('admin.feedback.statusError'));
     } finally {
       setBusy(false);
     }
