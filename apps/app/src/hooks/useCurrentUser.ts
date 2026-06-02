@@ -12,6 +12,7 @@ interface UserProfile {
   avatarUrl: string | null;
   isAdmin?: boolean;
   marketingEmailConsent?: boolean;
+  locale?: string | null;
 }
 
 export function useCurrentUser(): {

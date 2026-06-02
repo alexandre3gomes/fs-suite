@@ -12,4 +12,10 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   marketingEmailConsent?: boolean;
+
+  @ApiPropertyOptional({ description: 'UI language (e.g. pt-BR, en)', maxLength: 16 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  locale?: string;
 }

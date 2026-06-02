@@ -28,6 +28,10 @@
     "usersCardDesc": "Manage users: grant admin or delete",
     "feedbackCard": "User feedback",
     "feedbackCardDesc": "Triage bugs and suggestions; reply by email",
+    "audienceSyncCard": "Sync audience (Resend)",
+    "audienceSyncDesc": "Backfill/reconcile marketing contacts in Resend",
+    "audienceSyncDone": "{{ok}}/{{total}} synced, {{failed}} failed.",
+    "audienceSyncError": "Could not sync the audience.",
     "comingSoon": "Coming soon.",
     "users": {
       "title": "User management",

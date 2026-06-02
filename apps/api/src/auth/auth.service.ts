@@ -8,8 +8,11 @@ import * as bcrypt from 'bcrypt';
 
 import { ActivityService } from '../activity/activity.service';
 import { EncryptionService } from '../common/encryption/encryption.service';
+import { ResendAudienceService } from '../email/resend-audience.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+
+import { isUserAdmin } from './admin-emails';
 
 interface OAuthUserProfile {
   provider: string;
@@ -17,6 +20,7 @@ interface OAuthUserProfile {
   email: string;
   name: string;
   avatarUrl?: string;
+  locale?: string;
   accessToken?: string;
   refreshToken?: string;
 }
@@ -51,6 +55,7 @@ export class AuthService {
     private readonly encryption: EncryptionService,
     private readonly activity: ActivityService,
     private readonly redis: RedisService,
+    private readonly audience: ResendAudienceService,
   ) {}
 
   async upsertOAuthUser(profile: OAuthUserProfile): Promise<User> {
@@ -71,8 +76,21 @@ export class AuthService {
         email: profile.email,
         name: profile.name,
         avatarUrl: profile.avatarUrl ?? null,
+        locale: profile.locale ?? null,
       },
     });
+
+    // First login → add to the Resend marketing audience (best-effort). On
+    // create, createdAt === updatedAt; returning users have updatedAt bumped.
+    if (user.createdAt.getTime() === user.updatedAt.getTime()) {
+      void this.audience.syncContact({
+        email: user.email,
+        name: user.name,
+        isAdmin: isUserAdmin(user),
+        locale: user.locale,
+        marketingEmailConsent: user.marketingEmailConsent,
+      });
+    }
 
     await this.prisma.oAuthAccount.upsert({
       where: {
