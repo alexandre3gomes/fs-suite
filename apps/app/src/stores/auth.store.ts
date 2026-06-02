@@ -7,6 +7,7 @@ interface AuthUser {
   avatarUrl: string | null;
   isAdmin?: boolean;
   marketingEmailConsent?: boolean;
+  locale?: string | null;
 }
 
 interface AuthState {

@@ -2,9 +2,11 @@ import { Controller, Get, Header, Query } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 
 import { ActivityService } from '../activity/activity.service';
+import { isUserAdmin } from '../auth/admin-emails';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { EmailTokenService } from './email-token.service';
+import { ResendAudienceService } from './resend-audience.service';
 
 @ApiExcludeController()
 @Controller('email')
@@ -13,6 +15,7 @@ export class EmailController {
     private readonly prisma: PrismaService,
     private readonly tokens: EmailTokenService,
     private readonly activity: ActivityService,
+    private readonly audience: ResendAudienceService,
   ) {}
 
   /**
@@ -37,6 +40,19 @@ export class EmailController {
 
     if (result.count > 0) {
       void this.activity.log('email.consent.opt_out', userId, { source: 'email_link' });
+      const user = await this.prisma.user.findFirst({
+        where: { id: userId },
+        select: { email: true, name: true, isAdmin: true, locale: true },
+      });
+      if (user) {
+        void this.audience.syncContact({
+          email: user.email,
+          name: user.name,
+          isAdmin: isUserAdmin(user),
+          locale: user.locale,
+          marketingEmailConsent: false,
+        });
+      }
     }
 
     return this.page(

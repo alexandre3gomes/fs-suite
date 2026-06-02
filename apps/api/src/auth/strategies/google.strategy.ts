@@ -30,6 +30,8 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     const email = profile.emails?.[0]?.value;
     const name = profile.displayName ?? profile.username ?? 'Unknown';
     const avatarUrl = profile.photos?.[0]?.value;
+    // Google exposes the user's locale (e.g. "pt-BR", "en") on the raw profile.
+    const locale = (profile as { _json?: { locale?: string } })._json?.locale;
 
     if (!email) {
       done(new Error('No email provided by Google'), undefined);
@@ -42,6 +44,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       email,
       name,
       avatarUrl,
+      locale,
       accessToken,
       refreshToken,
     });

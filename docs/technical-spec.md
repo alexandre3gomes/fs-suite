@@ -396,13 +396,31 @@ drops R2 objects + attachment rows for feedback `RESOLVED` more than 90 days ago
 
 ### Email
 
-Public, HMAC-token-authenticated. The `email` module exposes **only** the LGPD
-one-click unsubscribe; there is no active email sending today (Resend stays
-configured and reserved for future user communications).
+The `email` module owns: the LGPD one-click unsubscribe, the central
+`MailerService`, the dev mail-preview inbox, and the **Resend marketing-audience
+sync**.
 
 | Method | Path                                   | Description                                                            |
 |--------|----------------------------------------|------------------------------------------------------------------------|
 | GET    | /v1/email/unsubscribe?u=&lt;id&gt;&t=&lt;hmac&gt; | One-click unsubscribe — sets `marketingEmailConsent=false`; renders an HTML page |
+| POST   | /v1/email/webhooks/resend              | Resend (Svix-signed) webhook — reflects `contact.updated` / `email.complained` back into `marketingEmailConsent` |
+| POST   | /v1/admin/audience/sync                | Admin (`JwtAuthGuard + AdminGuard`) — backfill/reconcile all active users into the Resend audience |
+| GET    | /v1/dev/emails`[/:id]`                 | Dev-only — preview captured emails (404 in production)                 |
+
+**Marketing audience (broadcasts / feature announcements).** The DB
+(`marketingEmailConsent` + `User.locale` + admin status) is the source of truth;
+`ResendAudienceService` mirrors users into a Resend Audience: created on signup,
+`unsubscribed` tracks consent (profile toggle + LGPD unsubscribe), removed on
+account deletion. Each contact carries **custom properties for segmentation**:
+`language` (`pt-BR`/`en`, for localized announcements) and `is_admin`
+(`"true"`/`"false"` — Resend properties are string/number only). `language`
+comes from `User.locale`, captured from the Google profile at signup and kept in
+sync by the app (the `(auth)` layout PATCHes `/users/me { locale }` on language
+change). All writes are best-effort; `POST /v1/admin/audience/sync` defines the
+properties and backfills/reconciles all users. Sync is gated to production (or
+`RESEND_AUDIENCE_FORCE=true`). The **webhook** closes the loop the other way —
+audience-side unsubscribes and spam complaints flow back into the DB — and never
+calls Resend (no sync loop). Env: `RESEND_AUDIENCE_ID`, `RESEND_WEBHOOK_SECRET`.
 
 ### Airports
 

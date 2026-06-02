@@ -29,6 +29,9 @@ Sentry.init({
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
+    // Capture the raw request body so the Resend (Svix) webhook signature can
+    // be verified against the exact bytes received.
+    rawBody: true,
   });
 
   // Use pino as the application logger

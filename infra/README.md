@@ -283,6 +283,8 @@ hand.
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | A | ✅ | — | — |
 | `ADMIN_METRICS_TOKEN` | A + D | ✅ | — | ✅ (`metrics-digest.yml`) |
 | `RESEND_API_KEY` | A + D | ✅ (feedback emails) | — | ✅ (`metrics-digest.yml`) |
+| `RESEND_AUDIENCE_ID` | A | ✅ (marketing audience sync) | — | — |
+| `RESEND_WEBHOOK_SECRET` | A | ✅ (Resend webhook verification) | — | — |
 | `SUPABASE_SERVICE_ROLE_KEY` | D | — | — | ✅ (`db-backup.yml`) |
 | `EXPO_PUBLIC_POSTHOG_KEY` → `POSTHOG_KEY` | B | — | ✅ | ✅ (injected at build by `deploy-app.yml`) |
 | `EC2_HOST` / `EC2_SSH_KEY` / `EC2_USER` | C | — | — | ✅ (`deploy.yml`) |
@@ -337,7 +339,9 @@ service provisioned and credentials in hand, you can skip straight to the
 | `AVWX_TOKEN` | AVWX token — enriched METAR decoding. Optional; same as `OWM_API_KEY`. |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare R2 credentials for the chart-overlay cache **and feedback attachments** (same bucket; attachments live under the `feedback/` key prefix). |
 | `ADMIN_METRICS_TOKEN` | Header-token auth for `GET /v1/admin/metrics` (consumed by `metrics-digest.yml`). Generate with `openssl rand -hex 32`. |
-| `RESEND_API_KEY` | [Resend](https://resend.com) API key. Used by the **feedback feature** (admin notifications + replies to users) and by `metrics-digest.yml` for the daily digest. Sender on the Resend-verified `fs-suite.com` domain. As a GitHub Actions secret it must be a Resend key (`re_…`). |
+| `RESEND_API_KEY` | [Resend](https://resend.com) API key. Used by the **feedback feature** (admin notifications + replies to users), the **marketing audience sync**, and by `metrics-digest.yml` for the daily digest. Sender on the Resend-verified `fs-suite.com` domain. As a GitHub Actions secret it must be a Resend key (`re_…`). |
+| `RESEND_AUDIENCE_ID` | Resend Audience (broadcast list) id. Users are mirrored into it (created on signup, `unsubscribed` tracks `marketingEmailConsent`, removed on deletion). Backfill existing users via `POST /v1/admin/audience/sync`. Sync runs only in production (or with `RESEND_AUDIENCE_FORCE=true`). |
+| `RESEND_WEBHOOK_SECRET` | Svix signing secret (`whsec_…`) for the Resend webhook at `POST /v1/email/webhooks/resend`. Reflects audience-side unsubscribes (`contact.updated`) and spam complaints (`email.complained`) back into `marketingEmailConsent`. Configure the webhook in the Resend dashboard. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side full-access key (bypasses RLS). On the **new** Supabase key system this is the **secret key** (`sb_secret_…`) from dashboard → Settings → API Keys → Secret key; on legacy projects it's the `service_role` JWT. Used by `db-backup.yml` to upload DB dumps. (The API no longer uses Supabase — the communications screenshot storage was removed.) The env var name is kept for continuity even when the value is an `sb_secret_…` key. |
 
 Non-secret config (plain env vars / GitHub Secrets, not app secrets):

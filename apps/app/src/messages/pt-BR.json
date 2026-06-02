@@ -28,6 +28,10 @@
     "usersCardDesc": "Gerenciar usuários: tornar admin ou excluir",
     "feedbackCard": "Feedback dos usuários",
     "feedbackCardDesc": "Triagem de bugs e sugestões; responder por email",
+    "audienceSyncCard": "Sincronizar audiência (Resend)",
+    "audienceSyncDesc": "Popular/reconciliar os contatos de marketing no Resend",
+    "audienceSyncDone": "{{ok}}/{{total}} sincronizados, {{failed}} falharam.",
+    "audienceSyncError": "Não foi possível sincronizar a audiência.",
     "comingSoon": "Em breve.",
     "users": {
       "title": "Gestão de usuários",

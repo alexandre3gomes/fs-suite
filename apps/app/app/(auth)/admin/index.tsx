@@ -1,14 +1,32 @@
 import { Card, CardContent, Spinner, Text } from '@fs-suite/ui';
 import { Redirect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
+import { audienceAdminApi } from '../../../src/services/audience-admin.service';
 
 export default function AdminScreen(): JSX.Element {
   const { t } = useTranslation();
   const router = useRouter();
   const { user, isLoading } = useCurrentUser();
+  const [syncing, setSyncing] = useState(false);
+
+  const syncAudience = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const r = await audienceAdminApi.sync();
+      Alert.alert(
+        t('admin.audienceSyncCard'),
+        t('admin.audienceSyncDone', { ok: r.ok, total: r.total, failed: r.failed }),
+      );
+    } catch {
+      Alert.alert(t('common.error'), t('admin.audienceSyncError'));
+    } finally {
+      setSyncing(false);
+    }
+  }, [t]);
 
   if (isLoading && !user) {
     return (
@@ -44,6 +62,25 @@ export default function AdminScreen(): JSX.Element {
               <CardContent className="md:px-8 md:py-6">
                 <Text className="text-base font-bold md:text-lg">{t('admin.feedbackCard')}</Text>
                 <Text variant="muted" className="mt-1">{t('admin.feedbackCardDesc')}</Text>
+              </CardContent>
+            </Pressable>
+          </Card>
+
+          <Card className={syncing ? 'opacity-60' : 'active:opacity-80'}>
+            <Pressable
+              onPress={() => {
+                if (!syncing) void syncAudience();
+              }}
+              disabled={syncing}
+            >
+              <CardContent className="md:px-8 md:py-6">
+                <View className="flex-row items-center justify-between gap-2">
+                  <Text className="text-base font-bold md:text-lg">
+                    {t('admin.audienceSyncCard')}
+                  </Text>
+                  {syncing ? <Spinner size="sm" /> : null}
+                </View>
+                <Text variant="muted" className="mt-1">{t('admin.audienceSyncDesc')}</Text>
               </CardContent>
             </Pressable>
           </Card>

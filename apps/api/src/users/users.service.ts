@@ -2,7 +2,8 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import type { User } from '@prisma/client';
 
 import { ActivityService } from '../activity/activity.service';
-import { isAdminEmail } from '../auth/admin-emails';
+import { isAdminEmail, isUserAdmin } from '../auth/admin-emails';
+import { ResendAudienceService } from '../email/resend-audience.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import type { UpdateUserDto } from './dto/update-user.dto';
@@ -22,6 +23,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activity: ActivityService,
+    private readonly audience: ResendAudienceService,
   ) {}
 
   async findById(id: string): Promise<User | null> {
@@ -56,6 +58,14 @@ export class UsersService {
     void this.activity.log(isAdmin ? 'admin.user.promote' : 'admin.user.demote', actingUserId, {
       targetUserId: id,
     });
+    // Reflect the new admin status into the audience's is_admin property.
+    void this.audience.syncContact({
+      email: user.email,
+      name: user.name,
+      isAdmin: isUserAdmin(user),
+      locale: user.locale,
+      marketingEmailConsent: user.marketingEmailConsent,
+    });
     return {
       id: user.id,
       email: user.email,
@@ -75,11 +85,20 @@ export class UsersService {
     if (!target) throw new NotFoundException('User not found');
     await this.prisma.user.update({ where: { id }, data: { deletedAt: new Date() } });
     await this.prisma.session.deleteMany({ where: { userId: id } });
+    void this.audience.removeContact(target.email);
     void this.activity.log('admin.user.delete', actingUserId, { targetUserId: id });
   }
 
   async updateMe(id: string, dto: UpdateUserDto): Promise<User> {
-    const consentChanged = dto.marketingEmailConsent !== undefined;
+    const existing = await this.prisma.user.findUnique({
+      where: { id },
+      select: { marketingEmailConsent: true, locale: true },
+    });
+    const consentChanged =
+      dto.marketingEmailConsent !== undefined &&
+      dto.marketingEmailConsent !== existing?.marketingEmailConsent;
+    const localeChanged = dto.locale !== undefined && dto.locale !== existing?.locale;
+
     const user = await this.prisma.user.update({
       where: { id },
       data: {
@@ -88,6 +107,7 @@ export class UsersService {
           marketingEmailConsent: dto.marketingEmailConsent,
           marketingEmailConsentUpdatedAt: new Date(),
         }),
+        ...(dto.locale !== undefined && { locale: dto.locale }),
       },
     });
     void this.activity.log('user.updated', id);
@@ -96,6 +116,17 @@ export class UsersService {
         dto.marketingEmailConsent ? 'email.consent.opt_in' : 'email.consent.opt_out',
         id,
       );
+    }
+    // Only touch Resend when something it cares about actually changed (avoids
+    // redundant calls when the app re-reports the same locale on every mount).
+    if (consentChanged || localeChanged) {
+      void this.audience.syncContact({
+        email: user.email,
+        name: user.name,
+        isAdmin: isUserAdmin(user),
+        locale: user.locale,
+        marketingEmailConsent: user.marketingEmailConsent,
+      });
     }
     return user;
   }
@@ -113,6 +144,7 @@ export class UsersService {
 
     // Invalidate all sessions
     await this.prisma.session.deleteMany({ where: { userId: id } });
+    void this.audience.removeContact(user.email);
     void this.activity.log('user.deleted', id);
   }
 }

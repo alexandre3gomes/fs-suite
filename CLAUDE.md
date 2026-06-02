@@ -122,10 +122,17 @@ grant/revoke admin, soft-delete accounts) and **feedback triage**.
   private in R2 under `feedback/`). Admins triage at `/admin/feedback`, reply
   (emails the user via Resend), and mark resolved. New feedback emails all
   admins. These emails are **transactional** (no marketing-consent gate).
-- **Marketing consent is retained:** users keep a `marketingEmailConsent`
-  opt-in (default true) plus a one-click LGPD unsubscribe endpoint
-  (`GET /v1/email/unsubscribe`); a future marketing-email feature is
-  consent-ready. (Feedback emails are operational and do not use this gate.)
+- **Marketing audience (broadcasts):** users are mirrored into a Resend
+  Audience for feature announcements — created on signup, `unsubscribed` tracks
+  `marketingEmailConsent`, removed on account deletion (`ResendAudienceService`,
+  gated to prod). Contacts carry `language` (`pt-BR`/`en`, from `User.locale`)
+  and `is_admin` custom properties for segmentation. The DB is the source of
+  truth; a Svix-signed webhook
+  (`POST /v1/email/webhooks/resend`) reflects audience-side unsubscribes/spam
+  complaints back into the DB. Backfill via `POST /v1/admin/audience/sync`.
+  Users keep the `marketingEmailConsent` opt-in (default true) + one-click LGPD
+  unsubscribe (`GET /v1/email/unsubscribe`). (Feedback emails are operational
+  and do not use this gate.)
 
 ## Production URLs
 
