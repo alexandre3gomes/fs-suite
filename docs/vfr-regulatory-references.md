@@ -101,6 +101,13 @@ Code: `vfrNavigation.ts` — `buildVfrRouteText()`, `buildItem18()`.
 
 ### 1.5 REA Navigation Engine
 
+> **Worldwide model note:** REA is the Brazilian specialization (`BR_REA`) of the
+> generic published-VFR-layer model — see `docs/vfr-layer-model.md`. The engine
+> below (data source, graph, suggestion, validation, AIRAC) is **unchanged** and
+> remains Brazil/DECEA-specific; the generic model only adds a metadata/catalog
+> layer on top. Equivalent foreign layers (US flyways/transition routes, EU
+> transit routes/VRPs) reuse the same descriptor without touching this engine.
+
 The REA Navigation Engine computes optimal routes through Brazil's REA corridor network
 using a directed graph built from DECEA's authoritative WFS data.
 

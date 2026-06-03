@@ -2,9 +2,10 @@ import { Input } from '@fs-suite/ui';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Dropdown } from 'react-native-element-dropdown';
 
+import { notify } from '../../lib/notify';
 import { trackAction, trackSuccess, trackFailure, categorizeError } from '../../services/analytics';
 import { apiClient } from '../../services/api.client';
 
@@ -106,11 +107,11 @@ export function SimBriefPanel({ originIcao, destinationIcao, alternateIcao, call
 
   const handleOpenDispatch = useCallback(() => {
     if (!originIcao || !destinationIcao) {
-      Alert.alert(t('common.error'), t('vfr.simbriefNeedOriginDest'));
+      notify(t('common.error'), t('vfr.simbriefNeedOriginDest'));
       return;
     }
     if (!pilotId) {
-      Alert.alert(t('common.error'), t('vfr.simbriefNeedPilotId'));
+      notify(t('common.error'), t('vfr.simbriefNeedPilotId'));
       return;
     }
     trackAction('simbrief_dispatch_opened', {
@@ -143,7 +144,7 @@ export function SimBriefPanel({ originIcao, destinationIcao, alternateIcao, call
 
   const handleImportOfp = useCallback(async () => {
     if (!pilotId) {
-      Alert.alert(t('common.error'), t('vfr.simbriefNeedPilotId'));
+      notify(t('common.error'), t('vfr.simbriefNeedPilotId'));
       return;
     }
     setImporting(true);
@@ -156,12 +157,12 @@ export function SimBriefPanel({ originIcao, destinationIcao, alternateIcao, call
         destination_icao: data.destinationIcao,
         has_alternate: !!data.alternateIcao,
       });
-      Alert.alert(t('vfr.simbrief'), t('vfr.simbriefImported'));
+      notify(t('vfr.simbrief'), t('vfr.simbriefImported'));
     } catch (err: unknown) {
       const { errorType, statusCode } = categorizeError(err);
       trackFailure('simbrief_import_failed', errorType, { status_code: statusCode });
       const message = err instanceof Error ? err.message : 'Could not import OFP.';
-      Alert.alert(t('common.error'), message);
+      notify(t('common.error'), message);
     }
     setImporting(false);
   }, [pilotId, onImport, t]);

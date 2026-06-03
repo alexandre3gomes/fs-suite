@@ -3,6 +3,10 @@
 This document records the structural decisions behind rendering aerodrome
 charts (VAC) as transparent overlays on the VFR planning map.
 
+> In the worldwide VFR-layer model (`docs/vfr-layer-model.md`), a VAC overlay is
+> the `PDF_OVERLAY` geometry type. The chart authorities here (DECEA, FAA,
+> ENAIRE…) are the same multi-region sources that model catalogs.
+
 ## Goal
 
 From the VFR planning flow, a pilot should be able to:

@@ -429,6 +429,36 @@ calls Resend (no sync loop). Env: `RESEND_AUDIENCE_ID`, `RESEND_WEBHOOK_SECRET`.
 | GET    | /v1/airports       | Search by ICAO or name (`?q=SBGR`, max 20 results)|
 | GET    | /v1/airports/:icao | Get single airport detail                        |
 
+### VFR published layers (worldwide model)
+
+Published VFR aeronautical layers follow a generic, country-agnostic model;
+**REA, REH and WAC are Brazilian specializations** of it (not a Brazil-coupled
+subsystem). The normalized descriptor (`VfrLayerDescriptor` in `packages/types`)
+carries `country`, `region`, `source`, `provider`, `layerType`, `geometryType`,
+currency (`cycle`/`effectiveDate`), altitude band, `requiresClearance`,
+`mandatory`, `isOfficial`, and `disclaimer`. Full spec: `docs/vfr-layer-model.md`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /v1/vfr-layers?country=BR | Catalog of published VFR layers (metadata/discovery; static-in-code, no DB yet) |
+
+This is **additive and adapter-based**: REA data is still served by `/v1/rea/*`
+(unchanged); WAC is still a client-side DECEA WMS layer. `layerType` is an enum
+(`BR_REA`, `BR_REH`, `BR_WAC`, `US_VFR_FLYWAY`, `US_VFR_TRANSITION_ROUTE`,
+`US_VFR_CORRIDOR`, `EU_VFR_TRANSIT_ROUTE`, `EU_VRP_ROUTE`, `LOCAL_VISUAL_ROUTE`).
+US/EU are model-ready but not yet ingested; OpenAIP is community/non-official
+(`isOfficial=false`) and is already in the app as the "Worldwide airspace
+(OpenAIP)" toggle (worldwide airspace/airfields/navaids/VRPs).
+
+**Cost stance — no raster hosting.** While zero-cost is a hard constraint, FS
+Suite does **not** host worldwide raster chart tiles (FAA Sectional/TAC) and does
+not proxy/cache/Worker-proxy external tiles. Per-aerodrome charts (incl. US FAA
+d-TPP) are discovered the same way as DECEA via `/aerodromes/:icao/charts`; the
+area VFR sectional is reached only via the external **"Open in SkyVector"** route
+link (SkyVector is a **link target, never a tile source**). US official vector
+data (FAA NASR) is the next step, scoped as a measured spike
+(`docs/faa-nasr-spike.md`). Full rationale: `docs/vfr-layer-model.md`.
+
 ### Aircraft Profiles
 
 | Method | Path                      | Description             |

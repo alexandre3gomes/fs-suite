@@ -10,6 +10,7 @@ import { Component, useEffect, useRef, useState } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { Text, View } from 'react-native';
 
+import { NotificationHost } from '../src/components/NotificationHost';
 import { restoreLanguage } from '../src/i18n';
 import { initAnalytics, trackScreenView, setSessionContext } from '../src/services/analytics';
 import { refreshAccessToken } from '../src/services/auth.service';
@@ -115,6 +116,7 @@ function RootLayout(): JSX.Element | null {
           <Stack.Screen name="(public)" />
           <Stack.Screen name="(auth)" />
         </Stack>
+        <NotificationHost />
       </QueryClientProvider>
     </AppErrorBoundary>
   );

@@ -97,6 +97,27 @@ export class AirportsService {
     });
   }
 
+  /**
+   * Resolve an airport by its identifier as it may appear in an external flight
+   * plan: primary ICAO id, then the OurAirports `gps_code` / `local_code`
+   * (stored in `raw`). Returns null if not in our DB (e.g. small US strips that
+   * the seed — 4-letter ICAO only — doesn't include).
+   */
+  async resolveByCode(code: string): Promise<Airport | null> {
+    const upper = code.trim().toUpperCase();
+    if (!upper) return null;
+    const byIcao = await this.prisma.airport.findUnique({ where: { icao: upper } });
+    if (byIcao) return byIcao;
+    return this.prisma.airport.findFirst({
+      where: {
+        OR: [
+          { raw: { path: ['gps_code'], equals: upper } },
+          { raw: { path: ['local_code'], equals: upper } },
+        ],
+      },
+    });
+  }
+
   async findByBbox(bounds: MapBounds, types?: string[]): Promise<Omit<Airport, 'raw'>[]> {
     const where: Record<string, unknown> = {
       latitude: { gte: bounds.south, lte: bounds.north },

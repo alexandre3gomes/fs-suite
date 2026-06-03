@@ -1,9 +1,10 @@
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Platform, View } from 'react-native';
+import { View } from 'react-native';
 
 import { VfrPlanForm, type VfrPlanData } from '../../../src/components/vfr/VfrPlanForm';
+import { notify } from '../../../src/lib/notify';
 import { trackAction, trackSuccess, trackFailure, categorizeError, setFeatureContext } from '../../../src/services/analytics';
 import { apiClient } from '../../../src/services/api.client';
 
@@ -42,11 +43,7 @@ export default function NewVfrPlanScreen() {
       const e = err as Record<string, Record<string, Record<string, unknown>>>;
       const msg = e?.response?.data?.message ?? (err instanceof Error ? err.message : t('common.error'));
       const text = Array.isArray(msg) ? msg.join('\n') : String(msg);
-      if (Platform.OS === 'web') {
-        (globalThis as unknown as { alert: (m: string) => void }).alert(`${t('common.error')}: ${text}`);
-      } else {
-        Alert.alert(t('common.error'), text);
-      }
+      notify(t('common.error'), text);
       setSaving(false);
     }
   }, [router, t]);

@@ -12,6 +12,13 @@ A plataforma unificara, em uma experiencia com branding do canal Simulando, os f
 
 O primeiro modulo a ser entregue sera o de planejamento de voo.
 
+**Escopo geografico:** o produto comeca focado no Brasil (camadas VFR publicadas
+do DECEA: REA, REH, WAC, cartas visuais), mas a arquitetura de camadas VFR e
+**preparada para ser worldwide** — REA/REH/WAC sao especializacoes brasileiras
+dentro de um modelo generico que aceita EUA (FAA: flyways, transition routes) e
+Europa (EUROCONTROL/AIPs: transit routes, VRPs) sem acoplamento ao Brasil. Ver
+`docs/vfr-layer-model.md`.
+
 ## 2. Objetivos do Projeto
 ### Objetivos de negocio
 - consolidar a marca Simulando em um produto digital proprietario

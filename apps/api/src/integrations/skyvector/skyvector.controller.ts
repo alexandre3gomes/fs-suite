@@ -1,9 +1,10 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
-import { SkyVectorService } from './skyvector.service';
+import { ImportFplDto } from './dto/import-fpl.dto';
+import { type FplImportResult, SkyVectorService } from './skyvector.service';
 
 @ApiTags('integrations/skyvector')
 @Controller('integrations/skyvector')
@@ -22,5 +23,11 @@ export class SkyVectorController {
     @Query('route') route?: string,
   ): { url: string } {
     return this.skyVectorService.buildUrl(originIcao, destinationIcao, route);
+  }
+
+  @Post('import')
+  @ApiOperation({ summary: 'Import a Garmin/SkyVector .fpl flight plan (route + resolved origin/destination)' })
+  import(@Body() dto: ImportFplDto): Promise<FplImportResult> {
+    return this.skyVectorService.importFpl(dto.fpl);
   }
 }

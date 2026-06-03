@@ -1,18 +1,22 @@
 import type { AircraftCatalogEntry, WeightStation } from '@fs-suite/types';
 import { Input } from '@fs-suite/ui';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { toPng } from 'html-to-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { getChecklistsForAircraft } from '../../data/checklistCatalog';
 import { useAircraftCatalog } from '../../hooks/useAircraftCatalog';
+import { notify } from '../../lib/notify';
 import { trackAction, trackSuccess, trackFailure, categorizeError } from '../../services/analytics';
 import { apiClient, API_URL } from '../../services/api.client';
 import { exportFlightPlanLnm } from '../../services/lnmpln-export';
 import type { AiValidationResult } from '../../services/pdf-export';
 import { buildFlightPlanDoc, exportFlightPlanWithAttachments } from '../../services/pdf-export';
 import { exportFlightPlanCharts, exportFlightPlanPln } from '../../services/pln-export';
+import { skyVectorApi } from '../../services/skyvector.service';
 import { useUnitsStore, formatWeight, formatFuel, formatSpeed, kgToFuelAmount, fuelAmountToKg, fuelFlowSuffix, type FuelUnit } from '../../stores/units.store';
 import { CopyButton } from '../CopyButton';
 
@@ -29,7 +33,7 @@ import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
 import { TafDisplay, type ParsedTaf } from './TafDisplay';
 import { VfrPlanLayout } from './VfrPlanLayout';
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
-import { type RouteWaypoint, type AltitudeTransition, type RouteSegment, type TocTodPosition, type EnrichedLeg, type AircraftPerformance, type ClimbDescentPlan, type LegAltConstraint, buildVfrRouteText, parseVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getDefaultTransitionAltitude, getPerformanceCategory, calculateDefaultTpaFt, segmentRouteLegs, calculateTocDistance, calculateTodFromTpa, interpolatePositionOnRoute, enrichRouteLegs, computeClimbDescentPlan, computeAltitudeProfile } from './vfrNavigation';
+import { type RouteWaypoint, type AltitudeTransition, type RouteSegment, type TocTodPosition, type EnrichedLeg, type AircraftPerformance, type ClimbDescentPlan, type LegAltConstraint, toVfrCoord, buildVfrRouteText, parseVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getDefaultTransitionAltitude, getPerformanceCategory, calculateDefaultTpaFt, segmentRouteLegs, calculateTocDistance, calculateTodFromTpa, interpolatePositionOnRoute, enrichRouteLegs, computeClimbDescentPlan, computeAltitudeProfile } from './vfrNavigation';
 import { defaultDepartureTime, toDatetimeLocalValue, fromDatetimeLocalValue, formatZulu, isNightFlight, validateVfrPlan, type PlanViability } from './weatherTimeUtils';
 
 function SimpleMarkdown({ text, italic }: { text: string; italic?: boolean }) {
@@ -1561,6 +1565,68 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     return [dep, routeText, arr].filter(Boolean).join(' ');
   }, [origin, originRunway, destination, destRunway, routeText]);
 
+  // SkyVector "open in" link: ORIGIN + waypoints (as ICAO coords) + DEST in the
+  // ?fpl= flight-plan param. Waypoints go as coordinates (gate/visual names
+  // wouldn't resolve in SkyVector). The legit way to use SkyVector — a contextual
+  // link out, not embedding their proprietary tiles.
+  const skyVectorUrl = useMemo(() => {
+    if (!origin || !destination) return null;
+    // Speed + altitude ride as an ICAO field-15 modifier (/F095N0120). SkyVector
+    // honors it on an enroute fix, NOT on the departure airport — so attach it to
+    // the first waypoint when there is one (fallback: departure). "F" for flight
+    // levels (not "FL"); altitude then speed. ETD/tail/fuel are NOT supported in
+    // SkyVector's URL (profile/form only), so they're omitted by design.
+    const ft = parseCruiseLevelFt(cruiseLevel);
+    const altToken = ft != null ? formatAltitudeIcao(ft, origin.icao).replace(/^FL/, 'F') : '';
+    const spdToken =
+      cruiseKts != null && cruiseKts > 0 ? `N${String(Math.round(cruiseKts)).padStart(4, '0')}` : '';
+    const mod = altToken || spdToken ? `/${altToken}${spdToken}` : '';
+    const waypoints = routeWaypoints.map((w) => toVfrCoord(w.lat, w.lng));
+    // Tokens (ICAO idents + ICAO-format coordinates) are URL-safe; '+' is
+    // SkyVector's waypoint separator, so it must stay literal (not encoded).
+    const parts =
+      waypoints.length > 0
+        ? [origin.icao, `${waypoints[0]}${mod}`, ...waypoints.slice(1), destination.icao]
+        : [`${origin.icao}${mod}`, destination.icao];
+    return `https://skyvector.com/?fpl=${parts.join('+')}`;
+  }, [origin, destination, routeWaypoints, cruiseLevel, cruiseKts]);
+
+  const openSkyVector = useCallback(() => {
+    if (skyVectorUrl) void Linking.openURL(skyVectorUrl);
+  }, [skyVectorUrl]);
+
+  // Import a Garmin/SkyVector .fpl: pick the file, send to the API (parse +
+  // resolve origin/destination), and populate the plan. Mid points become
+  // waypoints (always); origin/destination only if found in our airport DB.
+  const importFromSkyVector = useCallback(async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+      if (res.canceled || !res.assets?.[0]) return;
+      const uri = res.assets[0].uri;
+      const text =
+        Platform.OS === 'web'
+          ? await (await fetch(uri)).text()
+          : await FileSystem.readAsStringAsync(uri);
+      const r = await skyVectorApi.importFpl(text);
+      if (r.origin) setOrigin(r.origin);
+      if (r.destination) setDestination(r.destination);
+      setRouteWaypoints(r.waypoints);
+      setFollowedCorridorName(null);
+      setCorridorAltRange(null);
+      setCorridorCompAlt(null);
+      if (r.unresolved.length > 0) {
+        notify(
+          t('vfr.importFplPartial'),
+          t('vfr.importFplUnresolved', { idents: r.unresolved.join(', ') }),
+        );
+      } else {
+        notify(t('vfr.importFplDone'));
+      }
+    } catch {
+      notify(t('common.error'), t('vfr.importFplError'));
+    }
+  }, [t]);
+
   // Operational summary for the Flight Viability panel — DEP/ARR/ALT, perf and
   // the viability verdict with its items. Good for a quick briefing/Discord paste.
   const viabilitySummaryText = useMemo(() => {
@@ -1772,7 +1838,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const handleSave = () => {
     const data = buildPlanData();
     if (!data) {
-      Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
+      notify(t('common.error'), t('vfr.noPlanSelected'));
       return;
     }
     const savePayload: Partial<VfrPlanData> & Record<string, unknown> = {
@@ -1869,7 +1935,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const handleExportPdf = () => {
     const data = buildPlanData();
     if (!data) {
-      Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
+      notify(t('common.error'), t('vfr.noPlanSelected'));
       return;
     }
     trackAction('export_modal_opened', {
@@ -1885,20 +1951,20 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   ) => {
     const data = buildPlanData();
     if (!data) {
-      Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
+      notify(t('common.error'), t('vfr.noPlanSelected'));
       return;
     }
     try {
       const ok = await exporter(data);
       if (!ok) {
-        Alert.alert(t('common.error'), t('vfr.plnMissingCoords'));
+        notify(t('common.error'), t('vfr.plnMissingCoords'));
         return;
       }
       trackSuccess(`export_${kind}`, { origin_icao: data.originIcao, destination_icao: data.destinationIcao });
     } catch (err) {
       const { errorType, statusCode } = categorizeError(err);
       trackFailure(`export_${kind}`, errorType, { status_code: statusCode });
-      Alert.alert(t('common.error'), t('vfr.exportFailed'));
+      notify(t('common.error'), t('vfr.exportFailed'));
     }
   };
 
@@ -1986,13 +2052,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       const { errorType, statusCode } = categorizeError(err);
       trackFailure('export_failed', errorType, { status_code: statusCode });
       console.error('PDF export error:', err);
-      if (Platform.OS === 'web') {
-        (globalThis as unknown as { alert: (msg: string) => void }).alert(
-          `${t('common.error')}: ${err instanceof Error ? err.message : 'Export failed'}`,
-        );
-      } else {
-        Alert.alert(t('common.error'), 'Export failed');
-      }
+      notify(t('common.error'), err instanceof Error ? err.message : 'Export failed');
     } finally {
       setExporting(false);
       setShowExportModal(false);
@@ -2017,7 +2077,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const requestAiValidation = async () => {
     const data = buildPlanData();
     if (!data) {
-      Alert.alert(t('common.error'), t('vfr.noPlanSelected'));
+      notify(t('common.error'), t('vfr.noPlanSelected'));
       trackFailure('ai_validation_blocked_missing_inputs', 'validation');
       return;
     }
@@ -2223,6 +2283,15 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
       {/* ====== AERODROMES ====== */}
       <Section title={t('vfr.aerodromes')}>
+        <Pressable
+          onPress={() => {
+            void importFromSkyVector();
+          }}
+          className="mb-3 flex-row items-center gap-2 self-start rounded-md border border-border px-3 py-2 active:opacity-70"
+          style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as never) : undefined}
+        >
+          <Text className="text-xs font-medium text-primary">{t('vfr.importFpl')} ↥</Text>
+        </Pressable>
         <AerodromeSearch
           label={t('vfr.origin')}
           value={origin}
@@ -2671,14 +2740,24 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
             departure/destination + runway). */}
         <View className="mb-1.5 flex-row items-center justify-between">
           <Text className="text-sm font-medium text-foreground">{t('vfr.routeText')}</Text>
-          {(routeText || origin || destination) ? (
-            <CopyButton
-              options={[
-                { label: t('vfr.copyRoutePlain'), text: routeText },
-                { label: t('vfr.copyRouteFull'), text: routeFullText },
-              ]}
-            />
-          ) : null}
+          <View className="flex-row items-center gap-3">
+            {skyVectorUrl ? (
+              <Pressable
+                onPress={openSkyVector}
+                style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as never) : undefined}
+              >
+                <Text className="text-xs font-medium text-primary">{t('vfr.openSkyVector')} ↗</Text>
+              </Pressable>
+            ) : null}
+            {(routeText || origin || destination) ? (
+              <CopyButton
+                options={[
+                  { label: t('vfr.copyRoutePlain'), text: routeText },
+                  { label: t('vfr.copyRouteFull'), text: routeFullText },
+                ]}
+              />
+            ) : null}
+          </View>
         </View>
         <Input
           value={routeText}

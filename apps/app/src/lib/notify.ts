@@ -1,15 +1,24 @@
-import { Alert, Platform } from 'react-native';
+import { useNotificationStore } from '../stores/notification.store';
 
 /**
- * Cross-platform alert. react-native-web's `Alert.alert` is a no-op (renders
- * nothing), so on web we fall back to the browser dialog; on native we use the
- * real `Alert`. Use this anywhere user-facing feedback is needed from a handler.
+ * App-wide user feedback. Renders a themed modal (see <NotificationHost />) on
+ * every platform — replacing the native/browser alert dialog. Callable from any
+ * handler (it's imperative, not a hook). Use for success/error messages.
  */
 export function notify(title: string, message?: string): void {
-  if (Platform.OS === 'web') {
-    const w = globalThis as { alert?: (msg: string) => void };
-    w.alert?.(message ? `${title}\n\n${message}` : title);
-    return;
-  }
-  Alert.alert(title, message);
+  useNotificationStore.getState().push({ title, message, variant: 'alert' });
+}
+
+/**
+ * Themed confirmation dialog (Cancel + Confirm). `onConfirm` runs when the user
+ * confirms. Use for destructive/irreversible actions instead of a native confirm.
+ */
+export function confirmDialog(opts: {
+  title: string;
+  message?: string;
+  confirmLabel?: string;
+  destructive?: boolean;
+  onConfirm: () => void;
+}): void {
+  useNotificationStore.getState().push({ ...opts, variant: 'confirm' });
 }

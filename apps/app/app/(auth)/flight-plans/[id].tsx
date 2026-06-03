@@ -2,9 +2,10 @@ import { Spinner } from '@fs-suite/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Animated, Platform, Text, View } from 'react-native';
+import { Animated, Text, View } from 'react-native';
 
 import { VfrPlanForm, type VfrPlanData } from '../../../src/components/vfr/VfrPlanForm';
+import { confirmDialog, notify } from '../../../src/lib/notify';
 import { trackAction, trackSuccess, trackFailure, categorizeError, setFeatureContext } from '../../../src/services/analytics';
 import { apiClient } from '../../../src/services/api.client';
 
@@ -127,11 +128,7 @@ export default function EditVfrPlanScreen() {
       const e = err as Record<string, Record<string, Record<string, unknown>>>;
       const msg = e?.response?.data?.message ?? (err instanceof Error ? err.message : t('common.error'));
       const text = Array.isArray(msg) ? msg.join('\n') : String(msg);
-      if (Platform.OS === 'web') {
-        (globalThis as unknown as { alert: (m: string) => void }).alert(`${t('common.error')}: ${text}`);
-      } else {
-        Alert.alert(t('common.error'), text);
-      }
+      notify(t('common.error'), text);
       setSaving(false);
     }
   }, [id, t]);
@@ -149,15 +146,13 @@ export default function EditVfrPlanScreen() {
       }
     };
 
-    if (Platform.OS === 'web') {
-      const win = globalThis as unknown as { confirm: (msg: string) => boolean };
-      if (win.confirm(t('vfr.confirmDelete'))) void doDelete();
-    } else {
-      Alert.alert(t('vfr.deletePlan'), t('vfr.confirmDelete'), [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('common.delete'), style: 'destructive', onPress: () => void doDelete() },
-      ]);
-    }
+    confirmDialog({
+      title: t('vfr.deletePlan'),
+      message: t('vfr.confirmDelete'),
+      confirmLabel: t('common.delete'),
+      destructive: true,
+      onConfirm: () => void doDelete(),
+    });
   }, [id, router, t]);
 
   if (loading) {

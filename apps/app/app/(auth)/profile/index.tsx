@@ -2,9 +2,10 @@ import { Input } from '@fs-suite/ui';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
+import { notify } from '../../../src/lib/notify';
 import { isOptedOut, setFeatureContext, setOptOut, trackAction, trackFailure, trackSuccess, categorizeError } from '../../../src/services/analytics';
 import { apiClient } from '../../../src/services/api.client';
 import { useAuthStore } from '../../../src/stores/auth.store';
@@ -86,7 +87,7 @@ export default function ProfileScreen() {
       setEmailConsent(!next); // revert
       const { errorType, statusCode } = categorizeError(err);
       trackFailure('email_consent_save_failed', errorType, { status_code: statusCode });
-      Alert.alert(t('common.error'), t('profile.emailConsentError'));
+      notify(t('common.error'), t('profile.emailConsentError'));
     }
     setEmailConsentSaving(false);
   }, [emailConsent, user, setStoredUser, t]);
@@ -129,7 +130,7 @@ export default function ProfileScreen() {
     } catch (err) {
       const { errorType, statusCode } = categorizeError(err);
       trackFailure('simbrief_pilot_id_save_failed', errorType, { status_code: statusCode });
-      Alert.alert(t('common.error'), 'Could not save SimBrief pilot ID.');
+      notify(t('common.error'), 'Could not save SimBrief pilot ID.');
     }
     setSimbriefSaving(false);
   }, [simbriefPilotId, t]);
@@ -173,7 +174,7 @@ export default function ProfileScreen() {
     } catch (err) {
       const { errorType, statusCode } = categorizeError(err);
       trackFailure('ai_key_save_failed', errorType, { provider: aiProvider, status_code: statusCode });
-      Alert.alert(t('common.error'), 'Could not save API key.');
+      notify(t('common.error'), 'Could not save API key.');
     }
     setAiSaving(false);
   }, [aiApiKey, aiProvider, t]);
@@ -186,7 +187,7 @@ export default function ProfileScreen() {
       setAiConnectedProvider(null);
       setAiApiKey('');
     } catch {
-      Alert.alert(t('common.error'), 'Could not delete API key.');
+      notify(t('common.error'), 'Could not delete API key.');
     }
   }, [t]);
 

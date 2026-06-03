@@ -15,7 +15,8 @@
     "optional": "optional",
     "noResults": "No results",
     "clear": "Clear",
-    "close": "Close"
+    "close": "Close",
+    "ok": "OK"
   },
   "login": {
     "signInButton": "Sign in with Google",
@@ -254,7 +255,7 @@
     "layerMap": "Map",
     "layerSatelliteBase": "Satellite",
     "layerTopo": "Topo",
-    "layerAirspace": "Airspace",
+    "layerAirspace": "Worldwide airspace (OpenAIP)",
     "layerRea": "REA",
     "layerWac": "WAC",
     "layerEnrcLow": "ENRC Low",
@@ -407,6 +408,12 @@
     "copySummary": "Copy summary",
     "copyRoutePlain": "Route",
     "copyRouteFull": "Full route",
+    "openSkyVector": "Open in SkyVector",
+    "importFpl": "Import from SkyVector (.fpl)",
+    "importFplDone": "Flight plan imported from .fpl.",
+    "importFplPartial": "Imported (partial)",
+    "importFplUnresolved": "Airports not found — select manually: {{idents}}",
+    "importFplError": "Could not import the .fpl.",
     "viable": "Plan viable",
     "viableWithWarnings": "Viable with remarks",
     "incomplete": "Incomplete plan",

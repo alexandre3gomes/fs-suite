@@ -69,6 +69,8 @@ export class ValidateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() originIcao?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() originName?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() originElevationFt?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() originLatitude?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() originLongitude?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() originRunwayInUse?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() originMetarRaw?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() originTafRaw?: string;
@@ -76,6 +78,8 @@ export class ValidateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() destinationIcao?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() destinationName?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() destinationElevationFt?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() destinationLatitude?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() destinationLongitude?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() destinationRunwayInUse?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() destinationMetarRaw?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() destinationTafRaw?: string;
@@ -85,9 +89,17 @@ export class ValidateFlightPlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() alternateIcao?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() alternateName?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() alternateElevationFt?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() alternateLatitude?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() alternateLongitude?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() alternateRunwayInUse?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() alternateMetarRaw?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() alternateTafRaw?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() alternatePlannedAltitude?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() alternateRouteText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsArray()
+  alternateRouteWaypoints?: { lat: number; lng: number; name: string }[];
 
   @ApiPropertyOptional({ type: [RunwayDto] })
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => RunwayDto)
