@@ -156,6 +156,17 @@ Single source of truth for:
 - Storybook integration is **recommended** but not required to ship MVP
 - See Section 12 for migration plan from the Phase 0 React DOM scaffold
 
+**App-wide notifications (no native/browser alert):** `react-native-web`'s
+`Alert.alert` is a **no-op on web** (renders nothing), so user feedback must not
+go through it. The app uses a themed modal instead: a zustand queue
+(`stores/notification.store.ts`) rendered by a single `<NotificationHost />`
+mounted in the root layout. Call it imperatively (not a hook) via
+`notify(title, message?)` for info/error and `confirmDialog({ title, message?,
+confirmLabel?, destructive?, onConfirm })` for confirmations (replacing
+`window.confirm`). These match the design tokens (card, border, destructive
+variant) and work identically on web and native. **Do not reintroduce
+`Alert.alert`.**
+
 ---
 
 ## 5. Data Model
@@ -490,9 +501,10 @@ data (FAA NASR) is the next step, scoped as a measured spike
 
 ### Integrations — SkyVector
 
-| Method | Path                           | Description                    |
-|--------|--------------------------------|--------------------------------|
-| GET    | /v1/integrations/skyvector/url | Build contextual SkyVector URL |
+| Method | Path                              | Description                                         |
+|--------|-----------------------------------|-----------------------------------------------------|
+| GET    | /v1/integrations/skyvector/url    | Build contextual SkyVector URL (export/open route)  |
+| POST   | /v1/integrations/skyvector/import | Import a SkyVector `.fpl` (Garmin FlightPlan v1) → resolved origin/destination + route waypoints |
 
 ---
 
@@ -537,14 +549,47 @@ SimBrief exposes a public JSON/XML API. Read operations require only the user's 
 
 ## 9. SkyVector Integration
 
-SkyVector has no programmable API. Integration is read-only contextual URL construction.
+SkyVector has no programmable API. There is **no tile/embed** — SkyVector is a
+link target, never a map source. The integration is bidirectional but
+file-/URL-based: **export** (open an FS Suite route in SkyVector) and **import**
+(bring a SkyVector-built plan back into FS Suite). It is positioned as the
+worldwide/US VFR companion, since a native US sectional layer cannot be served
+without proprietary, paid tiles (see `docs/vfr-layer-model.md` §0).
+
+### 9.1 Export — open route in SkyVector
 
 **URL pattern:**
 ```
 https://skyvector.com/?fpl=ORIGIN+WAYPOINT1+WAYPOINT2+DESTINATION
 ```
 
-`GET /v1/integrations/skyvector/url` accepts query params `{ originIcao, destinationIcao, route? }` and returns a JSON object with `{ url: string }`. The web client opens it in a new tab.
+`GET /v1/integrations/skyvector/url` accepts query params
+`{ originIcao, destinationIcao, route? }` and returns `{ url: string }`. The web
+client opens it in a new tab.
+
+Per-waypoint **speed/altitude modifiers** are appended to the first enroute fix
+(SkyVector ignores them on the departure airport): `/N0120` (TAS kt), `/A045`
+(altitude, hundreds of ft), `/F095` (flight level), or combined `/A045N0110`.
+These require an aircraft (TAS) and a cruise level to be set in the plan. The
+`+` separators must stay literal (not URL-encoded). Tail number, fuel and ETD
+are **not** passable via the SkyVector URL.
+
+### 9.2 Import — SkyVector `.fpl`
+
+SkyVector exports a **Garmin FlightPlan v1** XML file (`.fpl`):
+`<flight-plan xmlns="http://www8.garmin.com/xmlschemas/FlightPlan/v1">` with a
+`<waypoint-table>` (identifier/type/lat/lon) and an ordered `<route>` of
+`<route-point>`s referencing waypoint identifiers.
+
+`POST /v1/integrations/skyvector/import` accepts `{ fpl: string }`, parses it
+with `fast-xml-parser`, and returns the resolved origin/destination plus ordered
+route waypoints (`FplImportResult`). Origin/destination are resolved via
+`AirportsService.resolveByCode()` — `icao`, then a fallback on the OurAirports
+`raw` JSON `gps_code`/`local_code` (FAA local codes such as `CL35` are not 4-letter
+ICAO idents and only live in `raw`). Idents that cannot be resolved are returned
+in `unresolved[]` for the user to pick manually; enroute fixes keep their raw
+coordinates. The endpoint throws `BadRequestException` for non-FPL content or a
+plan with fewer than two resolvable points.
 
 > **QA note:** The URL deep-link format must be validated against current SkyVector behavior before Phase 4 cutover (see open question in Section 17, item 4).
 

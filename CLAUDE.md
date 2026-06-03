@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**FS Suite** is a flight simulation planning and management platform built for the "Simulando" channel community. It provides virtual pilots with a unified experience for flight planning, operational consultation, and integrations with established ecosystem tools (SimBrief, SkyVector).
+**FS Suite** is a flight simulation planning and management platform built for the virtual aviation community. It provides virtual pilots with a unified experience for flight planning, operational consultation, and integrations with established ecosystem tools (SimBrief, SkyVector).
 
 ## Architecture
 

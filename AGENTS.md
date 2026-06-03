@@ -1,5 +1,5 @@
 - Source of truth for product scope is `docs/project-spec.md`.
-- The target product is FS Suite, a web-first flight simulation platform under the Simulando brand.
+- The target product is FS Suite, a web-first flight simulation platform for the virtual aviation community.
 - Prefer a monorepo with Turborepo.
 - Use TypeScript across the stack.
 - Apps:
@@ -20,7 +20,7 @@
   - SkyVector for contextual route viewing
   - DECEA/AIS for aerodrome charts
 - Do not scope FlightAware into the current delivery unless explicitly requested.
-- The interface should reflect aviation, navigation, precision, and Simulando branding.
+- The interface should reflect aviation, navigation, and precision.
 - Avoid generic dashboard patterns that feel like a default SaaS template.
 - Prefer responsive experiences that work well on desktop and tablet from the start.
 - Default language is Brazilian Portuguese unless a task explicitly requires another locale.

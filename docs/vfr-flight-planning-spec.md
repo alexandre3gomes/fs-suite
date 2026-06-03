@@ -314,7 +314,27 @@ Isso significa:
 - criação/listagem/reabertura de planos VFR
 - estrutura de rota e referências visuais
 - autonomia e briefings manuais
+- integração SkyVector (companion VFR mundial/EUA): exportar/abrir a rota no SkyVector e importar plano `.fpl` (ver §10.2)
 - recursos adicionais já implementados no fluxo VFR, desde que não bloqueiem estabilidade nem validação
+
+### 10.2 Integração SkyVector (companion VFR mundial/EUA)
+
+O SkyVector deixou de ser "fora de escopo" (§10) e passou a **companion VFR**
+aceito no baseline. Motivação: uma camada de carta seccional dos EUA nativa não
+é viável sem tiles proprietários e pagos — então, em vez de hospedar mapa, o FS
+Suite interopera com o SkyVector, reconhecido como o melhor planejador VFR dos
+EUA (ver `docs/vfr-layer-model.md` §0 sobre a decisão de não hospedar raster).
+
+- **Exportar / abrir no SkyVector:** botão na seção de rota abre a rota montada
+  no SkyVector, com velocidade e altitude propagadas no primeiro fixo enroute
+  (exige aeronave + nível de cruzeiro definidos). Tail/fuel/ETD não são
+  transportáveis via URL.
+- **Importar do SkyVector (`.fpl`):** botão na seção de aeródromos importa o
+  arquivo Garmin FlightPlan v1 exportado pelo SkyVector; origem/destino são
+  resolvidos por `icao`/`gps_code`/`local_code` (com fallback) e os waypoints
+  entram na rota. Idents não resolvidos ficam para seleção manual.
+
+Detalhes de contrato e parsing em `docs/technical-spec.md` §9.
 
 ### Itens que permanecem sob controle antes de evolução
 
