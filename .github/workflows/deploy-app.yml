@@ -35,6 +35,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # @fs-suite/types resolves to ./dist/index.js (the API consumes the
+      # compiled output), so any runtime value import from it (e.g. enums)
+      # needs dist built before Metro bundles the web app. @fs-suite/ui
+      # resolves from source and needs no build.
+      - name: Build shared packages
+        run: pnpm --filter @fs-suite/types build
+
       - name: Build Expo web
         run: cd apps/app && npx expo export --platform web
         env:
