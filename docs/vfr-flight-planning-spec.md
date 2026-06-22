@@ -317,6 +317,28 @@ Isso significa:
 - integração SkyVector (companion VFR mundial/EUA): exportar/abrir a rota no SkyVector e importar plano `.fpl` (ver §10.2)
 - recursos adicionais já implementados no fluxo VFR, desde que não bloqueiem estabilidade nem validação
 
+### 10.1.1 Ciclo de estabilização VFR v1 (2026-06)
+
+Estabilização do fluxo essencial (criar/salvar/reabrir) sem mudança de
+comportamento nem de schema. Confirmado que o salvamento depende apenas de
+origem + destino — SimBrief, SkyVector, IA e cartas seguem secundários e não
+bloqueiam o fluxo. Resultados:
+
+- **Cálculo de combustível/autonomia extraído** para
+  `apps/app/src/components/vfr/vfrFuel.ts` (funções puras: `computeFuelPlan`
+  para perna/alternado/contingência/reserva/total requerido/por asa/peso de
+  decolagem, e `formatEndurance` para `hh:mm`). A aritmética antes embutida em
+  `VfrPlanForm.tsx` é a mesma — só virou módulo testável. Cobertura em
+  `vfrFuel.spec.ts`.
+- **Regras do serviço de planos cobertas** em
+  `apps/api/src/flight-plans/flight-plans.service.spec.ts`: propriedade
+  (owner/forbidden), exclusão de planos soft-deleted, sugestão de pista em uso
+  (§5.2) e desempenho de rota.
+- **Chave OpenAIP deixou de ser hardcoded** (resolve o item "segredos/chaves
+  não devem ficar hardcoded" abaixo): a camada de espaço aéreo OpenAIP agora é
+  opcional e configurada por `EXPO_PUBLIC_OPENAIP_API_KEY`. Sem a chave, o
+  toggle some e o restante do mapa continua funcionando.
+
 ### 10.2 Integração SkyVector (companion VFR mundial/EUA)
 
 O SkyVector deixou de ser "fora de escopo" (§10) e passou a **companion VFR**

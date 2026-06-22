@@ -288,6 +288,9 @@ importers:
       pdf-lib:
         specifier: ^1.17.1
         version: 1.17.1
+      pdfjs-dist:
+        specifier: ^4.7.76
+        version: 4.10.38
       posthog-react-native:
         specifier: ^4.45.13
         version: 4.45.13(qwt72xffm4334oc6dwbuhnvnvu)
@@ -328,6 +331,9 @@ importers:
       '@babel/core':
         specifier: ^7.24.0
         version: 7.29.0
+      '@babel/plugin-transform-class-static-block':
+        specifier: ^7.28.6
+        version: 7.28.6(@babel/core@7.29.0)
       '@fs-suite/config':
         specifier: workspace:*
         version: link:../../packages/config

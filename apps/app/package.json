@@ -47,6 +47,7 @@
     "leaflet": "^1.9.4",
     "nativewind": "~4.1.23",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.7.76",
     "posthog-react-native": "^4.45.13",
     "react": "18.2.0",
     "react-dom": "18.2.0",
@@ -62,6 +63,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
+    "@babel/plugin-transform-class-static-block": "^7.28.6",
     "@fs-suite/config": "workspace:*",
     "@fs-suite/types": "workspace:*",
     "@fs-suite/ui": "workspace:*",

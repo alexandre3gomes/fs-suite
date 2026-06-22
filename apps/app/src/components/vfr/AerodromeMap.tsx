@@ -202,8 +202,14 @@ const TILE_LAYERS = {
 } as const;
 type LayerKey = keyof typeof TILE_LAYERS;
 
-const OPENAIP_API_KEY = '713c06c03613151e4bf4d19916ac6773';
-const OPENAIP_TILE_URL = `https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.png?apiKey=${OPENAIP_API_KEY}`;
+// OpenAIP airspace tiles need a (public, frontend) API key. It is optional:
+// when absent the airspace overlay is simply unavailable and the rest of the
+// VFR map keeps working. Configure via EXPO_PUBLIC_OPENAIP_API_KEY.
+const OPENAIP_API_KEY = process.env['EXPO_PUBLIC_OPENAIP_API_KEY'] ?? '';
+const OPENAIP_TILE_URL = OPENAIP_API_KEY
+  ? `https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.png?apiKey=${OPENAIP_API_KEY}`
+  : null;
+const OPENAIP_AVAILABLE = OPENAIP_TILE_URL !== null;
 
 const DECEA_WMS_BASE = 'https://geoaisweb.decea.mil.br/geoserver/ICA/wms';
 type ChartOverlayKey = 'rea' | 'wac' | 'enrcL' | 'enrcH' | 'airspaceDecea';
@@ -479,7 +485,7 @@ export function AerodromeMap({
     const Leaf = require('leaflet') as LeafletModule;
     const map = mapRef.current;
 
-    if (showAirspace && !openAipLayerRef.current) {
+    if (showAirspace && OPENAIP_TILE_URL && !openAipLayerRef.current) {
       openAipLayerRef.current = Leaf.tileLayer(OPENAIP_TILE_URL, {
         maxZoom: 14,
         minZoom: 4,
@@ -1700,18 +1706,20 @@ export function AerodromeMap({
 
         {/* Chart overlay toggles */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3, justifyContent: 'flex-end' }}>
-          <Pressable
-            onPress={() => setShowAirspace((v) => !v)}
-            style={{
-              backgroundColor: showAirspace ? '#2563eb' : 'rgba(255,255,255,0.92)',
-              borderRadius: 4, borderWidth: 1, borderColor: '#dfe2e8',
-              paddingHorizontal: 7, paddingVertical: 4,
-            }}
-          >
-            <Text style={{ fontSize: 9, fontWeight: '600', color: showAirspace ? '#fff' : '#374151' }}>
-              {t('vfr.layerAirspace')}
-            </Text>
-          </Pressable>
+          {OPENAIP_AVAILABLE ? (
+            <Pressable
+              onPress={() => setShowAirspace((v) => !v)}
+              style={{
+                backgroundColor: showAirspace ? '#2563eb' : 'rgba(255,255,255,0.92)',
+                borderRadius: 4, borderWidth: 1, borderColor: '#dfe2e8',
+                paddingHorizontal: 7, paddingVertical: 4,
+              }}
+            >
+              <Text style={{ fontSize: 9, fontWeight: '600', color: showAirspace ? '#fff' : '#374151' }}>
+                {t('vfr.layerAirspace')}
+              </Text>
+            </Pressable>
+          ) : null}
           {visibleChartKeys.map((key) => {
             const active = activeChart === key;
             return (

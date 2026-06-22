@@ -52,6 +52,11 @@ jobs:
           # the commit SHA so frontend traces line up with the GH commit.
           EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           EXPO_PUBLIC_SENTRY_RELEASE: ${{ github.sha }}
+          # Optional OpenAIP tile key for the VFR map airspace overlay. Inlined
+          # into the client bundle at build time (EXPO_PUBLIC_*), so it is public
+          # by design, not a true secret. When unset the overlay is hidden and
+          # the rest of the map keeps working.
+          EXPO_PUBLIC_OPENAIP_API_KEY: ${{ secrets.OPENAIP_API_KEY }}
 
       - name: Create Cloudflare Pages project (if needed)
         run: npx wrangler pages project create fs-suite-app --production-branch=main || true

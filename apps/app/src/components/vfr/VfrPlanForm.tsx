@@ -33,6 +33,7 @@ import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
 import { TafDisplay, type ParsedTaf } from './TafDisplay';
 import { VfrPlanLayout } from './VfrPlanLayout';
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
+import { AVGAS_KG_PER_L, computeFuelPlan, formatEndurance } from './vfrFuel';
 import { type RouteWaypoint, type AltitudeTransition, type RouteSegment, type TocTodPosition, type EnrichedLeg, type AircraftPerformance, type ClimbDescentPlan, type LegAltConstraint, toVfrCoord, buildVfrRouteText, parseVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getDefaultTransitionAltitude, getPerformanceCategory, calculateDefaultTpaFt, segmentRouteLegs, calculateTocDistance, calculateTodFromTpa, interpolatePositionOnRoute, enrichRouteLegs, computeClimbDescentPlan, computeAltitudeProfile } from './vfrNavigation';
 import { defaultDepartureTime, toDatetimeLocalValue, fromDatetimeLocalValue, formatZulu, isNightFlight, validateVfrPlan, type PlanViability } from './weatherTimeUtils';
 
@@ -225,9 +226,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   IFR: '#dc2626',
   LIFR: '#d946ef',
 };
-
-const AVGAS_KG_PER_L = 0.72;
-
 
 interface Props {
   initialData?: VfrPlanData;
@@ -953,7 +951,6 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     });
   }, [fu]);
   const cruiseKts = selectedAircraft?.cruiseSpeedKts ?? null;
-  const canComputeFuel = cruiseKts != null && cruiseKts > 0 && consumptionKgH > 0;
 
   const aircraftPerf: AircraftPerformance | null = useMemo(() => {
     if (!selectedAircraft || selectedAircraft.cruiseSpeedKts == null || selectedAircraft.cruiseSpeedKts <= 0) return null;
@@ -1000,35 +997,45 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     });
   }, [routeLegs]);
 
-  // Fuel calculations — use wind-corrected ETE from enriched legs when available
-  const tripHours = enrichedLegs.length > 0
-    ? enrichedLegs.reduce((s, l) => s + l.timeMin, 0) / 60
-    : canComputeFuel && totalDistanceNm > 0 ? totalDistanceNm / cruiseKts! : 0;
-  const tripFuelKg = canComputeFuel && tripHours > 0 ? consumptionKgH * tripHours : 0;
+  // Fuel calculations — use wind-corrected ETE from enriched legs when available.
+  // The arithmetic lives in computeFuelPlan (vfrFuel.ts) so it stays pure and
+  // unit-tested; the component only feeds it canonical kg / kt inputs.
   const altDistNm = destination && alternate
     ? haversineDistanceNm(destination.latitude, destination.longitude, alternate.latitude, alternate.longitude)
     : 0;
-  const altHours = canComputeFuel && altDistNm > 0 ? altDistNm / cruiseKts! : 0;
-  const altFuelKg = canComputeFuel && altHours > 0 ? consumptionKgH * altHours : 0;
-  const contingencyFactor = (parseFloat(contingencyPct) || 0) / 100;
-  const contingencyFuelKg = tripFuelKg * contingencyFactor;
-  const reserveFuelKg = consumptionKgH > 0 ? consumptionKgH * (reserveMinutes / 60) : 0;
-  const minFuelKg = tripFuelKg + altFuelKg + contingencyFuelKg + reserveFuelKg;
-  const maxFuelKg = selectedAircraft?.fuelCapacityL != null ? selectedAircraft.fuelCapacityL * AVGAS_KG_PER_L : null;
   const acEmptyWeightKg = selectedAircraft?.emptyWeightKg ?? null;
   const acMtowKg = selectedAircraft?.mtowKg ?? null;
-  const canComputeWeight = acEmptyWeightKg != null && acMtowKg != null;
-  const takeoffWeightKg = canComputeWeight
-    ? acEmptyWeightKg + payloadKg + fuelOnBoardKg
-    : null;
-  const mtowExcessKg = canComputeWeight && takeoffWeightKg != null
-    ? Math.max(0, takeoffWeightKg - acMtowKg)
-    : null;
-  const perWingKg = fuelOnBoardKg > 0 ? fuelOnBoardKg / 2 : 0;
-  const enduranceMin = consumptionKgH > 0 ? Math.floor((fuelOnBoardKg / consumptionKgH) * 60) : 0;
-  const enduranceHours = Math.floor(enduranceMin / 60);
-  const enduranceRemainder = enduranceMin % 60;
-  const tripMinutes = Math.round(tripHours * 60);
+  const fuelPlan = computeFuelPlan({
+    consumptionKgH,
+    cruiseKts,
+    totalDistanceNm,
+    enrichedLegsTimeMin: enrichedLegs.length > 0
+      ? enrichedLegs.reduce((s, l) => s + l.timeMin, 0)
+      : null,
+    altDistNm,
+    contingencyPct: parseFloat(contingencyPct) || 0,
+    reserveMinutes,
+    fuelOnBoardKg,
+    fuelCapacityL: selectedAircraft?.fuelCapacityL ?? null,
+    emptyWeightKg: acEmptyWeightKg,
+    mtowKg: acMtowKg,
+    payloadKg,
+  });
+  const {
+    tripMinutes,
+    tripFuelKg,
+    altFuelKg,
+    contingencyFuelKg,
+    reserveFuelKg,
+    minFuelKg,
+    maxFuelKg,
+    canComputeWeight,
+    takeoffWeightKg,
+    mtowExcessKg,
+    perWingKg,
+    enduranceMin,
+  } = fuelPlan;
+  const { hours: enduranceHours, minutes: enduranceRemainder } = formatEndurance(enduranceMin);
 
   // Computed epochs for time-aware weather
   const departureEpochSec = useMemo(() => Math.floor(plannedDepartureTime.getTime() / 1000), [plannedDepartureTime]);
@@ -3935,8 +3942,6 @@ function AerodromeInfo({
   onHideOverlay: (chartUrl: string) => void;
   t: (key: string) => string;
 }) {
-  const [chartsOpen, setChartsOpen] = useState(false);
-
   const windInfo = useMemo((): RunwayWindInfo | null => {
     if (!runway || !metar || !runways) return null;
     const windDir = metar.windDirection;
@@ -3954,10 +3959,6 @@ function AerodromeInfo({
       crosswindKts: Math.round(Math.abs(windSpd * Math.sin(diffRad))),
     };
   }, [runway, metar, runways]);
-
-  const toggleCharts = useCallback(() => {
-    setChartsOpen((prev) => !prev);
-  }, []);
 
   return (
     <View className="mb-4 ml-1">
@@ -4001,24 +4002,14 @@ function AerodromeInfo({
         <TafDisplay taf={taf} loading={tafLoading && !taf} targetEpoch={tafTargetEpoch} targetLabel={tafTargetLabel} />
       ) : null}
 
-      <Pressable
-        onPress={toggleCharts}
-        className="mt-2 flex-row items-center gap-1.5"
-      >
-        <Text className="text-xs font-medium text-primary">
-          {chartsOpen ? '▼' : '▶'} {t('vfr.charts')}
-        </Text>
-      </Pressable>
-
-      {chartsOpen ? (
-        <ChartsPanel
-          icao={aerodrome.icao}
-          flightRules={flightRules}
-          activeOverlayChartUrls={activeOverlays.filter((o) => o.icao === aerodrome.icao).map((o) => o.sourceUrl)}
-          onShowOverlay={onShowOverlay}
-          onHideOverlay={onHideOverlay}
-        />
-      ) : null}
+      <Text className="mt-2 text-xs font-medium text-muted-foreground">{t('vfr.charts')}</Text>
+      <ChartsPanel
+        icao={aerodrome.icao}
+        flightRules={flightRules}
+        activeOverlayChartUrls={activeOverlays.filter((o) => o.icao === aerodrome.icao).map((o) => o.sourceUrl)}
+        onShowOverlay={onShowOverlay}
+        onHideOverlay={onHideOverlay}
+      />
     </View>
   );
 }
