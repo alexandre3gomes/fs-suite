@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { Dropdown } from 'react-native-element-dropdown';
 
 import type { ProfileKind, TaggedAircraftProfile } from '../../hooks/useAircraftProfiles';
+
 import { formatOptionalMetric } from './weatherTimeUtils';
 
 const COMPLETENESS_LABELS: Record<string, { label: string; color: string }> = {

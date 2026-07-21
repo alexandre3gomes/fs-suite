@@ -1,7 +1,5 @@
 import type { AircraftCatalogEntry, CreateAircraftProfileInput, UpdateAircraftProfileInput, UserAircraftProfile, WeightStation } from '@fs-suite/types';
 import { useCallback, useEffect, useRef, useState } from 'react';
-
-import { confirmDialog } from '../../lib/notify';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -16,6 +14,7 @@ import {
 } from 'react-native';
 import { Dropdown } from 'react-native-element-dropdown';
 
+import { confirmDialog } from '../../lib/notify';
 import { apiClient } from '../../services/api.client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────

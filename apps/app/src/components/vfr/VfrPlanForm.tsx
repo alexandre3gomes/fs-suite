@@ -352,7 +352,7 @@ function FabButton({ onPress, disabled, svg, title, bg, size = 34 }: { onPress: 
 export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const { t } = useTranslation();
   const { weight: wu, fuel: fu, speed: su } = useUnitsStore();
-  const { entries: aircraftEntries, catalog: aircraftCatalog, shared: sharedProfiles, mine: myProfiles, loading: catalogLoading, error: catalogError, refresh: refreshProfiles } = useAircraftProfiles();
+  const { entries: aircraftEntries, catalog: aircraftCatalog, shared: sharedProfiles, loading: catalogLoading, error: catalogError, refresh: refreshProfiles } = useAircraftProfiles();
 
   // Flight rules
   type FlightRulesType = 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
