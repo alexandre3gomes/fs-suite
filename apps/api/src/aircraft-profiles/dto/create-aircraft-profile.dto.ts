@@ -1,5 +1,6 @@
 import type { CreateAircraftProfileInput, WeightStation } from '@fs-suite/types';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import { Allow } from 'class-validator';
 
 export class WeightStationDto implements WeightStation {
@@ -15,7 +16,7 @@ export class CreateAircraftProfileDto implements CreateAircraftProfileInput {
   @Allow()
   name!: string;
 
-  @ApiPropertyOptional({ example: 'C172' }) @Allow() icaoType?: string;
+  @ApiProperty({ example: 'C172' }) @Allow() icaoType!: string;
   @ApiPropertyOptional() @Allow() manufacturer?: string;
   @ApiPropertyOptional() @Allow() model?: string;
   @ApiPropertyOptional() @Allow() emptyWeightKg?: number;
@@ -23,5 +24,10 @@ export class CreateAircraftProfileDto implements CreateAircraftProfileInput {
   @ApiPropertyOptional() @Allow() fuelCapacityL?: number;
   @ApiPropertyOptional() @Allow() fuelBurnLph?: number;
   @ApiPropertyOptional() @Allow() cruiseSpeedKts?: number;
-  @ApiPropertyOptional({ type: [WeightStationDto] }) @Allow() stations?: WeightStationDto[];
+  @ApiPropertyOptional() @Allow() climbSpeedKts?: number;
+  @ApiPropertyOptional() @Allow() climbRateFpm?: number;
+  @ApiPropertyOptional() @Allow() descentSpeedKts?: number;
+  @ApiPropertyOptional() @Allow() descentRateFpm?: number;
+  @ApiPropertyOptional() @Allow() isShared?: boolean;
+  @ApiPropertyOptional({ type: [WeightStationDto] }) @Allow() @Type(() => WeightStationDto) stations?: WeightStationDto[];
 }

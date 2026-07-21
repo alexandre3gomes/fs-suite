@@ -1,9 +1,10 @@
-import type { AircraftCatalogEntry } from '@fs-suite/types';
+import type { AircraftCatalogEntry, AnyAircraftProfile, UserAircraftProfile } from '@fs-suite/types';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { Dropdown } from 'react-native-element-dropdown';
 
+import type { ProfileKind, TaggedAircraftProfile } from '../../hooks/useAircraftProfiles';
 import { formatOptionalMetric } from './weatherTimeUtils';
 
 const COMPLETENESS_LABELS: Record<string, { label: string; color: string }> = {
@@ -12,39 +13,55 @@ const COMPLETENESS_LABELS: Record<string, { label: string; color: string }> = {
   skeleton: { label: 'Básico', color: '#9ca3af' },
 };
 
+const KIND_BADGES: Record<ProfileKind, { label: string; color: string }> = {
+  template: { label: 'Padrão', color: '#6b7280' },
+  shared: { label: 'Compartilhado', color: '#7c3aed' },
+  mine: { label: 'Meu', color: '#0891b2' },
+};
+
 interface Props {
-  value: AircraftCatalogEntry | null;
-  onSelect: (aircraft: AircraftCatalogEntry) => void;
+  value: AnyAircraftProfile | null;
+  onSelect: (aircraft: AnyAircraftProfile) => void;
   onClear: () => void;
-  catalog: AircraftCatalogEntry[];
+  entries: TaggedAircraftProfile[];
   loading?: boolean;
   error?: string | null;
+  onCreateProfile: () => void;
+  onEditProfile?: (profile: UserAircraftProfile) => void;
 }
 
 export { formatOptionalMetric } from './weatherTimeUtils';
 
-export function AircraftSelect({ value, onSelect, onClear, catalog, loading, error }: Props) {
+export function AircraftSelect({ value, onSelect, onClear, entries, loading, error, onCreateProfile, onEditProfile }: Props) {
   const { t } = useTranslation();
 
   const data = useMemo(
     () =>
-      catalog
-        .filter((a) => a.icaoType != null)
-        .map((a) => ({
-          label: `${a.icaoType} — ${a.manufacturer ?? ''} ${a.model ?? a.name}`.trim(),
-          value: a.icaoType!,
-          search: `${a.icaoType} ${a.manufacturer ?? ''} ${a.model ?? ''} ${a.name}`.toLowerCase(),
-          entry: a,
+      entries
+        .filter((e) => e.profile.icaoType != null)
+        .map((e) => ({
+          label: `${e.profile.icaoType} — ${e.profile.manufacturer ?? ''} ${e.profile.model ?? e.profile.name}`.trim(),
+          value: e.profile.id,
+          search: `${e.profile.icaoType} ${e.profile.manufacturer ?? ''} ${e.profile.model ?? ''} ${e.profile.name}`.toLowerCase(),
+          kind: e.kind,
+          profile: e.profile,
         })),
-    [catalog],
+    [entries],
   );
 
   const handleChange = useCallback(
     (item: (typeof data)[number]) => {
-      onSelect(item.entry);
+      onSelect(item.profile);
     },
     [onSelect],
   );
+
+  const selectedValue = value?.id ?? null;
+
+  const selectedKind = useMemo(() => {
+    if (!value) return null;
+    return entries.find((e) => e.profile.id === value.id)?.kind ?? null;
+  }, [value, entries]);
 
   if (loading) {
     return (
@@ -77,22 +94,32 @@ export function AircraftSelect({ value, onSelect, onClear, catalog, loading, err
 
   return (
     <View className="mb-3">
-      <View className="flex-row items-center justify-between">
-        <Text className="mb-1 text-xs font-medium text-muted-foreground">
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text className="text-xs font-medium text-muted-foreground">
           {t('aircraft.selectAircraft')}
         </Text>
-        {value ? (
-          <Pressable onPress={onClear}>
-            <Text className="text-xs text-muted-foreground">{'✕'}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {value && selectedKind === 'mine' && onEditProfile ? (
+            <Pressable onPress={() => onEditProfile(value as UserAircraftProfile)}>
+              <Text style={{ fontSize: 11, color: '#0891b2' }}>Editar</Text>
+            </Pressable>
+          ) : null}
+          <Pressable onPress={onCreateProfile}>
+            <Text style={{ fontSize: 11, color: '#2563eb', fontWeight: '600' }}>+ Criar perfil</Text>
           </Pressable>
-        ) : null}
+          {value ? (
+            <Pressable onPress={onClear}>
+              <Text className="text-xs text-muted-foreground">{'✕'}</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
       <Dropdown
         data={data}
         labelField="label"
         valueField="value"
         searchField="search"
-        value={value?.icaoType ?? null}
+        value={selectedValue}
         onChange={handleChange}
         search
         searchPlaceholder={t('aircraft.searchPlaceholder')}
@@ -123,24 +150,32 @@ export function AircraftSelect({ value, onSelect, onClear, catalog, loading, err
           shadowOffset: { width: 0, height: 4 },
           overflow: 'hidden',
         }}
-        maxHeight={280}
+        maxHeight={300}
         renderItem={(item) => {
-          const badge = COMPLETENESS_LABELS[item.entry.dataCompleteness] ?? { label: 'Básico', color: '#9ca3af' };
+          const completeness = COMPLETENESS_LABELS[item.profile.dataCompleteness] ?? COMPLETENESS_LABELS.skeleton!;
+          const kind = KIND_BADGES[item.kind as ProfileKind];
           return (
             <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: '#2563eb' }}>{item.entry.icaoType}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#2563eb' }}>{item.profile.icaoType}</Text>
                 <Text style={{ fontSize: 14, color: '#1a1d26', flex: 1 }} numberOfLines={1}>
-                  {item.entry.manufacturer ?? ''} {item.entry.model ?? item.entry.name}
+                  {item.profile.manufacturer ?? ''} {item.profile.model ?? item.profile.name}
                 </Text>
-                <View style={{ backgroundColor: badge.color + '18', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '600', color: badge.color }}>{badge.label}</Text>
-                </View>
+                {item.kind !== 'template' && kind ? (
+                  <View style={{ backgroundColor: kind.color + '18', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '600', color: kind.color }}>{kind.label}</Text>
+                  </View>
+                ) : null}
+                {completeness ? (
+                  <View style={{ backgroundColor: completeness.color + '18', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '600', color: completeness.color }}>{completeness.label}</Text>
+                  </View>
+                ) : null}
               </View>
               <View style={{ flexDirection: 'row', gap: 12, marginTop: 2 }}>
-                <Text style={{ fontSize: 10, color: '#6b7280' }}>{formatOptionalMetric(item.entry.cruiseSpeedKts, 'kt')}</Text>
-                <Text style={{ fontSize: 10, color: '#6b7280' }}>{formatOptionalMetric(item.entry.fuelBurnLph, 'L/h')}</Text>
-                <Text style={{ fontSize: 10, color: '#6b7280' }}>MTOW {formatOptionalMetric(item.entry.mtowKg, 'kg')}</Text>
+                <Text style={{ fontSize: 10, color: '#6b7280' }}>{formatOptionalMetric(item.profile.cruiseSpeedKts, 'kt')}</Text>
+                <Text style={{ fontSize: 10, color: '#6b7280' }}>{formatOptionalMetric(item.profile.fuelBurnLph, 'L/h')}</Text>
+                <Text style={{ fontSize: 10, color: '#6b7280' }}>MTOW {formatOptionalMetric(item.profile.mtowKg, 'kg')}</Text>
               </View>
             </View>
           );
@@ -149,3 +184,6 @@ export function AircraftSelect({ value, onSelect, onClear, catalog, loading, err
     </View>
   );
 }
+
+// Re-export catalog entry type for backward compat
+export type { AircraftCatalogEntry };

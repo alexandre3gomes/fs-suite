@@ -57,6 +57,10 @@ const AircraftBaseFieldsSchema = z.object({
   fuelCapacityL: z.number().nullable(),
   fuelBurnLph: z.number().nullable(),
   cruiseSpeedKts: z.number().nullable(),
+  climbSpeedKts: z.number().nullable(),
+  climbRateFpm: z.number().nullable(),
+  descentSpeedKts: z.number().nullable(),
+  descentRateFpm: z.number().nullable(),
   stations: z.array(WeightStationSchema).nullable(),
   source: EnrichmentSourceSchema.nullable(),
   dataCompleteness: DataCompletenessSchema,
@@ -78,10 +82,13 @@ export type AircraftCatalogEntry = z.infer<typeof AircraftCatalogEntrySchema>;
 
 export const UserAircraftProfileSchema = AircraftBaseFieldsSchema.extend({
   isTemplate: z.literal(false),
+  isShared: z.boolean(),
   clonedFromId: z.string().nullable(),
 });
 
 export type UserAircraftProfile = z.infer<typeof UserAircraftProfileSchema>;
+
+export type AnyAircraftProfile = AircraftCatalogEntry | UserAircraftProfile;
 
 // --- Flight Plan Aircraft Snapshot (frozen at plan save time) ---
 
@@ -144,14 +151,19 @@ export function hasStationData(entry: AircraftBaseFields): boolean {
 
 export const CreateAircraftProfileSchema = z.object({
   name: z.string().min(1).max(100),
-  icaoType: z.string().max(4).optional(),
+  icaoType: z.string().min(1).max(4),
   manufacturer: z.string().max(50).optional(),
   model: z.string().max(100).optional(),
-  emptyWeightKg: z.number().optional(),
-  mtowKg: z.number().optional(),
-  fuelCapacityL: z.number().optional(),
-  fuelBurnLph: z.number().optional(),
+  emptyWeightKg: z.number().positive().optional(),
+  mtowKg: z.number().positive().optional(),
+  fuelCapacityL: z.number().positive().optional(),
+  fuelBurnLph: z.number().positive().optional(),
   cruiseSpeedKts: z.number().int().positive().optional(),
+  climbSpeedKts: z.number().int().positive().optional(),
+  climbRateFpm: z.number().int().positive().optional(),
+  descentSpeedKts: z.number().int().positive().optional(),
+  descentRateFpm: z.number().int().positive().optional(),
+  isShared: z.boolean().optional(),
   stations: z.array(WeightStationSchema).optional(),
 });
 

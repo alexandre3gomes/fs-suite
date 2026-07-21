@@ -26,21 +26,39 @@ export default function DashboardScreen() {
           {t('dashboard.welcome')}
         </Text>
 
-        <Card className="active:opacity-80">
-          <Pressable onPress={() => {
-            trackAction('cta_clicked', { cta: 'flight_planning', from: 'dashboard' });
-            router.push('/(auth)/flight-plans');
-          }}>
-            <CardContent className="md:px-8 md:py-6">
-              <Text className="text-base font-bold md:text-lg">
-                {t('dashboard.flightPlanning')}
-              </Text>
-              <Text variant="muted" className="mt-1">
-                {t('dashboard.flightPlanningDesc')}
-              </Text>
-            </CardContent>
-          </Pressable>
-        </Card>
+        <View className="gap-3">
+          <Card className="active:opacity-80">
+            <Pressable onPress={() => {
+              trackAction('cta_clicked', { cta: 'flight_planning', from: 'dashboard' });
+              router.push('/(auth)/flight-plans');
+            }}>
+              <CardContent className="md:px-8 md:py-6">
+                <Text className="text-base font-bold md:text-lg">
+                  {t('dashboard.flightPlanning')}
+                </Text>
+                <Text variant="muted" className="mt-1">
+                  {t('dashboard.flightPlanningDesc')}
+                </Text>
+              </CardContent>
+            </Pressable>
+          </Card>
+
+          <Card className="active:opacity-80">
+            <Pressable onPress={() => {
+              trackAction('cta_clicked', { cta: 'aircraft_profiles', from: 'dashboard' });
+              router.push('/(auth)/aircraft-profiles');
+            }}>
+              <CardContent className="md:px-8 md:py-6">
+                <Text className="text-base font-bold md:text-lg">
+                  {t('dashboard.aircraftProfiles')}
+                </Text>
+                <Text variant="muted" className="mt-1">
+                  {t('dashboard.aircraftProfilesDesc')}
+                </Text>
+              </CardContent>
+            </Pressable>
+          </Card>
+        </View>
       </View>
     </View>
   );

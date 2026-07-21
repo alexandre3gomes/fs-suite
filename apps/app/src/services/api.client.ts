@@ -18,6 +18,22 @@ class ApiError extends Error {
   }
 }
 
+function extractErrorMessage(body: Record<string, unknown>, fallback: string): string {
+  if (typeof body.message === 'string') return body.message;
+  if (body.message && typeof body.message === 'object') {
+    // NestJS wraps Zod fieldErrors under a message key
+    return Object.entries(body.message as Record<string, string[]>)
+      .map(([k, v]) => `${k}: ${v.join(', ')}`)
+      .join('; ');
+  }
+  // Zod fieldErrors returned directly as the body (no message key)
+  const fieldErrors = Object.entries(body).filter(([, v]) => Array.isArray(v));
+  if (fieldErrors.length > 0) {
+    return fieldErrors.map(([k, v]) => `${k}: ${(v as string[]).join(', ')}`).join('; ');
+  }
+  return fallback;
+}
+
 let refreshPromise: Promise<string | null> | null = null;
 
 async function attemptRefresh(): Promise<string | null> {
@@ -68,8 +84,8 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ message: response.statusText })) as { message?: string };
-    const error = new ApiError(response.status, body.message ?? response.statusText);
+    const body = await response.json().catch(() => ({ message: response.statusText })) as Record<string, unknown>;
+    const error = new ApiError(response.status, extractErrorMessage(body, response.statusText));
     if (response.status >= 500) {
       Sentry.captureException(error, {
         tags: { api_path: path, status_code: response.status },
@@ -114,10 +130,8 @@ async function postForm<T>(path: string, formData: FormData, _isRetry = false): 
   }
 
   if (!response.ok) {
-    const data = (await response.json().catch(() => ({ message: response.statusText }))) as {
-      message?: string;
-    };
-    const error = new ApiError(response.status, data.message ?? response.statusText);
+    const data = await response.json().catch(() => ({ message: response.statusText })) as Record<string, unknown>;
+    const error = new ApiError(response.status, extractErrorMessage(data, response.statusText));
     if (response.status >= 500) {
       Sentry.captureException(error, { tags: { api_path: path, status_code: response.status } });
     }

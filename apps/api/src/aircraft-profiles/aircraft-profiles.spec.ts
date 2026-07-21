@@ -94,6 +94,10 @@ describe('helper predicates', () => {
     fuelCapacityL: null,
     fuelBurnLph: null,
     cruiseSpeedKts: null,
+    climbSpeedKts: null,
+    climbRateFpm: null,
+    descentSpeedKts: null,
+    descentRateFpm: null,
     stations: null,
     source: 'simbrief',
     dataCompleteness: DataCompleteness.SKELETON,
@@ -145,6 +149,10 @@ describe('AircraftCatalogEntrySchema', () => {
       fuelCapacityL: 212,
       fuelBurnLph: 34,
       cruiseSpeedKts: 124,
+      climbSpeedKts: 74,
+      climbRateFpm: 730,
+      descentSpeedKts: 100,
+      descentRateFpm: 500,
       stations: [{ id: 'pilot', labelKey: 'aircraft.pilot', defaultKg: 80, maxKg: 120, arm: 0.94 }],
       source: 'curated',
       dataCompleteness: 'complete',
@@ -167,6 +175,10 @@ describe('AircraftCatalogEntrySchema', () => {
       fuelCapacityL: null,
       fuelBurnLph: null,
       cruiseSpeedKts: null,
+      climbSpeedKts: null,
+      climbRateFpm: null,
+      descentSpeedKts: null,
+      descentRateFpm: null,
       stations: null,
       source: 'simbrief',
       dataCompleteness: 'skeleton',
@@ -240,10 +252,15 @@ describe('UserAircraftProfileSchema', () => {
       fuelCapacityL: 212,
       fuelBurnLph: 34,
       cruiseSpeedKts: 124,
+      climbSpeedKts: 74,
+      climbRateFpm: 730,
+      descentSpeedKts: 100,
+      descentRateFpm: 500,
       stations: [{ id: 'pilot', labelKey: 'pilot', defaultKg: 80, maxKg: 120, arm: 0.94 }],
       source: 'curated',
       dataCompleteness: 'complete',
       isTemplate: false,
+      isShared: false,
       clonedFromId: 'cltemplate1',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -263,10 +280,15 @@ describe('UserAircraftProfileSchema', () => {
       fuelCapacityL: null,
       fuelBurnLph: null,
       cruiseSpeedKts: null,
+      climbSpeedKts: null,
+      climbRateFpm: null,
+      descentSpeedKts: null,
+      descentRateFpm: null,
       stations: null,
       source: 'user',
       dataCompleteness: 'skeleton',
       isTemplate: false,
+      isShared: false,
       clonedFromId: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -336,12 +358,17 @@ describe('toCatalogEntry / toUserProfile mappers', () => {
     fuelCapacityL: 212,
     fuelBurnLph: 34,
     cruiseSpeedKts: 124,
+    climbSpeedKts: 74,
+    climbRateFpm: 730,
+    descentSpeedKts: 100,
+    descentRateFpm: 500,
     stations: [
       { id: 'st-1', profileId: 'tmpl-1', stationId: 'pilot', labelKey: 'pilot', defaultKg: 80, maxKg: 120, arm: 0.94 },
     ],
     source: 'curated',
     dataCompleteness: 'complete',
     isTemplate: true,
+    isShared: false,
     clonedFromId: null,
     userId: null,
     createdAt: now,
@@ -372,10 +399,15 @@ describe('toCatalogEntry / toUserProfile mappers', () => {
     fuelCapacityL: null,
     fuelBurnLph: null,
     cruiseSpeedKts: null,
+    climbSpeedKts: null,
+    climbRateFpm: null,
+    descentSpeedKts: null,
+    descentRateFpm: null,
     stations: [],
     source: null,
     dataCompleteness: 'skeleton',
     isTemplate: false,
+    isShared: false,
     clonedFromId: null,
     userId: 'user-456',
     createdAt: now,
@@ -528,6 +560,7 @@ describe('ZodValidationPipe', () => {
     it('passes valid input with stations', () => {
       const input = {
         name: 'Cessna 172S',
+        icaoType: 'C172',
         stations: [{ id: 'pilot', labelKey: 'pilot', defaultKg: 80, maxKg: 120, arm: 0.94 }],
       };
       expect(pipe.transform(input)).toEqual(input);
@@ -538,30 +571,34 @@ describe('ZodValidationPipe', () => {
     });
 
     it('rejects empty name', () => {
-      expect(() => pipe.transform({ name: '' })).toThrow(BadRequestException);
+      expect(() => pipe.transform({ name: '', icaoType: 'C172' })).toThrow(BadRequestException);
     });
 
     it('rejects name exceeding max length', () => {
-      expect(() => pipe.transform({ name: 'x'.repeat(101) })).toThrow(BadRequestException);
+      expect(() => pipe.transform({ name: 'x'.repeat(101), icaoType: 'C172' })).toThrow(BadRequestException);
+    });
+
+    it('rejects missing icaoType', () => {
+      expect(() => pipe.transform({ name: 'Test' })).toThrow(BadRequestException);
     });
 
     it('rejects non-integer cruiseSpeedKts', () => {
-      expect(() => pipe.transform({ name: 'Test', cruiseSpeedKts: 124.5 })).toThrow(BadRequestException);
+      expect(() => pipe.transform({ name: 'Test', icaoType: 'C172', cruiseSpeedKts: 124.5 })).toThrow(BadRequestException);
     });
 
     it('rejects negative cruiseSpeedKts', () => {
-      expect(() => pipe.transform({ name: 'Test', cruiseSpeedKts: -10 })).toThrow(BadRequestException);
+      expect(() => pipe.transform({ name: 'Test', icaoType: 'C172', cruiseSpeedKts: -10 })).toThrow(BadRequestException);
     });
 
     it('rejects invalid station shape', () => {
       expect(() =>
-        pipe.transform({ name: 'Test', stations: [{ id: 'pilot' }] }),
+        pipe.transform({ name: 'Test', icaoType: 'C172', stations: [{ id: 'pilot' }] }),
       ).toThrow(BadRequestException);
     });
 
     it('strips unknown properties', () => {
-      const result = pipe.transform({ name: 'Test', unknown: true }) as Record<string, unknown>;
-      expect(result).toEqual({ name: 'Test' });
+      const result = pipe.transform({ name: 'Test', icaoType: 'C172', unknown: true }) as Record<string, unknown>;
+      expect(result).toEqual({ name: 'Test', icaoType: 'C172' });
       expect('unknown' in result).toBe(false);
     });
   });

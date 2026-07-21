@@ -1,4 +1,4 @@
-import type { AircraftCatalogEntry, WeightStation } from '@fs-suite/types';
+import type { AnyAircraftProfile, UserAircraftProfile, WeightStation } from '@fs-suite/types';
 import { Input } from '@fs-suite/ui';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { getChecklistsForAircraft } from '../../data/checklistCatalog';
-import { useAircraftCatalog } from '../../hooks/useAircraftCatalog';
+import { useAircraftProfiles } from '../../hooks/useAircraftProfiles';
 import { notify } from '../../lib/notify';
 import { trackAction, trackSuccess, trackFailure, categorizeError } from '../../services/analytics';
 import { apiClient, API_URL } from '../../services/api.client';
@@ -22,6 +22,7 @@ import { CopyButton } from '../CopyButton';
 
 import { AerodromeMap, type AerodromeOverlay } from './AerodromeMap';
 import { AerodromeSearch, type Aerodrome } from './AerodromeSearch';
+import { AircraftProfileModal } from './AircraftProfileModal';
 import { AircraftSelect } from './AircraftSelect';
 import { ChartsPanel, type ChartOverlay } from './ChartsPanel';
 import { ChecklistPanel } from './ChecklistPanel';
@@ -351,7 +352,7 @@ function FabButton({ onPress, disabled, svg, title, bg, size = 34 }: { onPress: 
 export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const { t } = useTranslation();
   const { weight: wu, fuel: fu, speed: su } = useUnitsStore();
-  const { catalog: aircraftCatalog, loading: catalogLoading, error: catalogError } = useAircraftCatalog();
+  const { entries: aircraftEntries, catalog: aircraftCatalog, shared: sharedProfiles, mine: myProfiles, loading: catalogLoading, error: catalogError, refresh: refreshProfiles } = useAircraftProfiles();
 
   // Flight rules
   type FlightRulesType = 'VFR' | 'IFR' | 'VFR_IFR' | 'IFR_VFR';
@@ -508,10 +509,13 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
   // Aircraft & weight
   const findAircraft = useCallback(
-    (icao: string) => aircraftCatalog.find((a) => a.icaoType === icao) ?? null,
-    [aircraftCatalog],
+    (icao: string) => aircraftEntries.find((e) => e.profile.icaoType === icao)?.profile ?? null,
+    [aircraftEntries],
   );
-  const [selectedAircraft, setSelectedAircraft] = useState<AircraftCatalogEntry | null>(null);
+  const [selectedAircraft, setSelectedAircraft] = useState<AnyAircraftProfile | null>(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<UserAircraftProfile | null>(null);
+  const [preselectedBaseId, setPreselectedBaseId] = useState<string | null>(null);
   const [weightMode, setWeightMode] = useState<'simple' | 'advanced'>('simple');
   const [simpleTotalWeight, setSimpleTotalWeight] = useState('');
   const [stationWeights, setStationWeights] = useState<Record<string, string>>({});
@@ -956,11 +960,11 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     if (!selectedAircraft || selectedAircraft.cruiseSpeedKts == null || selectedAircraft.cruiseSpeedKts <= 0) return null;
     const cs = selectedAircraft.cruiseSpeedKts;
     return {
-      climbSpeedKts: Math.round(cs * 0.65),
+      climbSpeedKts: selectedAircraft.climbSpeedKts ?? Math.round(cs * 0.65),
       cruiseSpeedKts: cs,
-      descentSpeedKts: Math.round(cs * 0.8),
-      climbRateFpm: 700,
-      descentRateFpm: 500,
+      descentSpeedKts: selectedAircraft.descentSpeedKts ?? Math.round(cs * 0.8),
+      climbRateFpm: selectedAircraft.climbRateFpm ?? 700,
+      descentRateFpm: selectedAircraft.descentRateFpm ?? 500,
     };
   }, [selectedAircraft]);
 
@@ -1492,7 +1496,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   }, [origin?.icao, destination?.icao, routeWaypoints, followedCorridorName]);
 
   // Aircraft selection handler
-  const handleSelectAircraft = useCallback((aircraft: AircraftCatalogEntry) => {
+  const handleSelectAircraft = useCallback((aircraft: AnyAircraftProfile) => {
     setSelectedAircraft(aircraft);
     if (aircraft.fuelBurnLph != null) {
       const currentFu = useUnitsStore.getState().fuel;
@@ -1511,6 +1515,19 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     setSelectedAircraft(null);
     setStationWeights({});
   }, []);
+
+  const handleProfileSaved = useCallback((saved: UserAircraftProfile) => {
+    void refreshProfiles();
+    setSelectedAircraft(saved);
+  }, [refreshProfiles]);
+
+  const handleProfileDeleted = useCallback((profileId: string) => {
+    void refreshProfiles();
+    if (selectedAircraft?.id === profileId) {
+      setSelectedAircraft(null);
+      setStationWeights({});
+    }
+  }, [refreshProfiles, selectedAircraft?.id]);
 
   // Remarks (Item 18)
   const [userRemarks, setUserRemarks] = useState('');
@@ -2421,9 +2438,22 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           value={selectedAircraft}
           onSelect={handleSelectAircraft}
           onClear={handleClearAircraft}
-          catalog={aircraftCatalog}
+          entries={aircraftEntries}
           loading={catalogLoading}
           error={catalogError}
+          onCreateProfile={() => {
+            const preId = !selectedAircraft
+              ? null
+              : selectedAircraft.isTemplate
+                ? selectedAircraft.id
+                : selectedAircraft.isShared
+                  ? selectedAircraft.id
+                  : aircraftCatalog.find((e) => e.icaoType === selectedAircraft.icaoType)?.id ?? null;
+            setPreselectedBaseId(preId);
+            setEditingProfile(null);
+            setShowProfileModal(true);
+          }}
+          onEditProfile={(p) => { setEditingProfile(p); setShowProfileModal(true); }}
         />
 
         {selectedAircraft ? (
@@ -3866,6 +3896,16 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
           </Pressable>
         </Modal>
       ) : null}
+      <AircraftProfileModal
+        visible={showProfileModal}
+        editingProfile={editingProfile}
+        catalog={aircraftCatalog}
+        shared={sharedProfiles}
+        preselectedBaseId={preselectedBaseId}
+        onClose={() => setShowProfileModal(false)}
+        onSaved={handleProfileSaved}
+        onDeleted={handleProfileDeleted}
+      />
     </>
   );
 }

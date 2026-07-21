@@ -24,6 +24,12 @@ export class AircraftProfilesController {
     return this.service.findAllTemplates();
   }
 
+  @Get('shared')
+  @ApiOperation({ summary: 'List all shared user aircraft profiles' })
+  async shared(): Promise<UserAircraftProfile[]> {
+    return this.service.findAllShared();
+  }
+
   @Get()
   @ApiOperation({ summary: "List user's aircraft profiles" })
   async findAll(@CurrentUser() user: User): Promise<UserAircraftProfile[]> {

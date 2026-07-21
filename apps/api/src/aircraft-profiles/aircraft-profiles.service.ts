@@ -54,6 +54,15 @@ export class AircraftProfilesService {
     return entries;
   }
 
+  async findAllShared(): Promise<UserAircraftProfile[]> {
+    const profiles = await this.prisma.aircraftProfile.findMany({
+      where: { isTemplate: false, isShared: true },
+      orderBy: [{ icaoType: 'asc' }, { name: 'asc' }],
+      include: { stations: true },
+    });
+    return profiles.map(toUserProfile);
+  }
+
   async clone(templateId: string, userId: string): Promise<UserAircraftProfile> {
     const template = await this.prisma.aircraftProfile.findUnique({
       where: { id: templateId },
@@ -74,6 +83,10 @@ export class AircraftProfilesService {
         fuelCapacityL: template.fuelCapacityL,
         fuelBurnLph: template.fuelBurnLph,
         cruiseSpeedKts: template.cruiseSpeedKts,
+        climbSpeedKts: template.climbSpeedKts,
+        climbRateFpm: template.climbRateFpm,
+        descentSpeedKts: template.descentSpeedKts,
+        descentRateFpm: template.descentRateFpm,
         source: template.source,
         dataCompleteness: template.dataCompleteness,
         isTemplate: false,
@@ -134,6 +147,10 @@ export class AircraftProfilesService {
       fuelCapacityL: fields.fuelCapacityL ?? profile.fuelCapacityL,
       fuelBurnLph: fields.fuelBurnLph ?? profile.fuelBurnLph,
       cruiseSpeedKts: fields.cruiseSpeedKts ?? profile.cruiseSpeedKts,
+      climbSpeedKts: fields.climbSpeedKts ?? profile.climbSpeedKts,
+      climbRateFpm: fields.climbRateFpm ?? profile.climbRateFpm,
+      descentSpeedKts: fields.descentSpeedKts ?? profile.descentSpeedKts,
+      descentRateFpm: fields.descentRateFpm ?? profile.descentRateFpm,
       stations: stations ?? (profile.stations.length > 0 ? profile.stations : null),
     };
     const completeness = computeDataCompleteness(merged);
@@ -186,6 +203,10 @@ export function baseFields(profile: AircraftProfileWithStations): AircraftBaseFi
     fuelCapacityL: profile.fuelCapacityL,
     fuelBurnLph: profile.fuelBurnLph,
     cruiseSpeedKts: profile.cruiseSpeedKts,
+    climbSpeedKts: profile.climbSpeedKts,
+    climbRateFpm: profile.climbRateFpm,
+    descentSpeedKts: profile.descentSpeedKts,
+    descentRateFpm: profile.descentRateFpm,
     stations: profile.stations.length > 0 ? profile.stations.map(mapStation) : null,
     source: (profile.source as EnrichmentSource | null) ?? null,
     dataCompleteness: (profile.dataCompleteness as DataCompleteness) || 'skeleton',
@@ -199,5 +220,5 @@ export function toCatalogEntry(profile: AircraftProfileWithStations): AircraftCa
 }
 
 export function toUserProfile(profile: AircraftProfileWithStations): UserAircraftProfile {
-  return { ...baseFields(profile), isTemplate: false as const, clonedFromId: profile.clonedFromId };
+  return { ...baseFields(profile), isTemplate: false as const, isShared: profile.isShared, clonedFromId: profile.clonedFromId };
 }

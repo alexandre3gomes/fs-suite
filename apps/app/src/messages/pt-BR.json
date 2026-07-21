@@ -103,7 +103,9 @@
     "newPlan": "Novo Plano de Voo",
     "newVfrPlan": "Novo Plano VFR",
     "myPlans": "Meus Planos",
-    "noPlansYet": "Nenhum plano de voo ainda. Crie seu primeiro plano!"
+    "noPlansYet": "Nenhum plano de voo ainda. Crie seu primeiro plano!",
+    "aircraftProfiles": "Perfis de Aeronave",
+    "aircraftProfilesDesc": "Gerencie seus perfis personalizados de aeronave"
   },
   "vfr": {
     "tpa": "TPA destino",
@@ -677,5 +679,16 @@
     "reaStep3Desc": "O algoritmo encontra a rota mais curta entre os aeródromos, testando múltiplos portões de chegada e priorizando corredores obrigatórios.",
     "readyTitle": "Pronto para planejar seu próximo voo?",
     "readyDesc": "Crie sua conta gratuitamente e comece a planejar rotas como um piloto real."
+  },
+  "aircraftProfiles": {
+    "title": "Perfis de Aeronave",
+    "empty": "Nenhum perfil criado ainda",
+    "emptyDesc": "Crie um perfil personalizado para salvar configurações de desempenho e peso & balanceamento.",
+    "newProfile": "+ Novo perfil",
+    "edit": "Editar",
+    "shared": "Compartilhado",
+    "deleteConfirmTitle": "Excluir perfil?",
+    "deleteConfirmMessage": "\"{{name}}\" será excluído permanentemente.",
+    "deleteConfirmLabel": "Excluir"
   }
 }

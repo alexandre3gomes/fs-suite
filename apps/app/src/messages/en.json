@@ -103,7 +103,9 @@
     "newPlan": "New Flight Plan",
     "newVfrPlan": "New VFR Plan",
     "myPlans": "My Plans",
-    "noPlansYet": "No flight plans yet. Create your first plan!"
+    "noPlansYet": "No flight plans yet. Create your first plan!",
+    "aircraftProfiles": "Aircraft Profiles",
+    "aircraftProfilesDesc": "Manage your custom aircraft performance profiles"
   },
   "vfr": {
     "tpa": "Destination TPA",
@@ -677,5 +679,16 @@
     "reaStep3Desc": "The algorithm finds the shortest route between aerodromes, testing multiple arrival gates and prioritizing mandatory corridors.",
     "readyTitle": "Ready to plan your next flight?",
     "readyDesc": "Create your account for free and start planning routes like a real pilot."
+  },
+  "aircraftProfiles": {
+    "title": "Aircraft Profiles",
+    "empty": "No profiles yet",
+    "emptyDesc": "Create a custom profile to save performance and weight & balance settings for your aircraft.",
+    "newProfile": "+ New profile",
+    "edit": "Edit",
+    "shared": "Shared",
+    "deleteConfirmTitle": "Delete profile?",
+    "deleteConfirmMessage": "\"{{name}}\" will be permanently deleted.",
+    "deleteConfirmLabel": "Delete"
   }
 }
