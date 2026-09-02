@@ -185,8 +185,12 @@ const DEFAULT_CENTER: [number, number] = [-15.78, -47.93];
 const DEFAULT_ZOOM = 5;
 const TILE_LAYERS = {
   map: {
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    attr: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    // Was Carto Voyager. Carto now stamps "API KEY REQUIRED" across every
+    // unauthenticated basemap tile (both 1x and @2x, voyager and light_all),
+    // so it is unusable without a key. Esri World_Street_Map is key-free and
+    // is already the host of the satellite layer below.
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    attr: '&copy; Esri, HERE, Garmin, USGS, NGA',
     i18nKey: 'vfr.layerMap',
   },
   satellite: {
