@@ -1,9 +1,8 @@
 import { Redirect, Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
 
-import { AppHeader } from '../../src/components/AppHeader';
+import { AppShell } from '../../src/components/nav/AppShell';
 import { useCurrentUser } from '../../src/hooks/useCurrentUser';
 import { apiClient } from '../../src/services/api.client';
 import { useAuthStore } from '../../src/stores/auth.store';
@@ -31,10 +30,11 @@ export default function AuthLayout(): JSX.Element {
     return <Redirect href="/(public)/login" />;
   }
 
+  // AppShell replaces AppHeader. The Stack and every route inside it are
+  // unchanged — only the surrounding chrome differs.
   return (
-    <View style={{ flex: 1 }}>
-      <AppHeader />
+    <AppShell>
       <Stack screenOptions={{ headerShown: false }} />
-    </View>
+    </AppShell>
   );
 }
