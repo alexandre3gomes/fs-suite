@@ -49,21 +49,41 @@ module.exports = {
           DEFAULT: 'hsl(var(--surface))',
           muted: 'hsl(var(--surface-muted))',
         },
+        // Modernist structural rules — stronger than `border`, used for the
+        // 2px dividers that carry the layout instead of shadows.
+        rule: 'hsl(var(--rule))',
+        'rule-soft': 'hsl(var(--rule-soft))',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Archivo', 'system-ui', 'sans-serif'],
+        heading: ['Archivo', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
+      // Modernist: zero radius everywhere. Kept as named keys so existing
+      // `rounded-card` / `rounded-button` classes keep compiling.
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
-        card: 'var(--radius)',
-        button: 'calc(var(--radius) - 2px)',
-        full: '9999px',
+        none: '0px',
+        sm: '0px',
+        md: '0px',
+        lg: '0px',
+        xl: '0px',
+        '2xl': '0px',
+        '3xl': '0px',
+        card: '0px',
+        button: '0px',
+        full: '9999px', // avatars only
       },
       borderWidth: {
         hairline: hairlineWidth(),
+        DEFAULT: '1px',
+        2: '2px',
+      },
+      letterSpacing: {
+        label: '0.12em',
+        kicker: '0.16em',
+        brand: '0.18em',
+        tight: '-0.015em',
+        display: '-0.02em',
       },
       spacing: {
         1: '4px',

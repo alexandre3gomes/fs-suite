@@ -5,9 +5,15 @@ import { Platform, Pressable, type PressableProps } from 'react-native';
 import { cn } from '../../lib/utils';
 import { TextClassContext } from '../text/Text';
 
+/**
+ * Modernist button: zero radius, flush-left label, no shadow.
+ * A button wider than its label starts the text at the left padding edge —
+ * never centred. Pass `align="center"` for the rare centred case (a lone
+ * full-width CTA on a narrow phone screen).
+ */
 const buttonVariants = cva(
   cn(
-    'group shrink-0 flex-row items-center justify-center gap-2 rounded-md',
+    'group shrink-0 flex-row items-center gap-2 rounded-none',
     Platform.select({
       web: 'outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
     }),
@@ -16,59 +22,64 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: cn(
-          'bg-primary shadow-sm active:bg-primary/90',
-          Platform.select({ web: 'hover:bg-primary/90' }),
+          'bg-primary active:bg-accent',
+          Platform.select({ web: 'hover:bg-accent' }),
         ),
         destructive: cn(
-          'bg-destructive shadow-sm active:bg-destructive/90',
+          'bg-destructive active:bg-destructive/90',
           Platform.select({ web: 'hover:bg-destructive/90' }),
         ),
         outline: cn(
-          'border border-input bg-background shadow-sm active:bg-accent',
-          Platform.select({ web: 'hover:bg-accent hover:text-accent-foreground' }),
+          'border-2 border-rule bg-transparent active:bg-secondary',
+          Platform.select({ web: 'hover:bg-secondary' }),
         ),
         secondary: cn(
-          'bg-secondary shadow-sm active:bg-secondary/80',
-          Platform.select({ web: 'hover:bg-secondary/80' }),
+          'border-2 border-rule bg-transparent active:bg-secondary',
+          Platform.select({ web: 'hover:bg-secondary' }),
         ),
         ghost: cn(
-          'active:bg-accent',
-          Platform.select({ web: 'hover:bg-accent hover:text-accent-foreground' }),
+          'active:bg-secondary',
+          Platform.select({ web: 'hover:bg-secondary' }),
         ),
         link: '',
       },
       size: {
-        default: 'h-10 px-4 py-2',
-        sm: 'h-9 gap-1.5 rounded-md px-3',
-        lg: 'h-12 rounded-md px-8',
-        icon: 'h-10 w-10',
+        default: 'h-11 px-4 py-2',
+        sm: 'h-9 gap-1.5 px-3',
+        lg: 'h-12 px-6',
+        icon: 'h-11 w-11 justify-center',
+      },
+      align: {
+        left: 'justify-start',
+        center: 'justify-center',
       },
     },
-    defaultVariants: { variant: 'default', size: 'default' },
+    defaultVariants: { variant: 'default', size: 'default', align: 'left' },
   },
 );
 
-const buttonTextVariants = cva('text-sm font-medium', {
+const buttonTextVariants = cva('font-sans font-bold', {
   variants: {
     variant: {
       default: 'text-primary-foreground',
       destructive: 'text-destructive-foreground',
       outline: 'text-foreground',
-      secondary: 'text-secondary-foreground',
+      secondary: 'text-foreground',
       ghost: 'text-foreground',
-      link: cn(
-        'text-primary',
-        Platform.select({ web: 'group-hover:underline' }),
-      ),
+      link: cn('text-accent', Platform.select({ web: 'group-hover:underline' })),
     },
     size: {
-      default: 'text-sm',
-      sm: 'text-xs',
+      default: 'text-[15px]',
+      sm: 'text-[13px]',
       lg: 'text-base',
-      icon: 'text-sm',
+      icon: 'text-[15px]',
+    },
+    align: {
+      left: 'text-left',
+      center: 'text-center',
     },
   },
-  defaultVariants: { variant: 'default', size: 'default' },
+  defaultVariants: { variant: 'default', size: 'default', align: 'left' },
 });
 
 export interface ButtonProps
@@ -78,16 +89,16 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<React.ElementRef<typeof Pressable>, ButtonProps>(
-  ({ className, variant, size, disabled, ...props }, ref) => {
+  ({ className, variant, size, align, disabled, ...props }, ref) => {
     return (
-      <TextClassContext.Provider value={buttonTextVariants({ variant, size })}>
+      <TextClassContext.Provider value={buttonTextVariants({ variant, size, align })}>
         <Pressable
           ref={ref}
           role="button"
           disabled={disabled}
           className={cn(
-            disabled && 'opacity-50',
-            buttonVariants({ variant, size }),
+            disabled && 'opacity-45',
+            buttonVariants({ variant, size, align }),
             className,
           )}
           {...props}
