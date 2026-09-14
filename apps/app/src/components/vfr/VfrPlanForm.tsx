@@ -28,14 +28,17 @@ import { ChartsPanel, type ChartOverlay } from './ChartsPanel';
 import { ChecklistPanel } from './ChecklistPanel';
 import { MetarDisplay, type ParsedMetar } from './MetarDisplay';
 import { NearbyPoisPanel } from './NearbyPoisPanel';
+import { PlanStepStrip, type PlanStepId } from './PlanStepStrip';
 import { ReaChartsPanel } from './ReaChartsPanel';
 import { ReaCorridorSuggestions, type ReaDetectionRegion } from './ReaCorridorSuggestions';
 import { SimBriefPanel, type SimBriefOfpData } from './SimBriefPanel';
 import { TafDisplay, type ParsedTaf } from './TafDisplay';
 import { VfrPlanLayout } from './VfrPlanLayout';
+import { ViabilityStrip } from './ViabilityStrip';
 import { type DomElement, type DomKeyboardEvent, getDoc, openExternal } from './dom-types';
 import { AVGAS_KG_PER_L, computeFuelPlan, formatEndurance } from './vfrFuel';
 import { type RouteWaypoint, type AltitudeTransition, type RouteSegment, type TocTodPosition, type EnrichedLeg, type AircraftPerformance, type ClimbDescentPlan, type LegAltConstraint, toVfrCoord, buildVfrRouteText, parseVfrRouteText, buildItem18, calculateRouteLegs, haversineDistanceNm, suggestCruiseLevel, suggestIfrCruiseLevel, calculateTodDistance, getVfrRuleInfo, filterAltitudesByCloudClearance, type AltitudeClearance, formatAltitudeIcao, parseCruiseLevelFt, getDefaultTransitionAltitude, getPerformanceCategory, calculateDefaultTpaFt, segmentRouteLegs, calculateTocDistance, calculateTodFromTpa, interpolatePositionOnRoute, enrichRouteLegs, computeClimbDescentPlan, computeAltitudeProfile } from './vfrNavigation';
+import { isItemNavigable, stepForItemId } from './viabilityRouting';
 import { defaultDepartureTime, toDatetimeLocalValue, fromDatetimeLocalValue, formatZulu, isNightFlight, validateVfrPlan, type PlanViability } from './weatherTimeUtils';
 
 function SimpleMarkdown({ text, italic }: { text: string; italic?: boolean }) {
@@ -542,6 +545,9 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
     () => fuelKgToInputStr((initialData?.fuelCurrentTotal ?? 0) * AVGAS_KG_PER_L, initialFu),
   );
   const [fuelManuallyEdited, setFuelManuallyEdited] = useState(!!initialData?.fuelCurrentTotal);
+  // UI-only: which editor step is visible. Adds one useState; no existing
+  // hook is removed, reordered or made conditional.
+  const [activeStep, setActiveStep] = useState<PlanStepId>('route');
   const [flightCondition, setFlightCondition] = useState<'day' | 'night'>(
     initialData?.fuelReserveMinutes === 45 ? 'night' : 'day',
   );
@@ -2201,7 +2207,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   const sidebarContent = (_onRequestExpand: () => void) => (
     <>
       {/* ====== FLIGHT RULES ====== */}
-      <Section title={t('vfr.flightRules')}>
+      <Section title={t('vfr.flightRules')} step="route" activeStep={activeStep}>
         <View className="gap-2">
           {[FLIGHT_RULES.slice(0, 2), FLIGHT_RULES.slice(2, 4)].map((row, rowIdx) => (
             <View key={rowIdx} className="flex-row gap-2">
@@ -2244,7 +2250,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       </Section>
 
       {/* ====== CALLSIGN & REGISTRATION ====== */}
-      <Section title={`Callsign / ${t('vfr.registration')}`}>
+      <Section title={`Callsign / ${t('vfr.registration')}`} step="route" activeStep={activeStep}>
         <View className="flex-row gap-2">
           <View className="flex-1">
             <Input
@@ -2266,7 +2272,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       </Section>
 
       {/* ====== DEPARTURE TIME ====== */}
-      <Section title={t('vfr.departureTime')}>
+      <Section title={t('vfr.departureTime')} step="route" activeStep={activeStep}>
         <View className="flex-row items-center gap-3">
           {Platform.OS === 'web' ? (
             <input
@@ -2306,7 +2312,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       </Section>
 
       {/* ====== AERODROMES ====== */}
-      <Section title={t('vfr.aerodromes')}>
+      <Section title={t('vfr.aerodromes')} step="route" activeStep={activeStep}>
         <Pressable
           onPress={() => {
             void importFromSkyVector();
@@ -2433,7 +2439,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       </Section>
 
       {/* ====== AIRCRAFT & WEIGHT ====== */}
-      <Section title={t('aircraft.selectAircraft')} info={t('info.weight')}>
+      <Section title={t('aircraft.selectAircraft')} info={t('info.weight')} step="aircraft" activeStep={activeStep}>
         <AircraftSelect
           value={selectedAircraft}
           onSelect={handleSelectAircraft}
@@ -2548,7 +2554,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
       {/* ====== SIMBRIEF (IFR) ====== */}
       {hasIfr ? (
-        <Section title={t('vfr.simbrief')}>
+        <Section title={t('vfr.simbrief')} step="aircraft" activeStep={activeStep}>
           <SimBriefPanel
             originIcao={origin?.icao ?? null}
             destinationIcao={destination?.icao ?? null}
@@ -2565,7 +2571,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
       {/* ====== REA (VFR only) ====== */}
       {hasVfr && origin && destination && /^S[BDIIJNSW]/.test(origin.icao) ? (
-        <Section title={t('vfr.rea')}>
+        <Section title={t('vfr.rea')} step="airspace" activeStep={activeStep}>
           <ReaCorridorSuggestions
             violations={reaViolations}
             startPoint={origin}
@@ -2586,7 +2592,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
       {/* ====== REA Alternate (VFR only, destination → alternate) ====== */}
       {hasVfr && destination && alternate && /^S[BDIIJNSW]/.test(destination.icao) ? (
-        <Section title={`${t('vfr.rea')} · ${t('vfr.alternate')}`}>
+        <Section title={`${t('vfr.rea')} · ${t('vfr.alternate')}`} step="airspace" activeStep={activeStep}>
           <ReaCorridorSuggestions
             startPoint={destination}
             endPoint={alternate}
@@ -2608,6 +2614,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       {/* ====== ROUTE LEGS ====== */}
       {routeLegs.length > 0 ? (
         <Section
+          step="route" activeStep={activeStep}
           title={t('vfr.routeLegs')}
           trailing={
             <Pressable onPress={() => { setRouteWaypoints([]); setFollowedCorridorName(null); setCorridorAltRange(null); }}>
@@ -2765,6 +2772,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
       {/* ====== ROUTE ====== */}
       <Section
+        step="route" activeStep={activeStep}
         title={t('vfr.route')}
         info={
           flightRules === 'VFR' ? t('info.routeVfr')
@@ -3037,7 +3045,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       </Section>
 
       {/* ====== REMARKS (Item 18) ====== */}
-      <Section title={t('vfr.remarksTitle')}>
+      <Section title={t('vfr.remarksTitle')} step="briefing" activeStep={activeStep}>
         {autoRemarks ? (
           <View className="mb-2 rounded-sm border border-border bg-surface-muted px-3 py-2">
             <View className="flex-row items-center justify-between">
@@ -3065,7 +3073,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       </Section>
 
       {/* ====== FUEL ====== */}
-      <Section title={t('vfr.fuel')} info={t('info.fuel')}>
+      <Section title={t('vfr.fuel')} info={t('info.fuel')} step="fuel" activeStep={activeStep}>
         {/* Day / Night — auto-detected from civil twilight, manual override allowed */}
         <View className="mb-3">
           <Text className="mb-1 text-sm font-medium text-foreground">
@@ -3182,6 +3190,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
       {/* ====== FLIGHT VIABILITY ====== */}
       {hasVfr ? (
         <Section
+          step="briefing" activeStep={activeStep}
           title={t('vfr.flightViability')}
           trailing={<CopyButton text={viabilitySummaryText} label={t('vfr.copySummary')} />}
         >
@@ -3385,7 +3394,7 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
       {/* ====== CHECKLISTS ====== */}
       {selectedAircraft?.icaoType && getChecklistsForAircraft(selectedAircraft.icaoType).length > 0 ? (
-        <Section title={t('vfr.checklists')}>
+        <Section title={t('vfr.checklists')} step="briefing" activeStep={activeStep}>
           <ChecklistPanel icaoType={selectedAircraft.icaoType} />
         </Section>
       ) : null}
@@ -3398,7 +3407,22 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
   return (
     <>
       <VfrPlanLayout
-        mapElement={mapElement}
+        headerElement={<PlanStepStrip activeId={activeStep} onSelect={setActiveStep} />}
+        mapElement={
+          <>
+            {mapElement}
+            {/* Docked under the map. Renders `planViability` — the verdict
+                computed above via validateVfrPlan — and derives nothing. */}
+            <ViabilityStrip
+              viability={planViability}
+              isNavigable={isItemNavigable}
+              onPressItem={(item) => {
+                const step = stepForItemId(item.id);
+                if (step) setActiveStep(step);
+              }}
+            />
+          </>
+        }
         sidebarContent={sidebarContent}
       />
 
@@ -3912,13 +3936,22 @@ export function VfrPlanForm({ initialData, onSave, saving, onDelete }: Props) {
 
 // ---------- Sub-components ----------
 
-function Section({ title, trailing, info, children }: { title: string; trailing?: React.ReactNode; info?: string; children: React.ReactNode }) {
+function Section({ title, trailing, info, step, activeStep, children }: { title: string; trailing?: React.ReactNode; info?: string; step?: PlanStepId; activeStep?: PlanStepId; children: React.ReactNode }) {
   const [infoOpen, setInfoOpen] = useState(false);
+  // `display: 'none'` instead of unmounting: a section outside the active step
+  // keeps its state, its effects and its subscriptions. Unmounting would lose
+  // half-typed input and re-fire the route safety fetch.
+  const hidden = !!step && !!activeStep && step !== activeStep;
   return (
-    <View className="border-b border-border px-4 py-4 md:px-6 md:py-5">
-      <View className="mb-3 flex-row items-center justify-between">
-        <View className="flex-row items-center gap-1.5">
-          <Text className="text-base font-bold text-foreground">{title}</Text>
+    <View style={hidden ? { display: 'none' } : undefined} className="border-b border-border">
+      <View className="flex-row items-center justify-between gap-3 border-b-2 border-rule px-4 py-3 md:px-6">
+        <View className="flex-row items-center gap-1.5" style={{ flexShrink: 1 }}>
+          <Text
+            className="text-[11px] font-bold uppercase tracking-[0.12em] text-foreground"
+            numberOfLines={1}
+          >
+            {title}
+          </Text>
           {info ? (
             <Pressable onPress={() => setInfoOpen((v) => !v)} hitSlop={8}>
               <Text className="text-xs text-muted-foreground">ⓘ</Text>
@@ -3928,11 +3961,11 @@ function Section({ title, trailing, info, children }: { title: string; trailing?
         {trailing}
       </View>
       {infoOpen && info ? (
-        <View className="mb-3 rounded-sm border border-primary/20 bg-primary/5 px-3 py-2">
-          <Text className="text-[11px] leading-4 text-muted-foreground">{info}</Text>
+        <View className="border-b border-border bg-secondary px-4 py-2 md:px-6">
+          <Text className="text-[12px] leading-4 text-muted-foreground">{info}</Text>
         </View>
       ) : null}
-      {children}
+      <View className="px-4 py-4 md:px-6 md:py-5">{children}</View>
     </View>
   );
 }
