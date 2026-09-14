@@ -64,6 +64,26 @@ export interface ReaCorridorSegment {
   geometry: { type: string; coordinates: number[][][][] | number[][][] };
 }
 
+// Portugal eVFR layer payloads (see apps/api/src/pt-vfr)
+interface PtVfrRoute {
+  id: string;
+  name: string;
+  area: string;
+  points: { name: string; lat: number; lon: number }[];
+  legs: {
+    fromIdx: number; toIdx: number;
+    courseAtoB: number | null; courseBtoA: number | null;
+    upperFt: number | null; lowerFt: number | null;
+  }[];
+}
+
+interface PtVfrPoint {
+  name: string;
+  lat: number;
+  lon: number;
+  routes: string[];
+}
+
 interface PopupRunway {
   leIdent: string | null;
   leHeadingDeg: number | null;
@@ -302,6 +322,10 @@ export function AerodromeMap({
   const [showSigmets, setShowSigmets] = useState(false);
   const [showRadar, setShowRadar] = useState(false);
   const [showSatellite, setShowSatellite] = useState(false);
+  // Portugal eVFR layer (tunnels + visual reporting points, /v1/pt-vfr)
+  const [showPtVfr, setShowPtVfr] = useState(false);
+  const ptVfrLayerRef = useRef<L.LayerGroup | null>(null);
+  const ptVfrDataRef = useRef<{ routes: PtVfrRoute[]; points: PtVfrPoint[] } | null>(null);
 
   // Stable refs for callbacks
   const onSelectOriginRef = useRef(onSelectOrigin);
@@ -502,6 +526,84 @@ export function AerodromeMap({
       openAipLayerRef.current = null;
     }
   }, [showAirspace, mapInitialized]);
+
+  // Portugal eVFR overlay — mandatory VFR tunnels (ENR 3.5) + visual reporting
+  // points (ENR 4.4), served as a curated dataset by /v1/pt-vfr.
+  useEffect(() => {
+    if (!mapInitialized || !mapRef.current || Platform.OS !== 'web') return;
+    const Leaf = require('leaflet') as LeafletModule;
+    const map = mapRef.current;
+
+    if (!showPtVfr) {
+      if (ptVfrLayerRef.current) {
+        map.removeLayer(ptVfrLayerRef.current);
+        ptVfrLayerRef.current = null;
+      }
+      return;
+    }
+
+    let cancelled = false;
+
+    const draw = (routes: PtVfrRoute[], points: PtVfrPoint[]) => {
+      if (cancelled || !mapRef.current) return;
+      const group = Leaf.layerGroup().addTo(map);
+
+      for (const route of routes) {
+        const latlngs = route.points.map((p) => [p.lat, p.lon] as L.LatLngTuple);
+        const line = Leaf.polyline(latlngs, { color: '#dc2626', weight: 2.5, opacity: 0.9 }).addTo(group);
+        const altSummary = route.legs
+          .map((l) => l.upperFt ?? l.lowerFt)
+          .filter((v): v is number => v != null);
+        const altInfo = altSummary.length > 0
+          ? `${Math.min(...altSummary)}–${Math.max(...altSummary)} ft`
+          : '';
+        line.bindPopup(`
+          <div style="font-family:system-ui,sans-serif;min-width:170px">
+            <div style="font-weight:700;font-size:13px;color:#dc2626">${escapeHtml(route.name)}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px">TMA ${escapeHtml(route.area)} · Túnel VFR (obrigatório)</div>
+            ${altInfo ? `<div style="font-size:11px;margin-top:2px">Alt: ${altInfo}</div>` : ''}
+            <div style="font-size:10px;color:#9ca3af;margin-top:2px">NAV Portugal — Manual VFR</div>
+          </div>
+        `);
+      }
+
+      for (const p of points) {
+        const marker = Leaf.circleMarker([p.lat, p.lon], {
+          radius: 4, color: '#7c3aed', weight: 1.5, fillColor: '#c4b5fd', fillOpacity: 0.9,
+        }).addTo(group);
+        marker.bindPopup(`
+          <div style="font-family:system-ui,sans-serif;min-width:160px">
+            <div style="font-weight:700;font-size:12px;color:#7c3aed">${escapeHtml(p.name)}</div>
+            ${p.routes.length > 0 ? `<div style="font-size:10px;color:#6b7280;margin-top:2px">${p.routes.map((r) => escapeHtml(r)).join('<br/>')}</div>` : ''}
+          </div>
+        `);
+      }
+
+      ptVfrLayerRef.current = group;
+    };
+
+    if (ptVfrDataRef.current) {
+      draw(ptVfrDataRef.current.routes, ptVfrDataRef.current.points);
+    } else {
+      void Promise.all([
+        apiClient.get<{ routes: PtVfrRoute[] }>('/pt-vfr/routes'),
+        apiClient.get<{ points: PtVfrPoint[] }>('/pt-vfr/points'),
+      ])
+        .then(([r, p]) => {
+          ptVfrDataRef.current = { routes: r.routes, points: p.points };
+          draw(r.routes, p.points);
+        })
+        .catch(() => { /* layer is auxiliary — silently skip on fetch failure */ });
+    }
+
+    return () => {
+      cancelled = true;
+      if (ptVfrLayerRef.current) {
+        map.removeLayer(ptVfrLayerRef.current);
+        ptVfrLayerRef.current = null;
+      }
+    };
+  }, [showPtVfr, mapInitialized]);
 
   // DECEA WMS chart overlay (mutually exclusive — only one active at a time)
   useEffect(() => {
@@ -1721,6 +1823,20 @@ export function AerodromeMap({
             >
               <Text style={{ fontSize: 9, fontWeight: '600', color: showAirspace ? '#fff' : '#374151' }}>
                 {t('vfr.layerAirspace')}
+              </Text>
+            </Pressable>
+          ) : null}
+          {flightRules !== 'IFR' ? (
+            <Pressable
+              onPress={() => setShowPtVfr((v) => !v)}
+              style={{
+                backgroundColor: showPtVfr ? '#2563eb' : 'rgba(255,255,255,0.92)',
+                borderRadius: 4, borderWidth: 1, borderColor: '#dfe2e8',
+                paddingHorizontal: 7, paddingVertical: 4,
+              }}
+            >
+              <Text style={{ fontSize: 9, fontWeight: '600', color: showPtVfr ? '#fff' : '#374151' }}>
+                {t('vfr.layerPtVfr')}
               </Text>
             </Pressable>
           ) : null}
