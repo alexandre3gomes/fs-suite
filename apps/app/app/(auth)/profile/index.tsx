@@ -1,10 +1,11 @@
-import { Input } from '@fs-suite/ui';
+import { Button, Input, Text } from '@fs-suite/ui';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, View } from 'react-native';
 
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
+import { useIsDesktop } from '../../../src/hooks/useIsDesktop';
 import { notify } from '../../../src/lib/notify';
 import { isOptedOut, setFeatureContext, setOptOut, trackAction, trackFailure, trackSuccess, categorizeError } from '../../../src/services/analytics';
 import { apiClient } from '../../../src/services/api.client';
@@ -24,38 +25,82 @@ const AI_PROVIDERS: { label: string; value: AiProviderValue; keyUrl: string }[] 
   { label: 'Google (Gemini)', value: 'google', keyUrl: 'https://aistudio.google.com/apikey' },
 ];
 
-function UnitPicker<T extends string>({ label, options, value, onChange }: { label: string; options: T[]; value: T; onChange: (v: T) => void }) {
+type PaneId = 'account' | 'units' | 'integrations' | 'privacy';
+
+const PANES: { id: PaneId; labelKey: string }[] = [
+  { id: 'account', labelKey: 'profile.paneAccount' },
+  { id: 'units', labelKey: 'profile.paneUnits' },
+  { id: 'integrations', labelKey: 'profile.paneIntegrations' },
+  { id: 'privacy', labelKey: 'profile.panePrivacy' },
+];
+
+/** A segmented control drawn as abutting ruled cells — no radius, no gap. */
+function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: T[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
   return (
-    <View className="flex-row items-center justify-between py-2">
-      <Text className="text-sm text-foreground">{label}</Text>
-      <View className="flex-row gap-1.5">
-        {options.map((opt) => (
+    <View className="flex-row">
+      {options.map((opt) => {
+        const active = value === opt;
+        return (
           <Pressable
             key={opt}
             onPress={() => onChange(opt)}
-            className={`rounded-md border px-3 py-1.5 ${value === opt ? 'border-primary bg-primary/10' : 'border-border'}`}
+            className={['border-2 border-rule px-3 py-2', active ? 'bg-rule' : 'bg-transparent'].join(' ')}
+            style={{ marginRight: -2 }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
           >
-            <Text className={`text-xs font-medium ${value === opt ? 'text-primary' : 'text-foreground'}`}>{opt}</Text>
+            <Text variant="labelInk" className={active ? 'text-background' : 'text-foreground'}>
+              {opt}
+            </Text>
           </Pressable>
-        ))}
-      </View>
+        );
+      })}
     </View>
   );
 }
 
-function UnitsSection() {
-  const { t } = useTranslation();
-  const { weight, fuel, speed, setWeight, setFuel, setSpeed } = useUnitsStore();
-
+/** Label on the left, control on the right, separated by a 1px row rule. */
+function SettingRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <View className="border-b border-border px-4 py-5 md:px-6">
-      <Text className="text-base font-bold text-foreground">{t('profile.units')}</Text>
-      <Text className="mt-1 text-xs text-muted-foreground">{t('profile.unitsDescription')}</Text>
-      <View className="mt-3 rounded-md border border-border bg-surface-muted px-4 py-1">
-        <UnitPicker<WeightUnit> label={t('profile.unitWeight')} options={['kg', 'lbs']} value={weight} onChange={setWeight} />
-        <UnitPicker<FuelUnit> label={t('profile.unitFuel')} options={['kg', 'lbs', 'L', 'gal']} value={fuel} onChange={setFuel} />
-        <UnitPicker<SpeedUnit> label={t('profile.unitSpeed')} options={['kt', 'km/h', 'mph']} value={speed} onChange={setSpeed} />
+    <View className="flex-row items-center justify-between gap-4 border-b border-border py-3">
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text variant="small">{label}</Text>
+        {hint ? (
+          <Text variant="muted" className="mt-1 text-[12px]">
+            {hint}
+          </Text>
+        ) : null}
       </View>
+      {children}
+    </View>
+  );
+}
+
+function SectionHead({ title, desc }: { title: string; desc?: string }) {
+  return (
+    <View className="border-b-2 border-rule pb-2">
+      <Text variant="labelInk">{title}</Text>
+      {desc ? (
+        <Text variant="muted" className="mt-2 text-[12px]" style={{ maxWidth: 520 }}>
+          {desc}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -65,6 +110,10 @@ export default function ProfileScreen() {
   const { user } = useCurrentUser();
   const setStoredUser = useAuthStore((s) => s.setUser);
   const router = useRouter();
+  const isDesktop = useIsDesktop();
+  const [pane, setPane] = useState<PaneId>('account');
+
+  const { weight, fuel, speed, setWeight, setFuel, setSpeed } = useUnitsStore();
 
   useEffect(() => { setFeatureContext('profile'); return () => setFeatureContext(null); }, []);
 
@@ -191,200 +240,291 @@ export default function ProfileScreen() {
     }
   }, [t]);
 
-  return (
-      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ paddingBottom: 40 }}>
-        <View className="md:mx-auto md:w-full md:max-w-2xl">
-          {/* User info */}
-          <View className="border-b border-border px-4 py-5 md:px-6">
-            <Text className="text-base font-bold text-foreground">{t('dashboard.profile')}</Text>
-            {user ? (
-              <View className="mt-3">
-                <Text className="text-sm text-foreground">{user.name}</Text>
-                <Text className="text-xs text-muted-foreground">{user.email}</Text>
-              </View>
+  const pad = isDesktop ? 'px-8' : 'px-4';
+
+  const paneNav = (
+    <View className={isDesktop ? '' : 'flex-row flex-wrap'}>
+      {PANES.map((p) => {
+        const active = pane === p.id;
+        return (
+          <Pressable
+            key={p.id}
+            onPress={() => setPane(p.id)}
+            className={
+              isDesktop
+                ? [
+                    'flex-row items-center gap-3 border-b border-border py-3 pr-4',
+                    active ? 'bg-secondary' : '',
+                  ].join(' ')
+                : ['border-2 border-rule px-3 py-2', active ? 'bg-rule' : 'bg-transparent'].join(' ')
+            }
+            style={isDesktop ? undefined : { marginRight: -2 }}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+          >
+            {isDesktop ? (
+              <View
+                style={{ width: 4, alignSelf: 'stretch', minHeight: 18 }}
+                className={active ? 'bg-primary' : 'bg-transparent'}
+              />
             ) : null}
-          </View>
+            <Text
+              variant="labelInk"
+              className={
+                isDesktop
+                  ? active
+                    ? 'text-primary'
+                    : 'text-foreground'
+                  : active
+                    ? 'text-background'
+                    : 'text-foreground'
+              }
+            >
+              {t(p.labelKey)}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
+  const body = (
+    <View className={isDesktop ? 'px-8 py-6' : 'px-4 py-5'}>
+      {pane === 'account' ? (
+        <View>
+          <SectionHead title={t('profile.paneAccount')} />
+          {user ? (
+            <View className="pt-3">
+              <SettingRow label={t('profile.fieldName')}>
+                <Text variant="small">{user.name}</Text>
+              </SettingRow>
+              <SettingRow label={t('profile.fieldEmail')}>
+                <Text variant="small">{user.email}</Text>
+              </SettingRow>
+            </View>
+          ) : null}
 
           {/* Admin area — only for admins (isAdmin from /users/me) */}
           {user?.isAdmin ? (
-            <Pressable
-              className="border-b border-border px-4 py-5 active:opacity-70 md:px-6"
-              onPress={() => router.push('/(auth)/admin')}
-            >
-              <View className="flex-row items-center justify-between">
-                <View>
-                  <Text className="text-base font-bold text-foreground">{t('admin.title')}</Text>
-                  <Text className="mt-1 text-xs text-muted-foreground">{t('admin.communicationsDesc')}</Text>
-                </View>
-                <Text className="text-muted-foreground">›</Text>
-              </View>
-            </Pressable>
+            <View className="mt-6 flex-row">
+              <Button variant="secondary" onPress={() => router.push('/(auth)/admin')}>
+                <Text>{t('admin.title')}</Text>
+              </Button>
+            </View>
           ) : null}
+        </View>
+      ) : null}
 
-          {/* Units */}
-          <UnitsSection />
+      {pane === 'units' ? (
+        <View>
+          <SectionHead title={t('profile.units')} desc={t('profile.unitsDescription')} />
+          <View className="pt-3">
+            <SettingRow label={t('profile.unitWeight')}>
+              <Segmented<WeightUnit> options={['kg', 'lbs']} value={weight} onChange={setWeight} />
+            </SettingRow>
+            <SettingRow label={t('profile.unitFuel')}>
+              <Segmented<FuelUnit> options={['kg', 'lbs', 'L', 'gal']} value={fuel} onChange={setFuel} />
+            </SettingRow>
+            <SettingRow label={t('profile.unitSpeed')}>
+              <Segmented<SpeedUnit> options={['kt', 'km/h', 'mph']} value={speed} onChange={setSpeed} />
+            </SettingRow>
+          </View>
+        </View>
+      ) : null}
 
-          {/* Privacy */}
-          <View className="border-b border-border px-4 py-5 md:px-6">
-            <Text className="text-base font-bold text-foreground">{t('profile.privacy')}</Text>
-            <Text className="mt-1 text-xs text-muted-foreground">{t('profile.privacyDescription')}</Text>
-            <View className="mt-3 flex-row items-center justify-between rounded-md border border-border bg-surface-muted px-4 py-3">
-              <View className="flex-1 pr-3">
-                <Text className="text-sm font-semibold text-foreground">{t('profile.analyticsToggle')}</Text>
-                <Text className="mt-1 text-xs text-muted-foreground">{t('profile.analyticsToggleDescription')}</Text>
+      {pane === 'integrations' ? (
+        <View>
+          <SectionHead title={t('profile.integrations')} />
+
+          {/* SimBrief */}
+          <View className="border-b border-border py-5">
+            <View className="flex-row items-center justify-between gap-3">
+              <Text variant="h4">SimBrief</Text>
+              {!simbriefLoading && simbriefPilotId ? (
+                <Text variant="labelInk" className="text-success">
+                  {t('vfr.simbriefConnected')}
+                </Text>
+              ) : null}
+            </View>
+            <Text variant="muted" className="mt-2 text-[12px]" style={{ maxWidth: 520 }}>
+              {t('profile.simbriefDescription')}
+            </Text>
+            {simbriefLoading ? (
+              <Text variant="muted" className="mt-3">
+                {t('common.loading')}
+              </Text>
+            ) : (
+              <View className="mt-3 flex-row items-end gap-3">
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Input
+                    label={t('vfr.simbriefPilotId')}
+                    value={simbriefPilotId}
+                    onChangeText={(v) => { setSimbriefPilotId(v); setSimbriefSaved(false); }}
+                    placeholder={t('vfr.simbriefPilotIdPlaceholder')}
+                  />
+                </View>
+                <Button
+                  onPress={handleSaveSimbrief}
+                  disabled={simbriefSaving || !simbriefPilotId.trim()}
+                >
+                  <Text>
+                    {simbriefSaving ? t('common.saving') : simbriefSaved ? '✓' : t('common.save')}
+                  </Text>
+                </Button>
               </View>
+            )}
+          </View>
+
+          {/* AI Validation BYOK */}
+          <View className="py-5">
+            <View className="flex-row items-center justify-between gap-3">
+              <Text variant="h4">{t('profile.aiValidation')}</Text>
+              {!aiLoading && aiHasKey ? (
+                <Text variant="labelInk" className="text-success">
+                  {t('profile.aiConnected')} ({aiConnectedProvider})
+                </Text>
+              ) : null}
+            </View>
+            <Text variant="muted" className="mt-2 text-[12px]" style={{ maxWidth: 520 }}>
+              {t('profile.aiValidationDescription')}
+            </Text>
+            {aiLoading ? (
+              <Text variant="muted" className="mt-3">
+                {t('common.loading')}
+              </Text>
+            ) : (
+              <View className="mt-3">
+                <Text variant="label">{t('profile.aiProvider')}</Text>
+                <View className="mt-2 flex-row">
+                  {AI_PROVIDERS.map((p) => {
+                    const active = aiProvider === p.value;
+                    return (
+                      <Pressable
+                        key={p.value}
+                        onPress={() => setAiProvider(p.value)}
+                        className={['border-2 border-rule px-3 py-2', active ? 'bg-rule' : 'bg-transparent'].join(' ')}
+                        style={{ marginRight: -2 }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text variant="labelInk" className={active ? 'text-background' : 'text-foreground'}>
+                          {p.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Pressable
+                  onPress={() => {
+                    const provider = AI_PROVIDERS.find((p) => p.value === aiProvider);
+                    if (provider) Linking.openURL(provider.keyUrl);
+                  }}
+                  className="mt-3"
+                >
+                  <Text variant="label" className="text-accent">
+                    {t('profile.aiGetKey', { provider: AI_PROVIDERS.find((p) => p.value === aiProvider)?.label })}
+                  </Text>
+                </Pressable>
+
+                <View className="mt-4 flex-row items-end gap-3">
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Input
+                      label={t('profile.aiApiKey')}
+                      value={aiApiKey}
+                      onChangeText={(v) => { setAiApiKey(v); setAiSaved(false); }}
+                      placeholder={t('profile.aiApiKeyPlaceholder')}
+                      secureTextEntry
+                    />
+                  </View>
+                  <Button onPress={handleSaveAiKey} disabled={aiSaving || !aiApiKey.trim()}>
+                    <Text>{aiSaving ? t('common.saving') : aiSaved ? '✓' : t('common.save')}</Text>
+                  </Button>
+                </View>
+
+                {aiHasKey ? (
+                  <Pressable onPress={handleDeleteAiKey} className="mt-4">
+                    <Text variant="label" className="text-destructive">
+                      {t('profile.aiDeleteKey')}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            )}
+          </View>
+        </View>
+      ) : null}
+
+      {pane === 'privacy' ? (
+        <View>
+          <SectionHead title={t('profile.privacy')} desc={t('profile.privacyDescription')} />
+          <View className="pt-3">
+            <SettingRow
+              label={t('profile.analyticsToggle')}
+              hint={t('profile.analyticsToggleDescription')}
+            >
               <Pressable
                 onPress={() => { void handleToggleAnalytics(); }}
-                className={`rounded-md border px-3 py-1.5 ${analyticsOptedOut ? 'border-border' : 'border-primary bg-primary/10'}`}
+                className={['border-2 border-rule px-3 py-2', analyticsOptedOut ? 'bg-transparent' : 'bg-rule'].join(' ')}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: !analyticsOptedOut }}
               >
-                <Text className={`text-xs font-medium ${analyticsOptedOut ? 'text-foreground' : 'text-primary'}`}>
+                <Text variant="labelInk" className={analyticsOptedOut ? 'text-foreground' : 'text-background'}>
                   {analyticsOptedOut ? t('profile.analyticsOff') : t('profile.analyticsOn')}
                 </Text>
               </Pressable>
-            </View>
+            </SettingRow>
 
             {/* Product announcement emails (opt-out) */}
-            <View className="mt-3 flex-row items-center justify-between rounded-md border border-border bg-surface-muted px-4 py-3">
-              <View className="flex-1 pr-3">
-                <Text className="text-sm font-semibold text-foreground">{t('profile.emailConsentToggle')}</Text>
-                <Text className="mt-1 text-xs text-muted-foreground">{t('profile.emailConsentDescription')}</Text>
-              </View>
+            <SettingRow
+              label={t('profile.emailConsentToggle')}
+              hint={t('profile.emailConsentDescription')}
+            >
               <Pressable
                 onPress={() => { void handleToggleEmailConsent(); }}
                 disabled={emailConsentSaving}
-                className={`rounded-md border px-3 py-1.5 ${emailConsent ? 'border-primary bg-primary/10' : 'border-border'} ${emailConsentSaving ? 'opacity-50' : ''}`}
+                className={[
+                  'border-2 border-rule px-3 py-2',
+                  emailConsent ? 'bg-rule' : 'bg-transparent',
+                  emailConsentSaving ? 'opacity-45' : '',
+                ].join(' ')}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: emailConsent }}
               >
-                <Text className={`text-xs font-medium ${emailConsent ? 'text-primary' : 'text-foreground'}`}>
+                <Text variant="labelInk" className={emailConsent ? 'text-background' : 'text-foreground'}>
                   {emailConsent ? t('profile.emailConsentOn') : t('profile.emailConsentOff')}
                 </Text>
               </Pressable>
-            </View>
-          </View>
-
-          {/* Integrations */}
-          <View className="border-b border-border px-4 py-5 md:px-6">
-            <Text className="mb-3 text-base font-bold text-foreground">
-              {t('profile.integrations')}
-            </Text>
-
-            {/* SimBrief */}
-            <View className="rounded-md border border-border bg-surface-muted px-4 py-4">
-              <View className="mb-2 flex-row items-center gap-2">
-                <Text className="text-sm font-semibold text-foreground">SimBrief</Text>
-                {!simbriefLoading && simbriefPilotId ? (
-                  <View className="flex-row items-center gap-1">
-                    <View className="h-2 w-2 rounded-full bg-green-500" />
-                    <Text className="text-[10px] text-green-600">{t('vfr.simbriefConnected')}</Text>
-                  </View>
-                ) : null}
-              </View>
-              <Text className="mb-3 text-xs text-muted-foreground">
-                {t('profile.simbriefDescription')}
-              </Text>
-              {simbriefLoading ? (
-                <Text className="text-xs text-muted-foreground">{t('common.loading')}</Text>
-              ) : (
-                <View className="flex-row items-end gap-2">
-                  <View className="flex-1">
-                    <Input
-                      label={t('vfr.simbriefPilotId')}
-                      value={simbriefPilotId}
-                      onChangeText={(v) => { setSimbriefPilotId(v); setSimbriefSaved(false); }}
-                      placeholder={t('vfr.simbriefPilotIdPlaceholder')}
-                    />
-                  </View>
-                  <Pressable
-                    onPress={handleSaveSimbrief}
-                    disabled={simbriefSaving || !simbriefPilotId.trim()}
-                    className="rounded-button bg-primary px-4 py-2.5 active:opacity-80 disabled:opacity-50"
-                  >
-                    <Text className="text-xs font-medium text-primary-foreground">
-                      {simbriefSaving ? t('common.saving') : simbriefSaved ? '✓' : t('common.save')}
-                    </Text>
-                  </Pressable>
-                </View>
-              )}
-            </View>
-
-            {/* AI Validation BYOK */}
-            <View className="mt-3 rounded-md border border-border bg-surface-muted px-4 py-4">
-              <View className="mb-2 flex-row items-center gap-2">
-                <Text className="text-sm font-semibold text-foreground">
-                  {t('profile.aiValidation')}
-                </Text>
-                {!aiLoading && aiHasKey ? (
-                  <View className="flex-row items-center gap-1">
-                    <View className="h-2 w-2 rounded-full bg-green-500" />
-                    <Text className="text-[10px] text-green-600">
-                      {t('profile.aiConnected')} ({aiConnectedProvider})
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-              <Text className="mb-3 text-xs text-muted-foreground">
-                {t('profile.aiValidationDescription')}
-              </Text>
-              {aiLoading ? (
-                <Text className="text-xs text-muted-foreground">{t('common.loading')}</Text>
-              ) : (
-                <View className="gap-3">
-                  <View>
-                    <Text className="mb-1.5 text-xs text-muted-foreground">{t('profile.aiProvider')}</Text>
-                    <View className="flex-row gap-1.5">
-                      {AI_PROVIDERS.map((p) => (
-                        <Pressable
-                          key={p.value}
-                          onPress={() => setAiProvider(p.value)}
-                          className={`rounded-md border px-3 py-1.5 ${aiProvider === p.value ? 'border-primary bg-primary/10' : 'border-border'}`}
-                        >
-                          <Text className={`text-xs font-medium ${aiProvider === p.value ? 'text-primary' : 'text-foreground'}`}>
-                            {p.label}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                    <Pressable
-                      onPress={() => {
-                        const provider = AI_PROVIDERS.find((p) => p.value === aiProvider);
-                        if (provider) Linking.openURL(provider.keyUrl);
-                      }}
-                      className="mt-1.5"
-                    >
-                      <Text className="text-xs text-primary underline">
-                        {t('profile.aiGetKey', { provider: AI_PROVIDERS.find((p) => p.value === aiProvider)?.label })}
-                      </Text>
-                    </Pressable>
-                  </View>
-                  <View className="flex-row items-end gap-2">
-                    <View className="flex-1">
-                      <Input
-                        label={t('profile.aiApiKey')}
-                        value={aiApiKey}
-                        onChangeText={(v) => { setAiApiKey(v); setAiSaved(false); }}
-                        placeholder={t('profile.aiApiKeyPlaceholder')}
-                        secureTextEntry
-                      />
-                    </View>
-                    <Pressable
-                      onPress={handleSaveAiKey}
-                      disabled={aiSaving || !aiApiKey.trim()}
-                      className="rounded-button bg-primary px-4 py-2.5 active:opacity-80 disabled:opacity-50"
-                    >
-                      <Text className="text-xs font-medium text-primary-foreground">
-                        {aiSaving ? t('common.saving') : aiSaved ? '✓' : t('common.save')}
-                      </Text>
-                    </Pressable>
-                  </View>
-                  {aiHasKey ? (
-                    <Pressable onPress={handleDeleteAiKey}>
-                      <Text className="text-xs text-destructive">{t('profile.aiDeleteKey')}</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              )}
-            </View>
+            </SettingRow>
           </View>
         </View>
-      </ScrollView>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <View className="flex-1 bg-background">
+      <View className={'border-b-2 border-rule py-6 ' + pad}>
+        <Text variant="kicker">{t('profile.kicker')}</Text>
+        <Text variant={isDesktop ? 'h1' : 'h2'} className="mt-2">
+          {t('dashboard.profile')}
+        </Text>
+      </View>
+
+      {isDesktop ? (
+        <View className="flex-1 flex-row">
+          <View className="border-r-2 border-rule" style={{ width: 200, flexGrow: 0, flexShrink: 0 }}>
+            {paneNav}
+          </View>
+          <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 40 }}>
+            {body}
+          </ScrollView>
+        </View>
+      ) : (
+        <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 40 }}>
+          <View className="border-b border-border px-4 py-3">{paneNav}</View>
+          {body}
+        </ScrollView>
+      )}
+    </View>
   );
 }

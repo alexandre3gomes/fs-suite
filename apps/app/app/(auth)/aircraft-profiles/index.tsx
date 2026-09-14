@@ -1,16 +1,19 @@
 import type { UserAircraftProfile } from '@fs-suite/types';
-import { Card, CardContent, Spinner, Text } from '@fs-suite/ui';
+import { Button, Spinner, Text } from '@fs-suite/ui';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { AircraftProfileModal } from '../../../src/components/vfr/AircraftProfileModal';
 import { useAircraftProfiles } from '../../../src/hooks/useAircraftProfiles';
+import { useIsDesktop } from '../../../src/hooks/useIsDesktop';
 import { confirmDialog } from '../../../src/lib/notify';
 import { apiClient } from '../../../src/services/api.client';
+import { formatWeight, useUnitsStore } from '../../../src/stores/units.store';
 
 export default function AircraftProfilesScreen() {
   const { t } = useTranslation();
+  const isDesktop = useIsDesktop();
   const { mine, catalog, shared, loading, error, refresh } = useAircraftProfiles();
 
   const [showModal, setShowModal] = useState(false);
@@ -33,7 +36,7 @@ export default function AircraftProfilesScreen() {
       confirmLabel: t('aircraftProfiles.deleteConfirmLabel'),
       destructive: true,
       onConfirm: () => {
-        apiClient.delete(`/aircraft-profiles/${profile.id}`)
+        apiClient.delete('/aircraft-profiles/' + profile.id)
           .then(() => refresh())
           .catch(() => {});
       },
@@ -62,64 +65,65 @@ export default function AircraftProfilesScreen() {
     );
   }
 
+  const pad = isDesktop ? 'px-8' : 'px-4';
+  const sharedCount = mine.filter((p) => p.isShared).length;
+
   return (
     <View className="flex-1 bg-background">
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
+      <View
+        className={
+          'border-b-2 border-rule ' + pad + (isDesktop ? ' flex-row items-end justify-between py-6' : ' py-5')
+        }
       >
-        <View className="flex-1 px-4 py-6 md:mx-auto md:w-full md:max-w-3xl md:px-8 md:py-10">
-          <Text variant="h3" className="mb-6">
+        <View style={{ minWidth: 0 }}>
+          <Text variant="kicker">
+            {t('aircraftProfiles.kicker', { count: mine.length, shared: sharedCount })}
+          </Text>
+          <Text variant={isDesktop ? 'h1' : 'h2'} className="mt-2">
             {t('aircraftProfiles.title')}
           </Text>
-
-          {error ? (
-            <View style={{ padding: 14, backgroundColor: '#fef2f2', borderRadius: 10, borderWidth: 1, borderColor: '#fecaca', marginBottom: 16 }}>
-              <Text style={{ color: '#dc2626', fontSize: 14 }}>{error}</Text>
-            </View>
-          ) : null}
-
-          {mine.length === 0 && !loading ? (
-            <View style={{ alignItems: 'center', paddingVertical: 48, gap: 8 }}>
-              <Text className="text-base font-semibold text-foreground">
-                {t('aircraftProfiles.empty')}
-              </Text>
-              <Text variant="muted" style={{ textAlign: 'center', maxWidth: 280 }}>
-                {t('aircraftProfiles.emptyDesc')}
-              </Text>
-            </View>
-          ) : (
-            <View className="gap-3">
-              {mine.map((profile) => (
-                <ProfileRow
-                  key={profile.id}
-                  profile={profile}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  editLabel={t('aircraftProfiles.edit')}
-                  sharedLabel={t('aircraftProfiles.shared')}
-                />
-              ))}
-            </View>
-          )}
-
-          <Pressable
-            onPress={handleAdd}
-            style={{
-              marginTop: 20,
-              paddingVertical: 14,
-              borderRadius: 10,
-              borderWidth: 1.5,
-              borderColor: '#2563eb',
-              borderStyle: 'dashed',
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: '#2563eb', fontSize: 15, fontWeight: '600' }}>
-              {t('aircraftProfiles.newProfile')}
-            </Text>
-          </Pressable>
         </View>
+        <View className={isDesktop ? '' : 'mt-4 flex-row'}>
+          <Button onPress={handleAdd}>
+            <Text>{t('aircraftProfiles.newProfile')}</Text>
+          </Button>
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+        {error ? (
+          <View className={'bg-destructive py-4 ' + pad}>
+            <Text className="font-sans text-[14px] font-bold text-destructive-foreground">{error}</Text>
+          </View>
+        ) : null}
+
+        {mine.length === 0 && !loading ? (
+          <View className={'py-16 ' + pad}>
+            <Text variant={isDesktop ? 'h3' : 'h4'} style={{ maxWidth: 460 }}>
+              {t('aircraftProfiles.empty')}
+            </Text>
+            <Text variant="muted" className="mt-3" style={{ maxWidth: 420 }}>
+              {t('aircraftProfiles.emptyDesc')}
+            </Text>
+            <View className="mt-6 flex-row">
+              <Button onPress={handleAdd}>
+                <Text>{t('aircraftProfiles.newProfile')}</Text>
+              </Button>
+            </View>
+          </View>
+        ) : (
+          mine.map((profile) => (
+            <ProfileRow
+              key={profile.id}
+              profile={profile}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              editLabel={t('aircraftProfiles.edit')}
+              sharedLabel={t('aircraftProfiles.shared')}
+              pad={pad}
+            />
+          ))
+        )}
       </ScrollView>
 
       <AircraftProfileModal
@@ -136,66 +140,97 @@ export default function AircraftProfilesScreen() {
 }
 
 function ProfileRow({
-  profile, onEdit, onDelete, editLabel, sharedLabel,
+  profile, onEdit, onDelete, editLabel, sharedLabel, pad,
 }: {
   profile: UserAircraftProfile;
   onEdit: (p: UserAircraftProfile) => void;
   onDelete: (p: UserAircraftProfile) => void;
   editLabel: string;
   sharedLabel: string;
+  pad: string;
 }) {
-  return (
-    <Card>
-      <CardContent className="md:px-8 md:py-5">
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#2563eb' }}>
-                {profile.icaoType ?? '—'}
-              </Text>
-              <Text className="text-base font-semibold text-foreground" numberOfLines={1}>
-                {profile.name}
-              </Text>
-              {profile.isShared ? (
-                <View style={{ backgroundColor: '#7c3aed18', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#7c3aed' }}>{sharedLabel}</Text>
-                </View>
-              ) : null}
-            </View>
-            {profile.manufacturer || profile.model ? (
-              <Text variant="muted" style={{ fontSize: 13 }} numberOfLines={1}>
-                {[profile.manufacturer, profile.model].filter(Boolean).join(' ')}
-              </Text>
-            ) : null}
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 2 }}>
-              {profile.cruiseSpeedKts != null ? (
-                <Text style={{ fontSize: 11, color: '#9ca3af' }}>{profile.cruiseSpeedKts} kt</Text>
-              ) : null}
-              {profile.mtowKg != null ? (
-                <Text style={{ fontSize: 11, color: '#9ca3af' }}>MTOW {profile.mtowKg} kg</Text>
-              ) : null}
-              {profile.fuelBurnLph != null ? (
-                <Text style={{ fontSize: 11, color: '#9ca3af' }}>{profile.fuelBurnLph} L/h</Text>
-              ) : null}
-            </View>
-          </View>
+  const { t } = useTranslation();
+  const weightUnit = useUnitsStore((s) => s.weight);
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Pressable
-              onPress={() => onEdit(profile)}
-              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: '#e5e7eb' }}
-            >
-              <Text style={{ fontSize: 13, color: '#374151', fontWeight: '500' }}>{editLabel}</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => onDelete(profile)}
-              style={{ paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6 }}
-            >
-              <Text style={{ fontSize: 16, color: '#dc2626' }}>✕</Text>
-            </Pressable>
+  /** ICAO type is the identifier a pilot scans for, so it leads. */
+  const specs = [
+    {
+      key: 'cruise',
+      label: t('aircraftProfiles.specCruise'),
+      value: profile.cruiseSpeedKts != null ? profile.cruiseSpeedKts + ' kt' : '—',
+    },
+    {
+      key: 'mtow',
+      label: t('aircraftProfiles.specMtow'),
+      value: profile.mtowKg != null ? formatWeight(profile.mtowKg, weightUnit) : '—',
+    },
+    {
+      key: 'burn',
+      // fuelBurnLph is litres per hour by definition, so it is not converted.
+      label: t('aircraftProfiles.specBurn'),
+      value: profile.fuelBurnLph != null ? profile.fuelBurnLph + ' L/h' : '—',
+    },
+  ];
+
+  return (
+    <View className={'border-b border-border py-4 ' + pad}>
+      <View className="flex-row items-start justify-between gap-4">
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View className="flex-row items-baseline gap-3">
+            <Text variant="labelInk" className="text-primary">
+              {profile.icaoType ?? '—'}
+            </Text>
+            <Text variant="h4" numberOfLines={1} style={{ flexShrink: 1 }}>
+              {profile.name}
+            </Text>
+            {profile.isShared ? (
+              <View className="bg-secondary px-2 py-1">
+                <Text variant="label" className="text-[10px]">
+                  {sharedLabel}
+                </Text>
+              </View>
+            ) : null}
           </View>
+          {profile.manufacturer || profile.model ? (
+            <Text variant="muted" className="mt-1 text-[13px]" numberOfLines={1}>
+              {[profile.manufacturer, profile.model].filter(Boolean).join(' ')}
+            </Text>
+          ) : null}
         </View>
-      </CardContent>
-    </Card>
+
+        <View className="flex-row items-center">
+          <Pressable
+            onPress={() => onEdit(profile)}
+            className="border-2 border-rule px-3 py-2"
+            accessibilityRole="button"
+          >
+            <Text variant="labelInk">{editLabel}</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => onDelete(profile)}
+            className="border-2 border-l-0 border-rule px-3 py-2"
+            accessibilityRole="button"
+            accessibilityLabel={t('common.delete')}
+          >
+            <Text variant="labelInk" className="text-destructive">
+              ✕
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View className="mt-3 flex-row border-t-2 border-rule">
+        {specs.map((spec) => (
+          <View key={spec.key} className="border-r border-border pr-3 pt-2" style={{ flex: 1, minWidth: 0 }}>
+            <Text variant="label" className="text-[10px]">
+              {spec.label}
+            </Text>
+            <Text variant="small" className="mt-1" numberOfLines={1}>
+              {spec.value}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
   );
 }
