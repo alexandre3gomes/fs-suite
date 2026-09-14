@@ -1,0 +1,1099 @@
+{
+  "source": "NAV Portugal — Manual VFR (eVFR), ENR 3.5 & ENR 4.4",
+  "sourceUrl": "https://ais.nav.pt/",
+  "effectiveDate": "2026-05-14",
+  "generatedAt": "2026-07-21",
+  "routes": [
+    {
+      "id": "tunel-sul-ts-sentido-sul",
+      "name": "Túnel Sul - TS (sentido sul)",
+      "area": "Lisboa",
+      "points": [
+        {
+          "name": "Cabo Espichel",
+          "lat": 38.424167,
+          "lon": -9.185556
+        },
+        {
+          "name": "Lagoa de Albufeira",
+          "lat": 38.512778,
+          "lon": -9.173056
+        },
+        {
+          "name": "Fonte da Telha",
+          "lat": 38.571944,
+          "lon": -9.194167
+        },
+        {
+          "name": "Cova do Vapor",
+          "lat": 38.665,
+          "lon": -9.255833
+        }
+      ],
+      "legs": [
+        {
+          "fromIdx": 0,
+          "toIdx": 1,
+          "courseAtoB": null,
+          "courseBtoA": 188,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        },
+        {
+          "fromIdx": 1,
+          "toIdx": 2,
+          "courseAtoB": null,
+          "courseBtoA": 166,
+          "upperFt": 1000,
+          "lowerFt": 1000
+        },
+        {
+          "fromIdx": 2,
+          "toIdx": 3,
+          "courseAtoB": null,
+          "courseBtoA": 154,
+          "upperFt": 1000,
+          "lowerFt": 1000
+        }
+      ]
+    },
+    {
+      "id": "tunel-sul-tn-sentido-norte",
+      "name": "Túnel Sul - TN (sentido norte)",
+      "area": "Lisboa",
+      "points": [
+        {
+          "name": "Cabo Espichel",
+          "lat": 38.424167,
+          "lon": -9.185556
+        },
+        {
+          "name": "Lagoa de Albufeira",
+          "lat": 38.512778,
+          "lon": -9.173056
+        },
+        {
+          "name": "Fonte da Telha",
+          "lat": 38.571944,
+          "lon": -9.194167
+        },
+        {
+          "name": "Farol do Bugio",
+          "lat": 38.660278,
+          "lon": -9.298889
+        }
+      ],
+      "legs": [
+        {
+          "fromIdx": 0,
+          "toIdx": 1,
+          "courseAtoB": 8,
+          "courseBtoA": null,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        },
+        {
+          "fromIdx": 1,
+          "toIdx": 2,
+          "courseAtoB": 346,
+          "courseBtoA": null,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        },
+        {
+          "fromIdx": 2,
+          "toIdx": 3,
+          "courseAtoB": 319,
+          "courseBtoA": null,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        }
+      ]
+    },
+    {
+      "id": "tunel-este-te-sentido-este",
+      "name": "Túnel Este - TE (sentido este)",
+      "area": "Lisboa",
+      "points": [
+        {
+          "name": "Barragem da Venda Nova",
+          "lat": 38.516667,
+          "lon": -8.555833
+        },
+        {
+          "name": "Zambujal/Pinheiro (linha férrea)",
+          "lat": 38.516111,
+          "lon": -8.700278
+        },
+        {
+          "name": "Porto de Setúbal",
+          "lat": 38.515,
+          "lon": -8.892222
+        },
+        {
+          "name": "Cruzamento das estradas N10 e N1017",
+          "lat": 38.514444,
+          "lon": -8.970556
+        },
+        {
+          "name": "Lagoa de Albufeira",
+          "lat": 38.512778,
+          "lon": -9.173056
+        },
+        {
+          "name": "Fonte da Telha",
+          "lat": 38.571944,
+          "lon": -9.194167
+        },
+        {
+          "name": "Cova do Vapor",
+          "lat": 38.665,
+          "lon": -9.255833
+        }
+      ],
+      "legs": [
+        {
+          "fromIdx": 0,
+          "toIdx": 1,
+          "courseAtoB": null,
+          "courseBtoA": 92,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        },
+        {
+          "fromIdx": 1,
+          "toIdx": 2,
+          "courseAtoB": null,
+          "courseBtoA": 91,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        },
+        {
+          "fromIdx": 2,
+          "toIdx": 3,
+          "courseAtoB": null,
+          "courseBtoA": 91,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        },
+        {
+          "fromIdx": 3,
+          "toIdx": 4,
+          "courseAtoB": null,
+          "courseBtoA": 91,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        },
+        {
+          "fromIdx": 4,
+          "toIdx": 5,
+          "courseAtoB": null,
+          "courseBtoA": 166,
+          "upperFt": 1000,
+          "lowerFt": 1000
+        },
+        {
+          "fromIdx": 5,
+          "toIdx": 6,
+          "courseAtoB": null,
+          "courseBtoA": 154,
+          "upperFt": 1000,
+          "lowerFt": 1000
+        }
+      ]
+    },
+    {
+      "id": "tunel-oeste-tw-sentido-oeste",
+      "name": "Túnel Oeste- TW (sentido oeste)",
+      "area": "Lisboa",
+      "points": [
+        {
+          "name": "Barragem da Venda Nova",
+          "lat": 38.516667,
+          "lon": -8.555833
+        },
+        {
+          "name": "Zambujal/Pinheiro (linha férrea)",
+          "lat": 38.516111,
+          "lon": -8.700278
+        },
+        {
+          "name": "Porto de Setúbal",
+          "lat": 38.515,
+          "lon": -8.892222
+        },
+        {
+          "name": "Cruzamento das estradas N10 e N1017",
+          "lat": 38.514444,
+          "lon": -8.970556
+        },
+        {
+          "name": "Lagoa de Albufeira",
+          "lat": 38.512778,
+          "lon": -9.173056
+        },
+        {
+          "name": "Fonte da Telha",
+          "lat": 38.571944,
+          "lon": -9.194167
+        },
+        {
+          "name": "Farol do Bugio",
+          "lat": 38.660278,
+          "lon": -9.298889
+        }
+      ],
+      "legs": [
+        {
+          "fromIdx": 0,
+          "toIdx": 1,
+          "courseAtoB": 272,
+          "courseBtoA": null,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        },
+        {
+          "fromIdx": 1,
+          "toIdx": 2,
+          "courseAtoB": 271,
+          "courseBtoA": null,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        },
+        {
+          "fromIdx": 2,
+          "toIdx": 3,
+          "courseAtoB": 271,
+          "courseBtoA": null,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        },
+        {
+          "fromIdx": 3,
+          "toIdx": 4,
+          "courseAtoB": 271,
+          "courseBtoA": null,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        },
+        {
+          "fromIdx": 4,
+          "toIdx": 5,
+          "courseAtoB": 346,
+          "courseBtoA": null,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        },
+        {
+          "fromIdx": 5,
+          "toIdx": 6,
+          "courseAtoB": 319,
+          "courseBtoA": null,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        }
+      ]
+    },
+    {
+      "id": "tunel-sudeste-tse-sentido-sudeste",
+      "name": "Túnel Sudeste - TSE (sentido sudeste)",
+      "area": "Lisboa",
+      "points": [
+        {
+          "name": "Brejos da Carregueira - Carvalhal",
+          "lat": 38.329167,
+          "lon": -8.76
+        },
+        {
+          "name": "Estuário do Rio Sado - Comporta",
+          "lat": 38.418611,
+          "lon": -8.823611
+        },
+        {
+          "name": "Porto deSetúbal",
+          "lat": 38.515,
+          "lon": -8.892222
+        },
+        {
+          "name": "Cruzamento das estradas N10 e N1017",
+          "lat": 38.514444,
+          "lon": -8.970556
+        },
+        {
+          "name": "Lagoa de Albufeira",
+          "lat": 38.512778,
+          "lon": -9.173056
+        },
+        {
+          "name": "Fonte da Telha",
+          "lat": 38.571944,
+          "lon": -9.194167
+        },
+        {
+          "name": "Cova do Vapor",
+          "lat": 38.665,
+          "lon": -9.255833
+        }
+      ],
+      "legs": [
+        {
+          "fromIdx": 0,
+          "toIdx": 1,
+          "courseAtoB": null,
+          "courseBtoA": 153,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        },
+        {
+          "fromIdx": 1,
+          "toIdx": 2,
+          "courseAtoB": null,
+          "courseBtoA": 153,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        },
+        {
+          "fromIdx": 2,
+          "toIdx": 3,
+          "courseAtoB": null,
+          "courseBtoA": 91,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        },
+        {
+          "fromIdx": 3,
+          "toIdx": 4,
+          "courseAtoB": null,
+          "courseBtoA": 91,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        },
+        {
+          "fromIdx": 4,
+          "toIdx": 5,
+          "courseAtoB": null,
+          "courseBtoA": 166,
+          "upperFt": 1000,
+          "lowerFt": 1000
+        },
+        {
+          "fromIdx": 5,
+          "toIdx": 6,
+          "courseAtoB": null,
+          "courseBtoA": 154,
+          "upperFt": 1000,
+          "lowerFt": 1000
+        }
+      ]
+    },
+    {
+      "id": "tunel-noroeste-tnw-sentido-noroeste",
+      "name": "Tunel Noroeste TNW (sentido noroeste)",
+      "area": "Lisboa",
+      "points": [
+        {
+          "name": "Brejos da Carregueira - Carvalhal",
+          "lat": 38.329167,
+          "lon": -8.76
+        },
+        {
+          "name": "Estuário do Rio Sado - Comporta",
+          "lat": 38.418611,
+          "lon": -8.823611
+        },
+        {
+          "name": "Porto deSetúbal",
+          "lat": 38.515,
+          "lon": -8.892222
+        },
+        {
+          "name": "Cruzamento das estradas N10 e N1017",
+          "lat": 38.514444,
+          "lon": -8.970556
+        },
+        {
+          "name": "Lagoa de Albufeira",
+          "lat": 38.512778,
+          "lon": -9.173056
+        },
+        {
+          "name": "Fonte da Telha",
+          "lat": 38.571944,
+          "lon": -9.194167
+        },
+        {
+          "name": "Farol do Bugio",
+          "lat": 38.660278,
+          "lon": -9.298889
+        }
+      ],
+      "legs": [
+        {
+          "fromIdx": 0,
+          "toIdx": 1,
+          "courseAtoB": 333,
+          "courseBtoA": null,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        },
+        {
+          "fromIdx": 1,
+          "toIdx": 2,
+          "courseAtoB": 333,
+          "courseBtoA": null,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        },
+        {
+          "fromIdx": 2,
+          "toIdx": 3,
+          "courseAtoB": 271,
+          "courseBtoA": null,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        },
+        {
+          "fromIdx": 3,
+          "toIdx": 4,
+          "courseAtoB": 271,
+          "courseBtoA": null,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        },
+        {
+          "fromIdx": 4,
+          "toIdx": 5,
+          "courseAtoB": 346,
+          "courseBtoA": null,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        },
+        {
+          "fromIdx": 5,
+          "toIdx": 6,
+          "courseAtoB": 319,
+          "courseBtoA": null,
+          "upperFt": 1500,
+          "lowerFt": 1500
+        }
+      ]
+    },
+    {
+      "id": "tunel-esposende",
+      "name": "Túnel Esposende",
+      "area": "Porto",
+      "points": [
+        {
+          "name": "BELOS - Ponte de Barcelos",
+          "lat": 41.527778,
+          "lon": -8.608611
+        },
+        {
+          "name": "ZENDE - Foz do rio Cávado",
+          "lat": 41.540556,
+          "lon": -8.792222
+        }
+      ],
+      "legs": [
+        {
+          "fromIdx": 0,
+          "toIdx": 1,
+          "courseAtoB": 277,
+          "courseBtoA": 97,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        }
+      ]
+    },
+    {
+      "id": "tunel-rates",
+      "name": "Túnel Rates",
+      "area": "Porto",
+      "points": [
+        {
+          "name": "FAMAL - A3/A7 Cruzamento de autoestrada",
+          "lat": 41.381667,
+          "lon": -8.500556
+        },
+        {
+          "name": "GONDI - Gondifelos",
+          "lat": 41.428333,
+          "lon": -8.585833
+        },
+        {
+          "name": "ZENDE - Foz do Rio Cávado",
+          "lat": 41.540556,
+          "lon": -8.792222
+        }
+      ],
+      "legs": [
+        {
+          "fromIdx": 0,
+          "toIdx": 1,
+          "courseAtoB": 308,
+          "courseBtoA": 128,
+          "upperFt": 1900,
+          "lowerFt": 1900
+        },
+        {
+          "fromIdx": 1,
+          "toIdx": 2,
+          "courseAtoB": 308,
+          "courseBtoA": 128,
+          "upperFt": 1400,
+          "lowerFt": 1400
+        }
+      ]
+    },
+    {
+      "id": "tunel-barcelos",
+      "name": "Túnel Barcelos",
+      "area": "Porto",
+      "points": [
+        {
+          "name": "FAMAL - A3/A7 Cruzamento de autoestrada",
+          "lat": 41.381667,
+          "lon": -8.500556
+        },
+        {
+          "name": "BELOS - Ponte de Barcelos",
+          "lat": 41.527778,
+          "lon": -8.608611
+        }
+      ],
+      "legs": [
+        {
+          "fromIdx": 0,
+          "toIdx": 1,
+          "courseAtoB": 333,
+          "courseBtoA": 153,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        }
+      ]
+    },
+    {
+      "id": "tunel-crestuma",
+      "name": "Túnel Crestuma",
+      "area": "Porto",
+      "points": [
+        {
+          "name": "CREST - Barragem de Crestuma",
+          "lat": 41.073056,
+          "lon": -8.486944
+        },
+        {
+          "name": "ALFEN - IC 24 Cruzamento de estrada",
+          "lat": 41.240278,
+          "lon": -8.495278
+        },
+        {
+          "name": "FAMAL - A3/A7 Cruzamento de autoestrada",
+          "lat": 41.381667,
+          "lon": -8.500556
+        }
+      ],
+      "legs": [
+        {
+          "fromIdx": 0,
+          "toIdx": 1,
+          "courseAtoB": 360,
+          "courseBtoA": 180,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        },
+        {
+          "fromIdx": 1,
+          "toIdx": 2,
+          "courseAtoB": 360,
+          "courseBtoA": 180,
+          "upperFt": 2000,
+          "lowerFt": 2000
+        }
+      ]
+    },
+    {
+      "id": "tunel-barca",
+      "name": "Túnel Barca",
+      "area": "Porto",
+      "points": [
+        {
+          "name": "BOTIK - Rua da Botica",
+          "lat": 41.241389,
+          "lon": -8.665
+        },
+        {
+          "name": "Jumbo - N14/IC24 Cruzamento de estrada",
+          "lat": 41.241111,
+          "lon": -8.623889
+        },
+        {
+          "name": "ALFEN - IC 24 Cruzamento de estrada",
+          "lat": 41.240278,
+          "lon": -8.495278
+        }
+      ],
+      "legs": [
+        {
+          "fromIdx": 0,
+          "toIdx": 1,
+          "courseAtoB": 272,
+          "courseBtoA": 92,
+          "upperFt": 1600,
+          "lowerFt": 1600
+        },
+        {
+          "fromIdx": 1,
+          "toIdx": 2,
+          "courseAtoB": 272,
+          "courseBtoA": 92,
+          "upperFt": 1600,
+          "lowerFt": 1600
+        }
+      ]
+    },
+    {
+      "id": "tunel-este-oeste",
+      "name": "Túnel Este-Oeste",
+      "area": "Faro",
+      "points": [
+        {
+          "name": "Fuseta",
+          "lat": 37.058333,
+          "lon": -7.747222
+        },
+        {
+          "name": "Quelfes",
+          "lat": 37.0625,
+          "lon": -7.820833
+        },
+        {
+          "name": "Pechão",
+          "lat": 37.0625,
+          "lon": -7.863611
+        },
+        {
+          "name": "São João da Venda",
+          "lat": 37.079167,
+          "lon": -7.979167
+        },
+        {
+          "name": "Almancil",
+          "lat": 37.094444,
+          "lon": -8.030556
+        },
+        {
+          "name": "Vilamoura (marina)",
+          "lat": 37.075278,
+          "lon": -8.122222
+        }
+      ],
+      "legs": [
+        {
+          "fromIdx": 0,
+          "toIdx": 1,
+          "courseAtoB": 275,
+          "courseBtoA": 95,
+          "upperFt": 2000,
+          "lowerFt": null
+        },
+        {
+          "fromIdx": 1,
+          "toIdx": 2,
+          "courseAtoB": 271,
+          "courseBtoA": 91,
+          "upperFt": 2000,
+          "lowerFt": null
+        },
+        {
+          "fromIdx": 2,
+          "toIdx": 3,
+          "courseAtoB": 282,
+          "courseBtoA": 102,
+          "upperFt": 2000,
+          "lowerFt": null
+        },
+        {
+          "fromIdx": 3,
+          "toIdx": 4,
+          "courseAtoB": 292,
+          "courseBtoA": 112,
+          "upperFt": 2000,
+          "lowerFt": null
+        },
+        {
+          "fromIdx": 4,
+          "toIdx": 5,
+          "courseAtoB": 257,
+          "courseBtoA": 77,
+          "upperFt": 2000,
+          "lowerFt": null
+        }
+      ]
+    }
+  ],
+  "points": [
+    {
+      "name": "Abeam Alverca (aeródromo)",
+      "lat": 38.88,
+      "lon": -9.020556,
+      "routes": [
+        "Rota Visual Tejo [TR]"
+      ]
+    },
+    {
+      "name": "Abeam Doca do Poço do Bispo (silos)",
+      "lat": 38.733889,
+      "lon": -9.101111,
+      "routes": [
+        "Rota Visual Tejo [TR]"
+      ]
+    },
+    {
+      "name": "Abeam Terreiro do Paço",
+      "lat": 38.7025,
+      "lon": -9.126667,
+      "routes": [
+        "Rota Visual Tejo [TR]"
+      ]
+    },
+    {
+      "name": "ALFEN - IC 24 Cruzamento de estrada",
+      "lat": 41.240278,
+      "lon": -8.495278,
+      "routes": [
+        "Túnel Crestuma",
+        "Túnel Barca"
+      ]
+    },
+    {
+      "name": "Almancil",
+      "lat": 37.094444,
+      "lon": -8.030556,
+      "routes": [
+        "Túnel Este-Oeste"
+      ]
+    },
+    {
+      "name": "Alto Mira (central elétrica)",
+      "lat": 38.777778,
+      "lon": -9.238611,
+      "routes": [
+        "Rota Visual Salemas [SR]",
+        "Rota visual de entrada, saída e cruzamento de LPPT AD (de/para sul)"
+      ]
+    },
+    {
+      "name": "Arranhó (vila)",
+      "lat": 38.953333,
+      "lon": -9.135,
+      "routes": [
+        "Rota Visual Salemas [SR]"
+      ]
+    },
+    {
+      "name": "Barragem de Venda Nova",
+      "lat": 38.516667,
+      "lon": -8.555833,
+      "routes": [
+        "Túnel Este - TE (sentido este)",
+        "Túnel Oeste- TW (sentido oeste)"
+      ]
+    },
+    {
+      "name": "Belas",
+      "lat": 38.773611,
+      "lon": -9.275278,
+      "routes": [
+        "Rota Visual Salemas [SR]"
+      ]
+    },
+    {
+      "name": "BELOS - Ponte de Barcelos",
+      "lat": 41.527778,
+      "lon": -8.608611,
+      "routes": [
+        "Túnel Esposende",
+        "Túnel Barcelos"
+      ]
+    },
+    {
+      "name": "BOTIK - Rua da Botica",
+      "lat": 41.241389,
+      "lon": -8.665,
+      "routes": [
+        "Túnel Barca"
+      ]
+    },
+    {
+      "name": "Brejos da Carregueira Carvalhal",
+      "lat": 38.329167,
+      "lon": -8.76,
+      "routes": [
+        "Túnel Sudeste - TSE (sentido sudeste)",
+        "Tunel Noroeste TNW (sentido noroeste)"
+      ]
+    },
+    {
+      "name": "Cabo Espichel",
+      "lat": 38.424167,
+      "lon": -9.185556,
+      "routes": [
+        "Túnel Sul - TS (sentido sul)",
+        "Túnel Sul - TN (sentido norte)"
+      ]
+    },
+    {
+      "name": "Cova do Vapor",
+      "lat": 38.665,
+      "lon": -9.255833,
+      "routes": [
+        "Túnel Sul - TS (sentido sul)",
+        "Túnel Este - TE (sentido este)",
+        "Túnel Sudeste - TSE (sentido sudeste)"
+      ]
+    },
+    {
+      "name": "CREST - Barragem de Crestuma",
+      "lat": 41.073056,
+      "lon": -8.486944,
+      "routes": [
+        "Túnel Crestuma"
+      ]
+    },
+    {
+      "name": "Cruzamento de Estradas N10 e N1017",
+      "lat": 38.514444,
+      "lon": -8.970556,
+      "routes": [
+        "Túnel Este - TE (sentido este)",
+        "Túnel Oeste- TW (sentido oeste)",
+        "Túnel Sudeste - TSE (sentido sudeste)",
+        "Tunel Noroeste TNW (sentido noroeste)"
+      ]
+    },
+    {
+      "name": "Estádio Nacional",
+      "lat": 38.708889,
+      "lon": -9.260833,
+      "routes": [
+        "Rota Visual Tejo [TR]"
+      ]
+    },
+    {
+      "name": "Estuário do Rio Sado - Comporta",
+      "lat": 38.418611,
+      "lon": -8.823611,
+      "routes": [
+        "Túnel Sudeste - TSE (sentido sudeste)",
+        "Tunel Noroeste TNW (sentido noroeste)"
+      ]
+    },
+    {
+      "name": "FAMAL - A3/A7 Cruzamento de autoestrada",
+      "lat": 41.381667,
+      "lon": -8.500556,
+      "routes": [
+        "Túnel Rates",
+        "Túnel Barcelos",
+        "Túnel Crestuma"
+      ]
+    },
+    {
+      "name": "Farol do Bugio",
+      "lat": 38.660278,
+      "lon": -9.298889,
+      "routes": [
+        "Túnel Sul - TN (sentido norte)",
+        "Túnel Oeste- TW (sentido oeste)",
+        "Tunel Noroeste TNW (sentido noroeste)"
+      ]
+    },
+    {
+      "name": "Fonte da Telha",
+      "lat": 38.571944,
+      "lon": -9.194167,
+      "routes": [
+        "Túnel Sul - TS (sentido sul)",
+        "Túnel Sul - TN (sentido norte)",
+        "Túnel Este - TE (sentido este)",
+        "Túnel Oeste- TW (sentido oeste)",
+        "Túnel Sudeste - TSE (sentido sudeste)",
+        "Tunel Noroeste TNW (sentido noroeste)"
+      ]
+    },
+    {
+      "name": "Fuseta",
+      "lat": 37.058333,
+      "lon": -7.747222,
+      "routes": [
+        "Túnel Este-Oeste"
+      ]
+    },
+    {
+      "name": "GONDI - Gondifelos",
+      "lat": 41.428333,
+      "lon": -8.585833,
+      "routes": [
+        "Túnel Rates"
+      ]
+    },
+    {
+      "name": "Igreja das Galinheiras",
+      "lat": 38.783333,
+      "lon": -9.143333,
+      "routes": [
+        "Rota visual de entrada, saída e cruzamento de LPPT AD (de/para sul)",
+        "Rota visual de entrada, saída e cruzamento de LPPT AD (de/para norte)"
+      ]
+    },
+    {
+      "name": "Igreja do Monte da Caparica",
+      "lat": 38.663889,
+      "lon": -9.198056,
+      "routes": [
+        "Rota Visual Tejo [TR]"
+      ]
+    },
+    {
+      "name": "Jumbo - N14/IC24 Cruzamento de estrada",
+      "lat": 41.241111,
+      "lon": -8.623889,
+      "routes": [
+        "Túnel Barca"
+      ]
+    },
+    {
+      "name": "Lagoa de Albufeira",
+      "lat": 38.512778,
+      "lon": -9.173056,
+      "routes": [
+        "Túnel Sul - TS (sentido sul)",
+        "Túnel Sul - TN (sentido norte)",
+        "Túnel Este - TE (sentido este)",
+        "Túnel Oeste- TW (sentido oeste)",
+        "Túnel Sudeste - TSE (sentido sudeste)",
+        "Tunel Noroeste TNW (sentido noroeste)"
+      ]
+    },
+    {
+      "name": "Nó Acesso Centro-Sul (Ponte 25 de Abril)",
+      "lat": 38.668056,
+      "lon": -9.1725,
+      "routes": [
+        "Rota Visual Tejo [TR]"
+      ]
+    },
+    {
+      "name": "Odivelas (cruzamento auto-estrada)",
+      "lat": 38.801944,
+      "lon": -9.178333,
+      "routes": [
+        "Rota visual de entrada, saída e cruzamento de LPPT AD (de/para sul)",
+        "Rota visual de entrada, saída e cruzamento de LPPT AD (de/para norte)"
+      ]
+    },
+    {
+      "name": "Pechão",
+      "lat": 37.0625,
+      "lon": -7.863611,
+      "routes": [
+        "Túnel Este-Oeste"
+      ]
+    },
+    {
+      "name": "Porto de Setúbal",
+      "lat": 38.515,
+      "lon": -8.892222,
+      "routes": [
+        "Túnel Este - TE (sentido este)",
+        "Túnel Oeste- TW (sentido oeste)",
+        "Túnel Sudeste - TSE (sentido sudeste)",
+        "Tunel Noroeste TNW (sentido noroeste)"
+      ]
+    },
+    {
+      "name": "Quelfes",
+      "lat": 37.0625,
+      "lon": -7.820833,
+      "routes": [
+        "Túnel Este-Oeste"
+      ]
+    },
+    {
+      "name": "RALIS (instalação militar)",
+      "lat": 38.783056,
+      "lon": -9.120278,
+      "routes": [
+        "Rota visual de entrada, saída e cruzamento de LPPT AD (de/para este)"
+      ]
+    },
+    {
+      "name": "Salemas (heliporto)",
+      "lat": 38.875,
+      "lon": -9.195,
+      "routes": [
+        "Rota Visual Salemas [SR]",
+        "Rota visual de entrada, saída e cruzamento de LPPT AD (de/para norte)"
+      ]
+    },
+    {
+      "name": "São João da Venda",
+      "lat": 37.079167,
+      "lon": -7.979167,
+      "routes": [
+        "Túnel Este-Oeste"
+      ]
+    },
+    {
+      "name": "Tabuleiro Norte (Ponte Vasco da Gama)",
+      "lat": 38.785278,
+      "lon": -9.088056,
+      "routes": [
+        "Rota Visual Tejo [TR]"
+      ]
+    },
+    {
+      "name": "Torre de Controlo Marítimo",
+      "lat": 38.693611,
+      "lon": -9.234444,
+      "routes": [
+        "Rota Visual Tejo [TR]"
+      ]
+    },
+    {
+      "name": "Vila Franca de Xira (marina)",
+      "lat": 38.955278,
+      "lon": -8.985833,
+      "routes": [
+        "Rota Visual Tejo [TR]"
+      ]
+    },
+    {
+      "name": "Vilamoura (marina)",
+      "lat": 37.075278,
+      "lon": -8.122222,
+      "routes": [
+        "Túnel Este-Oeste"
+      ]
+    },
+    {
+      "name": "Zambujal Pinheiro (Linha Férrea)",
+      "lat": 38.516111,
+      "lon": -8.700278,
+      "routes": [
+        "Túnel Este - TE (sentido este)",
+        "Túnel Oeste- TW (sentido oeste)"
+      ]
+    },
+    {
+      "name": "ZENDE - Foz do Rio Cávado",
+      "lat": 41.540556,
+      "lon": -8.792222,
+      "routes": [
+        "Túnel Esposende",
+        "Túnel Rates"
+      ]
+    }
+  ]
+}

@@ -84,6 +84,8 @@ serve geometry. Today it classifies the layers we already expose:
 |-----------|----------|-----------------------|
 | `BR_REA` | `VECTOR_GEOJSON` | `/v1/rea/*` (REA service — corridors, graph, navigation) |
 | `BR_WAC` | `RASTER_WMS` | DECEA WMS, rendered client-side |
+| `EU_VFR_TRANSIT_ROUTE` (PT) | `VECTOR_GEOJSON` | `/v1/pt-vfr/routes` (curated NAV Portugal eVFR dataset) |
+| `EU_VRP` (PT) | `VECTOR_GEOJSON` | `/v1/pt-vfr/points` (curated NAV Portugal eVFR dataset) |
 
 The catalog is **static in code** for now (no DB table) — that lands when real
 multi-region data does. Adding a new region is one more descriptor with
@@ -111,20 +113,28 @@ the name “REA”.
 |--------|------------------|-------|
 | **Brazil** | DECEA GeoAISWEB (REA `ICA:CV_REA_BR_COMPLETO`, REH, WAC WMS, visual charts), AISWEB | Implemented: REA (vector) + WAC (WMS). REH reserved. |
 | **USA** | FAA NASR (vector: airspace, airports, navaids, reporting points, flyways, transition routes); FAA d-TPP (per-aerodrome charts); FAA VFR Raster Charts (Sectional/TAC) | Per-aerodrome charts **already work** (FAA d-TPP via `/aerodromes/:icao/charts`, same as DECEA). NASR vector ingestion **deferred** — see `docs/faa-nasr-spike.md`. Area raster (sectional) is **not hosted** — external SkyVector route link only. |
-| **Europe** | EUROCONTROL EAD, national AIPs, national WMS/WFS where available, VRPs, VFR transit routes | Model-ready, **not implemented**; per-country provider abstraction; licensing varies per state. |
+| **Europe** | EUROCONTROL EAD, national AIPs, national WMS/WFS where available, VRPs, VFR transit routes | **Portugal implemented** (see below). Other states model-ready, not implemented; per-country provider abstraction; licensing varies per state. |
+| **Portugal** | NAV Portugal eVFR (Manual VFR, ais.nav.pt) — ENR 3.5 mandatory VFR tunnels (TMA Lisboa/Porto/Faro), ENR 4.4 visual reporting points; eAIP + eVFR per-aerodrome charts (ADC/VAC) | **Implemented.** No machine-readable API exists — a **curated dataset** (`apps/api/src/pt-vfr/data/pt-vfr.json`) is parsed from the eVFR HTML by `apps/api/scripts/refresh-pt-vfr.ts` (`pnpm --filter @fs-suite/api pt-vfr:refresh`), versioned in the repo, and served by `/v1/pt-vfr/*`. **Refresh on AIRAC amendments affecting the eVFR** (watch ais.nav.pt news), review the diff, commit. Per-aerodrome charts: `/aerodromes/:icao/charts` scrapes the eAIP AD-2 page first, then falls back to eVFR AD-2/3/4 (small VFR fields, heliports, UL strips). ais.nav.pt sits behind Cloudflare bot protection — fetches need a browser-like User-Agent. |
 | **Community** | OpenAIP | Worldwide airspace/airports/navaids/VRPs — **already in the app** as the “Worldwide airspace (OpenAIP)” toggle. `isOfficial=false` + disclaimer; never presented as official. |
 
 ### What's live now (zero cost)
 
 - **Brazil:** REA + WAC, unchanged.
+- **Portugal:** eVFR tunnels + VRPs (curated vector dataset, no runtime scraping, no hosting cost) via the “VFR PT” map toggle; PT aerodrome charts through the existing chart panel.
 - **Worldwide:** OpenAIP overlay (relabelled “Worldwide airspace (OpenAIP)”), covering US/EU airspace + airfields + navaids + VRPs — community, non-official.
 - **Per-aerodrome charts (US):** already work via the existing chart panel — pick a US airport and its FAA d-TPP charts (airport diagram, approaches…) appear, exactly like DECEA charts for Brazil.
 - **External link (no hosting):** “Open in SkyVector” opens the route on the FAA sectional in a new tab. Tiles are never embedded, proxied, or cached.
 
 ## 5. Gaps / open items
 
-- **US/EU are model-only** — no data ingestion yet (FAA NASR parsing, EAD/AIP
-  access, WMS/WFS endpoints, licensing review per state).
+- **US and most of EU are model-only** — no data ingestion yet (FAA NASR
+  parsing, EAD/AIP access, WMS/WFS endpoints, licensing review per state).
+  Portugal is the first EU implementation (curated eVFR dataset).
+- **PT dataset is manually refreshed** — no automated AIRAC watcher; the
+  refresh script fails loudly if the eVFR HTML layout changes (route/point
+  count sanity checks), but someone must run it when amendments land.
+- **PT routes not in route validation** — unlike REA, the PT tunnels are a map
+  layer only; destination→alternate and leg validation don't enforce them yet.
 - **WAC has no backend** — it's a client-side DECEA WMS layer; the catalog
   describes it but the tile list still lives in `AerodromeMap.tsx`.
 - **REH not implemented** — reserved in the taxonomy only.

@@ -5,6 +5,12 @@ import {
   VfrLayerType,
 } from '@fs-suite/types';
 
+import ptVfrData from '../pt-vfr/data/pt-vfr.json';
+
+// The PT dataset is curated per AIRAC amendment; surface its effective date so
+// clients can show currency without fetching the data itself.
+const PT_VFR_EFFECTIVE_DATE = (ptVfrData as { effectiveDate: string | null }).effectiveDate;
+
 /**
  * Static catalog of the published VFR layers the app currently exposes,
  * classified under the worldwide model (see docs/vfr-layer-model.md). This is a
@@ -57,6 +63,48 @@ const CATALOG: readonly VfrLayerDescriptor[] = [
     // The full per-tile WMS layer list lives client-side today; the client owns
     // rendering. Exposed here as the authoritative endpoint for the layer.
     access: { wmsUrl: 'https://geoaisweb.decea.mil.br/geoserver/ICA/wms', wmsLayers: null },
+  },
+  {
+    id: 'pt-vfr-tunnels',
+    name: 'Túneis VFR — Portugal (TMA Lisboa/Porto/Faro)',
+    country: 'PT',
+    region: null,
+    source: 'NAV Portugal — Manual VFR (eVFR), ENR 3.5',
+    sourceUrl: 'https://ais.nav.pt/',
+    provider: VfrLayerProvider.NATIONAL_AIP,
+    layerType: VfrLayerType.EU_VFR_TRANSIT_ROUTE,
+    geometryType: VfrLayerGeometryType.VECTOR_GEOJSON,
+    enabledByDefault: false,
+    cycle: null,
+    effectiveDate: PT_VFR_EFFECTIVE_DATE,
+    minAltitude: null,
+    maxAltitude: null,
+    requiresClearance: false,
+    mandatory: true, // published tunnels are the mandatory VFR paths inside the Lisboa/Porto/Faro TMAs
+    isOfficial: true,
+    disclaimer: null,
+    access: { endpoint: '/v1/pt-vfr/routes' },
+  },
+  {
+    id: 'pt-vrp',
+    name: 'Pontos VFR — Portugal (pontos de notificação visual)',
+    country: 'PT',
+    region: null,
+    source: 'NAV Portugal — Manual VFR (eVFR), ENR 4.4',
+    sourceUrl: 'https://ais.nav.pt/',
+    provider: VfrLayerProvider.NATIONAL_AIP,
+    layerType: VfrLayerType.EU_VRP,
+    geometryType: VfrLayerGeometryType.VECTOR_GEOJSON,
+    enabledByDefault: false,
+    cycle: null,
+    effectiveDate: PT_VFR_EFFECTIVE_DATE,
+    minAltitude: null,
+    maxAltitude: null,
+    requiresClearance: false,
+    mandatory: false,
+    isOfficial: true,
+    disclaimer: null,
+    access: { endpoint: '/v1/pt-vfr/points' },
   },
 ];
 
