@@ -8,6 +8,28 @@ import { R2StorageService } from '../r2/r2-storage.service';
 export const MAX_ATTACHMENTS = 3;
 export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5 MB
 
+/**
+ * Decoded-pixel ceiling for an uploaded image.
+ *
+ * The 5 MB byte limit above says nothing about decoded size: a PNG compresses
+ * losslessly, so 5 MB of file can expand to hundreds of MB of bitmap. sharp's
+ * own default ceiling is ~268 Mpx — about 1 GB at 4 bytes per pixel — which is
+ * a decompression bomb any authenticated user can post.
+ *
+ * 40 Mpx is ~8000x5000: far beyond any real screenshot or phone photo, and
+ * ~160 MB decoded worst case.
+ */
+export const MAX_ATTACHMENT_PIXELS = 40_000_000;
+
+/** Longest edge kept in the re-encoded image. */
+const MAX_ATTACHMENT_EDGE = 3000;
+
+// libvips pools memory and threads per process. Neither helps here — uploads
+// are occasional and processed one at a time — and both inflate RSS on a small
+// host, so they are turned off once at module load.
+sharp.cache(false);
+sharp.concurrency(1);
+
 /** A file that passed validation and is ready to store. */
 export interface ProcessedAttachment {
   buffer: Buffer;
@@ -113,7 +135,15 @@ export class FeedbackAttachmentsService {
 
       // Image: re-encode to neutralize any embedded payload and prove it's real.
       try {
-        const img = sharp(file.buffer, { failOn: 'error' });
+        const img = sharp(file.buffer, {
+          failOn: 'error',
+          limitInputPixels: MAX_ATTACHMENT_PIXELS,
+        }).resize({
+          width: MAX_ATTACHMENT_EDGE,
+          height: MAX_ATTACHMENT_EDGE,
+          fit: 'inside',
+          withoutEnlargement: true,
+        });
         let buffer: Buffer;
         let ext: string;
         if (kind === 'image/png') {
