@@ -9,7 +9,7 @@ set -euo pipefail
 # at workflow time (i.e. NOT through the API).
 #
 # Out of scope (CI/CD pipeline auth — set those by hand, once):
-#   EC2_HOST, EC2_SSH_KEY, EC2_USER,
+#   DEPLOY_HOST, DEPLOY_SSH_KEY, DEPLOY_USER,
 #   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
 #   TURBO_TEAM, TURBO_TOKEN.
 #

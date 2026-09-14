@@ -10,6 +10,26 @@
 > reasoning below is preserved as the original decision record; a managed
 > runtime can be re-provisioned later if the goal becomes cutting the EC2 cost.
 
+> **Update (2026-09):** the API moved off EC2 to an **OVHcloud VPS-1 in
+> Frankfurt** (2 vCore, 4 GB, EUR 5.52/mo incl. VAT). The EC2 instance
+> belonged to a separate project that was wound down, so it disappeared
+> rather than being replaced by choice. Only stateless compute moved:
+> Postgres stayed on Supabase, Redis on Upstash, object storage on R2 and
+> the frontend on Cloudflare Pages, so there was no data migration.
+>
+> Two things improved rather than merely holding: the host is now in the
+> same city as the Supabase primary (`eu-central-1`), which took a
+> health check that queries both DB and Redis from 0.13 s to 0.02 s; and
+> RAM went from 1.9 GB to 4 GB against a measured peak working set of
+> 737 MB.
+>
+> The "EC2 → any VM provider is `setup.sh` away" claim in *Reversibility*
+> below was tested by this move and held: the compose file, the nginx
+> config, the in-process cron jobs and the deploy sequence were unchanged.
+> What did change is that a plain VPS has no security-group layer, so the
+> host firewall (`ufw`) is now configured by `infra/vps/setup.sh` — on EC2
+> that filtering happened before packets reached the machine.
+
 ## Context
 
 FS Suite is a flight simulation planning and management platform for the

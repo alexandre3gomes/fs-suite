@@ -2,7 +2,7 @@
 
 Provisions everything that lives on Cloudflare: the DNS zone, the Pages
 project for the web frontend, the R2 bucket for chart-overlay cache, and
-the Origin Certificate used by nginx on EC2 for TLS termination.
+the Origin Certificate used by nginx on the API host for TLS termination.
 
 > **Reusing existing**: if `fs-suite.com` is already on the Cloudflare
 > account and the Pages project + R2 bucket already exist, skip to
@@ -25,14 +25,14 @@ Create the following records (all proxied, the orange cloud is on):
 |---------------------------------|--------|-------------------------------------------|---------|
 | `fs-suite.com`                  | CNAME  | `fs-suite-app.pages.dev`                  | Proxied |
 | `www.fs-suite.com`              | CNAME  | `fs-suite.com`                            | Proxied |
-| `api.fs-suite.com`              | A      | EC2 Elastic IP                            | Proxied |
+| `api.fs-suite.com`              | A      | API host IPv4                             | Proxied |
 
 > The Pages CNAME target (`fs-suite-app.pages.dev`) only exists after the
 > Pages project is created (step 4 below). Create the DNS record afterwards.
 
-## 3. Origin Certificate (for EC2 TLS)
+## 3. Origin Certificate (for host TLS)
 
-EC2 terminates TLS using a Cloudflare Origin Certificate so the edge can
+The host terminates TLS using a Cloudflare Origin Certificate so the edge can
 run in **Full (Strict)** mode.
 
 1. Cloudflare dashboard → **SSL/TLS → Origin Server → Create Certificate**.
@@ -50,8 +50,8 @@ run in **Full (Strict)** mode.
    origin-key.pem    # private key
    ```
 
-   When re-provisioning EC2, place these two files alongside `.env` and
-   `ec2/setup.sh` will pick them up automatically.
+   When re-provisioning the host, place these two files alongside `.env` and
+   `vps/setup.sh` will pick them up automatically.
 
 ## 4. Pages project (web frontend)
 
@@ -127,7 +127,7 @@ The Origin Certificate (`origin.pem`, `origin-key.pem`) is not in `.env`
 ## Validation
 
 ```bash
-# DNS resolution (proxied — should return Cloudflare IPs, not your EC2 IP)
+# DNS resolution (proxied — should return Cloudflare IPs, not your host IP)
 dig +short fs-suite.com
 dig +short api.fs-suite.com
 

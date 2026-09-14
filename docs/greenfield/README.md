@@ -21,7 +21,7 @@ at the bottom and copy the values straight into your canonical `.env`.
 
 The canonical `.env` template is [`.env.example.production`](../../.env.example.production)
 at the repo root. Once populated, the provisioning scripts
-(`infra/ec2/setup.sh`, `infra/bootstrap-github-secrets.sh`) consume it
+(`infra/vps/setup.sh`, `infra/bootstrap-github-secrets.sh`) consume it
 and propagate the values to every runtime surface.
 
 ## Suggested order
@@ -35,4 +35,4 @@ When provisioning from scratch:
 5. **Sentry**, **PostHog** (observability layer — can run last; not blockers)
 
 After all runbooks complete, the canonical `.env` is ready and the
-infra scripts can be run against a fresh EC2 + GitHub repo.
+infra scripts can be run against a fresh VPS + GitHub repo.

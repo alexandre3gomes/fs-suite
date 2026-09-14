@@ -2,32 +2,32 @@
 set -euo pipefail
 
 # ──────────────────────────────────────────────────────────────
-# FS Suite — EC2 Setup
+# FS Suite — API host setup
 #
-# Provisions a fresh Amazon Linux 2023 instance with everything
+# Provisions a fresh Ubuntu VPS with everything
 # needed to run the API: Docker, nginx reverse proxy, TLS, secrets.
 #
 # Prerequisites:
-#   - Amazon Linux 2023 EC2 instance (t3.small recommended)
-#   - SSH access as ec2-user
+#   - Ubuntu 24.04+ VPS, 2 vCPU / 2 GB RAM minimum (measured peak: 737 MB)
+#   - SSH access as ubuntu
 #   - A .env file with all secrets (see .env.example)
 #   - Cloudflare Origin Certificate files (origin.pem + origin-key.pem)
 #   - GitHub PAT with read:packages scope (for initial GHCR pull)
 #
 # Usage:
-#   # 1. Copy files to EC2
+#   # 1. Copy files to the host
 #   scp .env origin.pem origin-key.pem fs-suite:~/
 #
 #   # 2. SSH in and run
 #   ssh fs-suite
-#   curl -sO https://raw.githubusercontent.com/alexandre3gomes/fs-suite/main/infra/ec2/setup.sh
+#   curl -sO https://raw.githubusercontent.com/alexandre3gomes/fs-suite/main/infra/vps/setup.sh
 #   chmod +x setup.sh && ./setup.sh
 # ──────────────────────────────────────────────────────────────
 
 APP_DIR="/opt/fs-suite"
 
 echo "╔══════════════════════════════════════════════╗"
-echo "║     FS Suite — EC2 Setup                     ║"
+echo "║     FS Suite — API host setup                ║"
 echo "╚══════════════════════════════════════════════╝"
 echo ""
 
@@ -39,7 +39,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo "Error: .env file not found at $ENV_FILE"
   echo "Usage: ./setup.sh [path/to/.env]"
   echo ""
-  echo "The .env must contain all required variables. See infra/ec2/.env.example"
+  echo "The .env must contain all required variables. See infra/vps/.env.example"
   exit 1
 fi
 
@@ -66,12 +66,36 @@ echo ""
 # ── Install Docker ─────────────────────────────────────────
 
 echo "Installing Docker..."
-sudo dnf update -y -q
-sudo dnf install -y -q docker
+sudo apt-get update -qq
+# Docker CE from the upstream repo: Ubuntu's own docker.io lags behind and
+# ships no compose plugin.
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+. /etc/os-release
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu ${UBUNTU_CODENAME:-$VERSION_CODENAME} stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo apt-get update -qq
+sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
+
+# The host firewall is the only barrier here. On EC2 a security group filtered
+# ports before they reached the machine; a plain VPS has no such layer, so ufw
+# does that job and must be configured, not left inactive.
+sudo apt-get install -y -qq ufw
+sudo ufw --force reset >/dev/null
+sudo ufw default deny incoming >/dev/null
+sudo ufw default allow outgoing >/dev/null
+sudo ufw allow 22/tcp  comment 'ssh' >/dev/null
+sudo ufw allow 80/tcp  comment 'http redirect' >/dev/null
+sudo ufw allow 443/tcp comment 'https api' >/dev/null
+sudo ufw --force enable >/dev/null
 
 sudo systemctl enable docker
 sudo systemctl start docker
-sudo usermod -aG docker ec2-user
+sudo usermod -aG docker ubuntu
 
 echo "Installing Docker Compose plugin..."
 COMPOSE_VERSION="v2.29.1"
@@ -87,7 +111,7 @@ echo ""
 # ── App directory ──────────────────────────────────────────
 
 sudo mkdir -p "$APP_DIR"
-sudo chown ec2-user:ec2-user "$APP_DIR"
+sudo chown ubuntu:ubuntu "$APP_DIR"
 
 # ── Authenticate to GHCR ──────────────────────────────────
 
@@ -221,7 +245,7 @@ process_env "$ENV_FILE" "$APP_DIR/.env"
 # reprovision or provided by the operator), keep them — sessions
 # survive the reprovisioning. Otherwise generate fresh keys and tell
 # the operator to capture them back into the canonical .env so the
-# next EC2 reprovision is session-preserving.
+# next reprovision is session-preserving.
 
 if grep -q '^JWT_PRIVATE_KEY=' "$APP_DIR/.env" && \
    grep -q '^JWT_PUBLIC_KEY=' "$APP_DIR/.env"; then
@@ -283,9 +307,9 @@ echo ""
 
 if [[ "${GENERATED_JWT:-false}" == "true" ]]; then
   echo "⚠  FRESH JWT KEYS GENERATED — capture them into the canonical .env"
-  echo "   (Bitwarden) so future EC2 reprovisions preserve sessions:"
+  echo "   (Bitwarden) so future reprovisions preserve sessions:"
   echo ""
-  echo "     ssh fs-suite \"sudo grep -E '^JWT_(PRIVATE|PUBLIC)_KEY=' /opt/fs-suite/.env\""
+  echo "     ssh ovh-server \"sudo grep -E '^JWT_(PRIVATE|PUBLIC)_KEY=' /opt/fs-suite/.env\""
   echo ""
   echo "   Paste both lines into the canonical .env."
   echo ""
@@ -293,18 +317,15 @@ fi
 
 echo "Checklist:"
 echo ""
-echo "  1. Elastic IP allocated and associated"
-echo "  2. Security Group:"
-echo "     - Port 443 (HTTPS): 0.0.0.0/0"
-echo "     - Port 80 (HTTP): 0.0.0.0/0 (redirects to HTTPS)"
-echo "     - Port 22 (SSH): 0.0.0.0/0 (key-only auth)"
-echo "  3. Cloudflare DNS:"
-echo "     - A record: api.fs-suite.com → <Elastic IP> (Proxied)"
+echo "  1. Host firewall (ufw) active — configured by this script:"
+echo "     - 22/tcp (SSH), 80/tcp (redirect), 443/tcp (API); all else denied"
+echo "  2. Cloudflare DNS:"
+echo "     - A record: api.fs-suite.com → <VPS IPv4> (Proxied)"
 echo "     - SSL/TLS mode: Full (Strict)"
 echo "  4. GitHub Secrets:"
-echo "     - EC2_HOST = <Elastic IP>"
-echo "     - EC2_SSH_KEY = <private SSH key>"
-echo "     - EC2_USER = ec2-user"
+echo "     - DEPLOY_HOST = <VPS IPv4>"
+echo "     - DEPLOY_SSH_KEY = <private SSH key>"
+echo "     - DEPLOY_USER = ubuntu"
 echo "     - ADMIN_METRICS_TOKEN = (sync from your .env, see infra/README.md):"
 echo "       gh secret set ADMIN_METRICS_TOKEN \\"
 echo "         --body \"\$(grep '^ADMIN_METRICS_TOKEN=' /path/to/.env | cut -d= -f2-)\""

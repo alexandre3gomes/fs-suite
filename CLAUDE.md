@@ -17,7 +17,7 @@ fs-suite/
 │   ├── ui/        # Shared design system (NativeWind components)
 │   ├── types/     # Shared Zod schemas and TypeScript types
 │   └── config/    # Shared ESLint, TypeScript, and Tailwind configs
-├── infra/         # EC2 deployment config and provisioning scripts
+├── infra/         # VPS deployment config and provisioning scripts
 └── docs/          # Product and technical specifications
 ```
 
@@ -32,7 +32,7 @@ fs-suite/
 | Auth        | Google OAuth 2.0 (Passport.js)       |
 | Monorepo    | Turborepo + pnpm                     |
 | CI/CD       | GitHub Actions                       |
-| Hosting     | Cloudflare Pages (frontend), EC2 (API) |
+| Hosting     | Cloudflare Pages (frontend), OVHcloud VPS (API, Frankfurt) |
 | DNS/TLS     | Cloudflare (proxied, Full Strict)    |
 
 ## Development Commands
@@ -101,6 +101,7 @@ shows the live diff between prod and the WSL test environment.
 | SimBrief    | Active   | Import OFP flight plan data              |
 | SkyVector   | Active   | Contextual route and airport visualization |
 | DECEA/AIS   | Active   | Aerodrome charts (ADC, VAC, PDC)         |
+| NAV Portugal | Active  | PT aerodrome charts (eAIP/eVFR) + curated VFR tunnels/points layer (`/v1/pt-vfr`) |
 | Resend      | Active   | Feedback emails (admin notifications + replies to users); reserved for future marketing comms |
 | FlightAware | Future   | Flight tracking and operational reference |
 

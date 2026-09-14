@@ -24,7 +24,7 @@ differently from the original plan — noted inline below.
 | Email & consent | Feedback emails (admin notification + reply to user) are **transactional/operational**, so they **do not** check `marketingEmailConsent` and carry **no** unsubscribe link. | LGPD: support replies are legitimate operational communication, not marketing. |
 | Sender domain | Reuse the Resend-verified `fs-suite.com` domain. From: **`FS Suite <feedback@fs-suite.com>`**, reply-to `feedback@fs-suite.com`. | Mirrors `metrics-digest.yml` (`metrics@fs-suite.com`); same verified domain. |
 
-### Cost note (zero-cost-except-EC2 policy)
+### Cost note (zero-cost-beyond-the-API-host policy)
 
 This feature introduces **no new paid resource**. It reuses the existing R2
 bucket and Resend account, both on free tiers comfortably above expected
@@ -342,7 +342,7 @@ Via `ActivityService.log(action, userId, metadata)`, matching the existing
   flows, attachment storage decision (this doc is the long form; cross-link it).
 - `infra/README.md` — note the reused R2 bucket `feedback/` prefix and the
   `feedback@fs-suite.com` sender; no new bucket/policy.
-- `.env.example.production`, `apps/api/.env.example`, `infra/ec2/.env.example` —
+- `.env.example.production`, `apps/api/.env.example`, `infra/vps/.env.example` —
   add `FEEDBACK_EMAIL_FROM` (optional, documented default). **No** other new vars.
 - Per the docs-in-same-commit rule, all of the above land with the code, not in a
   follow-up.

@@ -761,14 +761,14 @@ Single-region production deployment (EU-West).
 
 | Component    | Service                                         | Notes                                                                                   |
 |--------------|-------------------------------------------------|-----------------------------------------------------------------------------------------|
-| API          | EC2 t3.small                                    | `eu-west-1` serves prod (sole API runtime; the Cloud Run candidate was decommissioned 2026-06) |
+| API          | OVHcloud VPS-1 (2 vCore, 4 GB)                  | Frankfurt (DE) serves prod — same city as the Supabase primary. Sole API runtime; the Cloud Run candidate was decommissioned 2026-06 and the EC2 it ran on went away with its owning project 2026-09 |
 | Web (app)    | Cloudflare Pages                                | Expo web export, automatic deploys via `deploy-app.yml`                                 |
 | iOS          | Expo EAS Build + App Store *(post-MVP)*         | OTA via EAS Update; not in current pipeline                                             |
 | Android      | Expo EAS Build + Play Store *(post-MVP)*        | OTA via EAS Update; not in current pipeline                                             |
 | Database     | Supabase Postgres 16                            | Connected via Supavisor session-mode pooler (IPv4); `eu-central-1`                      |
 | Redis        | Upstash Redis 7                                 | Serverless, TLS (`rediss://`)                                                           |
 | File storage | Cloudflare R2                                   | Aerodrome chart overlay cache; bucket `fs-suite-charts`                                 |
-| DNS / TLS    | Cloudflare                                      | Proxied, Full (Strict) mode; Origin Certificate terminates TLS at EC2 nginx             |
+| DNS / TLS    | Cloudflare                                      | Proxied, Full (Strict) mode; Origin Certificate terminates TLS at the host's nginx             |
 | Observability| Sentry + PostHog                                | Sentry for backend + frontend errors (shared DSN); PostHog for client product analytics |
 | CI/CD        | GitHub Actions                                  | `ci.yml`, `deploy.yml`, `deploy-app.yml`, `db-backup.yml`, `metrics-digest.yml`         |
 

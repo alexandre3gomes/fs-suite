@@ -19,7 +19,7 @@ in this repo are required.
 
 Create one HTTP(s) — Keyword monitor per hostname.
 
-### Monitor 1 — API primary (EC2)
+### Monitor 1 — API primary (VPS)
 
 | Field | Value |
 |---|---|

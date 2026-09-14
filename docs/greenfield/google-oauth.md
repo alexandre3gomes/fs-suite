@@ -66,7 +66,7 @@ GOOGLE_CLIENT_SECRET=GOCSPX-<secret>
 
 > `GOOGLE_CALLBACK_URL` is not in the `.env` — it's set to
 > `https://api.fs-suite.com/v1/auth/google/callback` automatically by the
-> EC2 setup script (production hostname is fixed).
+> host setup script (production hostname is fixed).
 
 ## Validation
 
