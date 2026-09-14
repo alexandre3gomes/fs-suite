@@ -46,20 +46,20 @@ jobs:
           echo "Raw payload:"
           cat metrics.json
 
-      - name: Fetch EC2 host stats
+      - name: Fetch API host stats
         # SSH directly (not appleboy/ssh-action) so we can capture stdout
         # into a file for the body builder. Output goes to host.txt:
         # one line "USED_PCT TOTAL_GB" plus image count.
         env:
-          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh "$EC2_USER@$EC2_HOST" "
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "
             DISK=\$(df -h --output=pcent,size / | tail -1 | tr -s ' ' | sed 's/^ //')
             IMAGES=\$(sudo docker images --filter 'dangling=false' --format '{{.Repository}}' | wc -l)
             echo \"\$DISK \$IMAGES\"
@@ -109,7 +109,7 @@ jobs:
             <div style="font-size:12px;letter-spacing:2px;color:#2563eb;text-transform:uppercase;margin-bottom:6px;">FS Suite</div>
             <h1 style="font-size:20px;color:#1a2433;margin:0 0 20px;">Métricas diárias · ${DATE}</h1>
             <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-              $(row "EC2 disk" "${HOST_PCT}% de ${HOST_SIZE} · ${HOST_IMAGES} imagens")
+              $(row "Host disk" "${HOST_PCT}% de ${HOST_SIZE} · ${HOST_IMAGES} imagens")
               $(row "Database" "${DB_MB} MB / ${CAP_MB} MB (${DB_PCT}%)")
               $(row "Redis" "${REDIS_MB} MB / ${REDIS_CAP_MB} MB (${REDIS_PCT}%) · ${REDIS_KEYS} keys")
               $(row "Usuários" "${USERS_TOTAL} total · ${USERS_NEW} novos 7d · ${USERS_ACTIVE} ativos 7d")
