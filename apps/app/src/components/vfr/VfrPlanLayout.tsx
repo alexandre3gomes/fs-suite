@@ -12,9 +12,26 @@ const MAX_MAP_RATIO = 0.85;
 interface Props {
   mapElement: React.ReactNode;
   sidebarContent: (onRequestExpand: () => void) => React.ReactNode;
+  /**
+   * Full-width band above both columns. The step strip goes here, not inside
+   * `sidebarContent`: the sidebar collapses so the pilot can work the map, and
+   * navigation that disappears with it is navigation the pilot cannot reach.
+   * It also gives the strip the whole width, so the step labels stop
+   * truncating to "01 R…" in a 560px column.
+   *
+   * Kept as an opaque node so this layout stays ignorant of steps.
+   */
+  headerElement?: React.ReactNode;
 }
 
-export function VfrPlanLayout({ mapElement, sidebarContent }: Props) {
+/**
+ * Modernist plan layout. Same resize behaviour as before — every hook,
+ * PanResponder and ratio below is unchanged. What changed is that the form no
+ * longer floats: it is a ruled column flush against the map, separated by a
+ * 2px divider, with no radius, no margin and no shadow. Nothing floats, so
+ * the map keeps its full area and the boundary reads as structure.
+ */
+export function VfrPlanLayout({ mapElement, sidebarContent, headerElement }: Props) {
   const isDesktop = useIsDesktop();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('normal');
@@ -63,9 +80,12 @@ export function VfrPlanLayout({ mapElement, sidebarContent }: Props) {
 
   if (Platform.OS !== 'web') {
     return (
-      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ paddingBottom: 80 }}>
-        {sidebarContent(expand)}
-      </ScrollView>
+      <View className="flex-1 bg-background">
+        {headerElement}
+        <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 80 }}>
+          {sidebarContent(expand)}
+        </ScrollView>
+      </View>
     );
   }
 
@@ -75,12 +95,14 @@ export function VfrPlanLayout({ mapElement, sidebarContent }: Props) {
 
     return (
       <View className="flex-1 bg-background">
+        {headerElement}
         <View style={{ height: currentMapHeight }}>
           {mapElement}
         </View>
-        {/* Drag handle */}
+        {/* Drag handle — a 2px rule with an ink grip, not a floating pill. */}
         <View
           {...panResponder.panHandlers}
+          className="border-y-2 border-rule bg-background"
           style={{
             height: HANDLE_HEIGHT,
             alignItems: 'center',
@@ -88,10 +110,10 @@ export function VfrPlanLayout({ mapElement, sidebarContent }: Props) {
             cursor: 'row-resize',
           } as never}
         >
-          <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#d1d5db' }} />
+          <View className="bg-rule" style={{ width: 40, height: 3 }} />
         </View>
         {formVisible && (
-          <View style={{ flex: 1, marginHorizontal: 8, marginBottom: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.97)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 8, overflow: 'hidden' }}>
+          <View style={{ flex: 1 }} className="bg-background">
             <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 80 }}>
               {sidebarContent(expand)}
             </ScrollView>
@@ -110,52 +132,50 @@ export function VfrPlanLayout({ mapElement, sidebarContent }: Props) {
   const mapFlex = sidebarMode === 'expanded' ? 2 : 1;
 
   return (
-    <View className="flex-1 flex-row bg-background">
-      {sidebarMode !== 'collapsed' && (
-        <View style={{ ...sidebarStyle, margin: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.97)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 8, overflow: 'hidden' }}>
-          <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 40 }}>
-            {sidebarContent(expand)}
-          </ScrollView>
-        </View>
-      )}
+    <View className="flex-1 bg-background">
+      {headerElement}
 
-      <View style={{ flex: mapFlex, position: 'relative' }}>
-        {mapElement}
+      {/* The split. Everything below the header resizes; the header does not. */}
+      <View className="flex-1 flex-row">
+        {sidebarMode !== 'collapsed' && (
+          <View style={sidebarStyle} className="border-r-2 border-rule bg-background">
+            <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 40 }}>
+              {sidebarContent(expand)}
+            </ScrollView>
+          </View>
+        )}
 
-        {/* Sidebar controls */}
-        <View
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 200,
-            zIndex: 1000,
-            backgroundColor: 'rgba(255,255,255,0.92)',
-            borderTopRightRadius: 6,
-            borderBottomRightRadius: 6,
-            borderWidth: 1,
-            borderLeftWidth: 0,
-            borderColor: 'rgba(128,128,128,0.25)',
-            overflow: 'hidden',
-          }}
-        >
-          {sidebarMode === 'collapsed' ? (
-            <Pressable onPress={normalize} style={{ paddingHorizontal: 5, paddingVertical: 14 }}>
-              <Text style={{ fontSize: 12, color: '#374151', fontWeight: '600' }}>❯</Text>
-            </Pressable>
-          ) : sidebarMode === 'normal' ? (
-            <>
-              <Pressable onPress={expand} style={{ paddingHorizontal: 5, paddingVertical: 10, borderBottomWidth: 1, borderColor: 'rgba(128,128,128,0.15)' }}>
-                <Text style={{ fontSize: 10, color: '#374151', fontWeight: '600' }}>❯❯</Text>
+        <View style={{ flex: mapFlex, position: 'relative' }}>
+          {mapElement}
+
+          {/* Sidebar controls — square, ruled, flush to the map's left edge. */}
+          <View
+            className="border-2 border-l-0 border-rule bg-background"
+            style={{ position: 'absolute', left: 0, top: 200, zIndex: 1000, overflow: 'hidden' }}
+          >
+            {sidebarMode === 'collapsed' ? (
+              <Pressable onPress={normalize} style={{ paddingHorizontal: 7, paddingVertical: 14 }}>
+                <Text className="font-sans text-[12px] font-bold text-foreground">❯</Text>
               </Pressable>
-              <Pressable onPress={collapse} style={{ paddingHorizontal: 5, paddingVertical: 10 }}>
-                <Text style={{ fontSize: 12, color: '#374151', fontWeight: '600' }}>❮</Text>
+            ) : sidebarMode === 'normal' ? (
+              <>
+                <Pressable
+                  onPress={expand}
+                  className="border-b border-border"
+                  style={{ paddingHorizontal: 7, paddingVertical: 10 }}
+                >
+                  <Text className="font-sans text-[10px] font-bold text-foreground">❯❯</Text>
+                </Pressable>
+                <Pressable onPress={collapse} style={{ paddingHorizontal: 7, paddingVertical: 10 }}>
+                  <Text className="font-sans text-[12px] font-bold text-foreground">❮</Text>
+                </Pressable>
+              </>
+            ) : (
+              <Pressable onPress={normalize} style={{ paddingHorizontal: 7, paddingVertical: 14 }}>
+                <Text className="font-sans text-[10px] font-bold text-foreground">❮❮</Text>
               </Pressable>
-            </>
-          ) : (
-            <Pressable onPress={normalize} style={{ paddingHorizontal: 5, paddingVertical: 14 }}>
-              <Text style={{ fontSize: 10, color: '#374151', fontWeight: '600' }}>❮❮</Text>
-            </Pressable>
-          )}
+            )}
+          </View>
         </View>
       </View>
     </View>
