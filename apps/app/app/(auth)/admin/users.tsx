@@ -1,16 +1,18 @@
 import { Feather } from '@expo/vector-icons';
-import { Button, Card, CardContent, Spinner, Text } from '@fs-suite/ui';
+import { Button, Spinner, Text, colors } from '@fs-suite/ui';
 import { Redirect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
+import { useIsDesktop } from '../../../src/hooks/useIsDesktop';
 import { notify } from '../../../src/lib/notify';
 import { usersAdminApi, type AdminUser } from '../../../src/services/users-admin.service';
 
 export default function AdminUsersScreen(): JSX.Element {
   const { t } = useTranslation();
+  const isDesktop = useIsDesktop();
   const { user: me } = useCurrentUser();
 
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -68,110 +70,130 @@ export default function AdminUsersScreen(): JSX.Element {
     return <Redirect href="/(auth)/dashboard" />;
   }
 
+  const pad = isDesktop ? 'px-8' : 'px-4';
+  const adminCount = users.filter((u) => u.isAdmin).length;
+
   return (
-    <ScrollView className="flex-1 bg-background" contentContainerStyle={{ paddingBottom: 48 }}>
-      <View className="px-4 py-6 md:mx-auto md:w-full md:max-w-3xl md:px-8 md:py-10">
-        <Text variant="h3" className="mb-6">
+    <View className="flex-1 bg-background" testID="admin-users">
+      <View className={'border-b-2 border-rule py-6 ' + pad}>
+        <Text variant="kicker">
+          {t('admin.users.kicker', { count: users.length, admins: adminCount })}
+        </Text>
+        <Text variant={isDesktop ? 'h1' : 'h2'} className="mt-2">
           {t('admin.users.title')}
         </Text>
-
-        {loading ? (
-          <Spinner />
-        ) : users.length === 0 ? (
-          <Text variant="muted" className="text-xs">
-            {t('admin.users.empty')}
-          </Text>
-        ) : (
-          <View className="gap-2">
-            {users.map((u) => {
-              const isSelf = u.id === me?.id;
-              const busy = busyId === u.id;
-              return (
-                <Card key={u.id}>
-                  <CardContent className="md:px-6 md:py-4">
-                    <View className="flex-row items-center justify-between gap-3">
-                      <View className="flex-1">
-                        <View className="flex-row items-center gap-2">
-                          <Text className="flex-shrink text-sm font-semibold text-foreground" numberOfLines={1}>
-                            {u.name}
-                          </Text>
-                          {u.isAdmin ? (
-                            <View className="rounded-full bg-primary/15 px-2 py-0.5">
-                              <Text className="text-[10px] font-medium text-primary">
-                                {t('admin.users.adminBadge')}
-                              </Text>
-                            </View>
-                          ) : null}
-                          {isSelf ? (
-                            <View className="rounded-full bg-surface-muted px-2 py-0.5">
-                              <Text className="text-[10px] font-medium text-muted-foreground">
-                                {t('admin.users.you')}
-                              </Text>
-                            </View>
-                          ) : null}
-                        </View>
-                        <Text variant="muted" className="mt-0.5 text-[11px]" numberOfLines={1}>
-                          {u.email}
-                        </Text>
-                        <Text variant="muted" className="mt-0.5 text-[11px]">
-                          {new Date(u.createdAt).toLocaleDateString()}
-                        </Text>
-                      </View>
-
-                      <View className="flex-row items-center gap-2">
-                        <Button
-                          variant={u.isAdmin ? 'ghost' : 'outline'}
-                          size="sm"
-                          onPress={() => {
-                            void toggleAdmin(u);
-                          }}
-                          disabled={busy || isSelf}
-                        >
-                          <Text>
-                            {u.isAdmin ? t('admin.users.revokeAdmin') : t('admin.users.makeAdmin')}
-                          </Text>
-                        </Button>
-
-                        {confirmingDelete === u.id ? (
-                          <View className="flex-row items-center gap-1">
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onPress={() => {
-                                void remove(u);
-                              }}
-                              disabled={busy}
-                            >
-                              <Text>{t('admin.users.confirmDelete')}</Text>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onPress={() => setConfirmingDelete(null)}
-                              disabled={busy}
-                            >
-                              <Text>{t('common.cancel')}</Text>
-                            </Button>
-                          </View>
-                        ) : (
-                          <Pressable
-                            onPress={() => setConfirmingDelete(u.id)}
-                            disabled={busy || isSelf}
-                            className={isSelf ? 'opacity-30' : 'active:opacity-60'}
-                            hitSlop={8}
-                          >
-                            <Feather name="trash-2" size={18} color="#ef4444" />
-                          </Pressable>
-                        )}
-                      </View>
-                    </View>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </View>
-        )}
       </View>
-    </ScrollView>
+
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <Spinner size="lg" />
+        </View>
+      ) : users.length === 0 ? (
+        <View className={'py-16 ' + pad}>
+          <Text variant={isDesktop ? 'h3' : 'h4'}>{t('admin.users.empty')}</Text>
+        </View>
+      ) : (
+        <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 48 }}>
+          {users.map((u) => {
+            const isSelf = u.id === me?.id;
+            const busy = busyId === u.id;
+            return (
+              <View
+                key={u.id}
+                testID={'admin-user-' + u.id}
+                className={
+                  'border-b border-border py-4 ' +
+                  pad +
+                  (isDesktop ? ' flex-row items-center justify-between gap-6' : '')
+                }
+              >
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View className="flex-row items-baseline gap-3">
+                    <Text variant="h4" numberOfLines={1} style={{ flexShrink: 1 }}>
+                      {u.name}
+                    </Text>
+                    {u.isAdmin ? (
+                      <View className="bg-primary/15 px-2 py-1">
+                        <Text variant="label" className="text-[10px] text-accent">
+                          {t('admin.users.adminBadge')}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {isSelf ? (
+                      <View className="bg-secondary px-2 py-1">
+                        <Text variant="label" className="text-[10px]">
+                          {t('admin.users.you')}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text variant="muted" className="mt-1 text-[12px]" numberOfLines={1}>
+                    {u.email}
+                  </Text>
+                  <Text variant="muted" className="mt-1 text-[11px]">
+                    {new Date(u.createdAt).toLocaleDateString()}
+                  </Text>
+                </View>
+
+                <View className={isDesktop ? 'flex-row items-center gap-3' : 'mt-3 flex-row items-center gap-3'}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    testID={'admin-toggle-' + u.id}
+                    onPress={() => {
+                      void toggleAdmin(u);
+                    }}
+                    disabled={busy || isSelf}
+                  >
+                    <Text>
+                      {u.isAdmin ? t('admin.users.revokeAdmin') : t('admin.users.makeAdmin')}
+                    </Text>
+                  </Button>
+
+                  {confirmingDelete === u.id ? (
+                    <View className="flex-row items-center">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        testID={'admin-delete-confirm-' + u.id}
+                        onPress={() => {
+                          void remove(u);
+                        }}
+                        disabled={busy}
+                      >
+                        <Text>{t('admin.users.confirmDelete')}</Text>
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onPress={() => setConfirmingDelete(null)}
+                        disabled={busy}
+                        className="border-l-0"
+                      >
+                        <Text>{t('common.cancel')}</Text>
+                      </Button>
+                    </View>
+                  ) : (
+                    <Pressable
+                      onPress={() => setConfirmingDelete(u.id)}
+                      disabled={busy || isSelf}
+                      testID={'admin-delete-' + u.id}
+                      className={
+                        'border-2 border-rule px-3 ' + (isSelf ? 'opacity-45' : 'active:bg-secondary')
+                      }
+                      style={{ height: 36, justifyContent: 'center' }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('common.delete')}
+                    >
+                      <Feather name="trash-2" size={16} color={colors.destructive} />
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
   );
 }
