@@ -10,104 +10,164 @@ import { apiClient } from '../../../src/services/api.client';
 import { signInWithDev, signInWithGoogle } from '../../../src/services/auth.service';
 import { useAuthStore } from '../../../src/stores/auth.store';
 
-const LANGUAGES: { code: SupportedLocale; flag: string }[] = [
-  { code: 'pt-BR', flag: '\u{1F1E7}\u{1F1F7}' },
-  { code: 'en', flag: '\u{1F1FA}\u{1F1F8}' },
+/**
+ * Hero proof figures. Values are literals in both locales — 91.151 is an RBAC
+ * article number and DECEA an agency name, neither of which translates. Only
+ * the labels go through i18n.
+ */
+const HERO_STATS = [
+  { key: 'checks', value: '11', labelKey: 'home.statChecks' },
+  { key: 'fuel', value: '91.151', labelKey: 'home.statFuelRule' },
+  { key: 'charts', value: 'DECEA', labelKey: 'home.statCharts' },
+] as const;
+
+const LANGUAGES: { code: SupportedLocale; label: string }[] = [
+  { code: 'pt-BR', label: 'PT' },
+  { code: 'en', label: 'EN' },
 ];
 
-const FEATURES = [
-  { key: 'Vfr', icon: '🗺', color: '#2563eb' },
-  { key: 'Rea', icon: '🛫', color: '#dc2626' },
-  { key: 'Fuel', icon: '⛽', color: '#d97706' },
-  { key: 'Weight', icon: '⚖️', color: '#7c3aed' },
-  { key: 'Simbrief', icon: '📋', color: '#0284c7' },
-  { key: 'Charts', icon: '📄', color: '#16a34a' },
-] as const;
+/**
+ * The landing content. Emoji and per-item colors were dropped: Modernist
+ * numbers its cells and keeps the page ink-on-ground, and a six-color icon
+ * set was the loudest thing on a page that is meant to read as an
+ * instrument. The i18n keys are unchanged, so all existing copy still lands.
+ */
+const FEATURES = ['Vfr', 'Rea', 'Fuel', 'Weight', 'Simbrief', 'Charts'] as const;
+const WX_ITEMS = ['Metar', 'Taf', 'Category', 'Sigmet', 'Precip', 'Satellite', 'Crosswind'] as const;
+const AI_CHECKS = ['Route', 'Weather', 'Fuel', 'Airspace', 'Regulations', 'Risk'] as const;
+const REA_STEPS = ['1', '2', '3'] as const;
+const AI_STEPS = ['1', '2', '3'] as const;
+const EXPORT_ITEMS = ['Plan', 'Ai', 'Checklist', 'Charts', 'Map', 'Viability'] as const;
+const METHODS = ['Semi', 'Fuel', 'Rea'] as const;
 
-const WX_ITEMS = [
-  { key: 'Metar', icon: '📡' },
-  { key: 'Taf', icon: '📅' },
-  { key: 'Category', icon: '🎯' },
-  { key: 'Sigmet', icon: '⚡' },
-  { key: 'Precip', icon: '🌧' },
-  { key: 'Satellite', icon: '🛰' },
-  { key: 'Crosswind', icon: '💨' },
-] as const;
+function twoDigit(i: number): string {
+  return String(i + 1).padStart(2, '0');
+}
 
-const AI_CHECKS = [
-  { key: 'Route', icon: '🧭' },
-  { key: 'Weather', icon: '🌦' },
-  { key: 'Fuel', icon: '⛽' },
-  { key: 'Airspace', icon: '🗺' },
-  { key: 'Regulations', icon: '📋' },
-  { key: 'Risk', icon: '⚠️' },
-] as const;
+/** A ruled grid of numbered cells. The grid showing is the point. */
+function CellGrid({
+  items,
+  columns,
+}: {
+  items: { num: string; title: string; desc: string }[];
+  columns: number;
+}) {
+  return (
+    <View className="flex-row flex-wrap border-t-2 border-rule">
+      {items.map((item) => (
+        <View
+          key={item.num + item.title}
+          className="border-b border-r border-border p-4"
+          style={{ flexBasis: `${Math.floor(100 / columns)}%`, flexGrow: 1, minWidth: 200 }}
+        >
+          <Text variant="kicker">{item.num}</Text>
+          <Text variant="h4" className="mt-2">
+            {item.title}
+          </Text>
+          <Text variant="muted" className="mt-2 text-[13px]">
+            {item.desc}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
-const REA_STEPS = [
-  { key: '1' },
-  { key: '2' },
-  { key: '3' },
-] as const;
-
-const EXPORT_ITEMS = [
-  { key: 'Plan', icon: '📝' },
-  { key: 'Ai', icon: '🤖' },
-  { key: 'Checklist', icon: '✅' },
-  { key: 'Charts', icon: '🗺' },
-  { key: 'Map', icon: '📍' },
-  { key: 'Viability', icon: '🛡' },
-] as const;
-
-const METHODS = [
-  { key: 'Semi', icon: '🧭' },
-  { key: 'Fuel', icon: '🛢' },
-  { key: 'Rea', icon: '✈️' },
-] as const;
+/** Kicker + title + description, flush left, over a 2px rule. */
+function SectionIntro({
+  badge,
+  title,
+  description,
+  pad,
+  isWide,
+}: {
+  badge?: string;
+  title: string;
+  description?: string;
+  pad: string;
+  isWide: boolean;
+}) {
+  return (
+    <View className={'py-8 ' + pad}>
+      {badge ? <Text variant="kicker">{badge}</Text> : null}
+      <Text variant={isWide ? 'h2' : 'h3'} className={badge ? 'mt-3' : ''} style={{ maxWidth: 640 }}>
+        {title}
+      </Text>
+      {description ? (
+        <Text variant="lead" className="mt-3" style={{ maxWidth: 620 }}>
+          {description}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
 function LoginButtons({
   providers,
   loading,
   onGoogle,
   onDev,
+  onAccent,
   t,
 }: {
   providers: string[];
   loading: 'google' | 'dev' | null;
   onGoogle: () => void;
   onDev: () => void;
+  /** True when sitting on the accent poster, where the ground is dark. */
+  onAccent?: boolean;
   t: (k: string) => string;
 }): JSX.Element {
   return (
-    <View className="w-full max-w-sm gap-3">
-      <Button
-        variant="outline"
-        size="lg"
-        className="w-full gap-3 border-border bg-white shadow-sm"
+    <View className="flex-row flex-wrap gap-3">
+      <Pressable
         onPress={onGoogle}
         disabled={loading !== null}
+        className={[
+          'flex-row items-center gap-3 border-2 px-5',
+          onAccent ? 'border-primary-foreground bg-primary-foreground' : 'border-rule bg-rule',
+          loading !== null ? 'opacity-45' : '',
+        ].join(' ')}
+        style={{ height: 48 }}
+        accessibilityRole="button"
       >
         {loading === 'google' ? (
-          <ActivityIndicator size="small" color="#2563eb" />
-        ) : (
-          <Text style={{ fontSize: 18, fontWeight: '700', color: '#4285F4' }}>G</Text>
-        )}
-        <Text className="text-sm font-medium text-foreground">{t('login.signInButton')}</Text>
-      </Button>
+          <ActivityIndicator size="small" color={onAccent ? '#1a4fd8' : '#f0f2f6'} />
+        ) : null}
+        <Text
+          className={[
+            'font-sans text-[15px] font-bold',
+            onAccent ? 'text-primary' : 'text-background',
+          ].join(' ')}
+        >
+          {t('login.signInButton')}
+        </Text>
+      </Pressable>
+
       {providers.includes('dev') ? (
-        <Button
-          variant="outline"
-          size="lg"
-          className="w-full gap-3 border-dashed border-yellow-500/50 bg-yellow-50/10 shadow-sm"
+        <Pressable
           onPress={onDev}
           disabled={loading !== null}
+          className={[
+            'flex-row items-center gap-3 border-2 px-5',
+            onAccent ? 'border-primary-foreground' : 'border-rule',
+            loading !== null ? 'opacity-45' : '',
+          ].join(' ')}
+          style={{ height: 48 }}
+          accessibilityRole="button"
         >
           {loading === 'dev' ? (
-            <ActivityIndicator size="small" color="#eab308" />
-          ) : (
-            <Text style={{ fontSize: 14, fontWeight: '700', color: '#eab308' }}>D</Text>
-          )}
-          <Text className="text-sm font-medium text-foreground">{t('login.signInDev')}</Text>
-        </Button>
+            <ActivityIndicator size="small" color={onAccent ? '#f0f2f6' : '#16203a'} />
+          ) : null}
+          <Text
+            className={[
+              'font-sans text-[15px] font-bold',
+              onAccent ? 'text-primary-foreground' : 'text-foreground',
+            ].join(' ')}
+          >
+            {t('login.signInDev')}
+          </Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -180,755 +240,72 @@ export default function LoginScreen(): JSX.Element {
     }
   };
 
+  // Same behaviour as before (scroll the closing CTA into view) via the
+  // ScrollView's own ref rather than the DOM, so it works on native too.
   const scrollToCta = (): void => {
-    if (Platform.OS === 'web' && ctaRef.current) {
-      const el = ctaRef.current as unknown as Record<string, unknown>;
-      if (typeof el.scrollIntoView === 'function') {
-        (el.scrollIntoView as (opts: Record<string, string>) => void)({ behavior: 'smooth', block: 'center' });
-      }
-    }
+    const cta = ctaRef.current;
+    const scroller = scrollRef.current;
+    if (!cta || !scroller) return;
+    cta.measureLayout(
+      scroller.getInnerViewNode(),
+      (_x: number, y: number) => {
+        scroller.scrollTo({ y: Math.max(0, y - 24), animated: true });
+      },
+      () => undefined,
+    );
   };
+
+  const pad = isWide ? 'px-10' : 'px-5';
 
   return (
     <ScrollView ref={scrollRef} className="flex-1 bg-background" showsVerticalScrollIndicator={false}>
-      {/* ===== HERO SECTION ===== */}
+      {/* ===== TOP BAR ===== */}
       <View
-        style={{
-          minHeight: 600,
-          backgroundColor: '#0c1222',
-          ...(Platform.OS === 'web' ? {
-            backgroundImage: 'linear-gradient(135deg, #0c1222 0%, #162036 50%, #1a2744 100%)',
-          } as never : {}),
-        }}
+        className={'flex-row items-center justify-between border-b-2 border-rule py-4 ' + pad}
       >
-        {/* Subtle grid pattern overlay */}
-        <View
-          style={{
-            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.03,
-            ...(Platform.OS === 'web' ? {
-              backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
-              backgroundSize: '40px 40px',
-            } as never : {}),
-          }}
-          pointerEvents="none"
-        />
-
-        {/* Language switcher */}
-        <View
-          style={{
-            position: 'absolute', top: 16, right: 16, zIndex: 10,
-            flexDirection: 'row', gap: 8, alignItems: 'center',
-            backgroundColor: 'rgba(255,255,255,0.08)',
-            borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6,
-          }}
-        >
-          {LANGUAGES.map((lang) => {
-            const isActive = i18n.language === lang.code;
-            return (
-              <Pressable
-                key={lang.code}
-                onPress={() => { void setLanguage(lang.code); }}
-                disabled={isActive}
-                style={{ opacity: isActive ? 0.4 : 1 }}
-              >
-                <Text style={{ fontSize: 18 }}>{lang.flag}</Text>
-              </Pressable>
-            );
-          })}
+        <Logo height={28} />
+        <View className="flex-row items-center gap-4">
+          <View className="flex-row">
+            {LANGUAGES.map((lang) => {
+              const isCurrent = i18n.language === lang.code;
+              return (
+                <Pressable
+                  key={lang.code}
+                  onPress={() => { void setLanguage(lang.code); }}
+                  disabled={isCurrent}
+                  className={['border-2 border-rule px-2 py-1', isCurrent ? 'bg-rule' : 'bg-transparent'].join(' ')}
+                  style={{ marginLeft: -2 }}
+                  accessibilityLabel={lang.label}
+                >
+                  <Text variant="labelInk" className={isCurrent ? 'text-background' : 'text-foreground'}>
+                    {lang.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Button onPress={scrollToCta}>
+            <Text>{t('home.cta')}</Text>
+          </Button>
         </View>
+      </View>
 
-        {/* Radial glow behind logo */}
+      {/* ===== HERO ===== */}
+      {/* Two columns on wide: copy left, walkthrough right. The video moved
+          into the hero because it was the page's strongest proof and sat
+          below the fold as its own section. On narrow it stacks, copy first. */}
+      <View className={'border-b-2 border-rule ' + (isWide ? 'flex-row' : '')}>
         <View
-          style={{
-            position: 'absolute', top: '15%', left: '50%', width: 500, height: 500,
-            marginLeft: -250, borderRadius: 250, opacity: 0.08,
-            backgroundColor: '#2563eb',
-            ...(Platform.OS === 'web' ? { filter: 'blur(100px)' } as never : {}),
-          }}
-          pointerEvents="none"
-        />
-
-        <View className="flex-1 items-center justify-center px-6 py-20">
-          {/* Logo */}
-          <Logo height={isWide ? 300 : 200} />
-
-          {/* Tagline */}
-          <Text
-            style={{
-              fontSize: isWide ? 22 : 17,
-              fontWeight: '500',
-              color: '#94a3b8',
-              textAlign: 'center',
-              marginTop: 24,
-              maxWidth: 560,
-              lineHeight: isWide ? 32 : 26,
-            }}
-          >
+          className={'py-12 ' + pad}
+          style={isWide ? { flexBasis: '52%', flexGrow: 0, minWidth: 0 } : undefined}
+        >
+          <Text variant={isWide ? 'display' : 'h1'} style={{ maxWidth: 900 }}>
             {t('home.heroTagline')}
           </Text>
-
-          {/* Description */}
-          <Text
-            style={{
-              fontSize: isWide ? 16 : 14,
-              color: '#64748b',
-              textAlign: 'center',
-              marginTop: 20,
-              maxWidth: 620,
-              lineHeight: isWide ? 26 : 22,
-            }}
-          >
+          <Text variant="lead" className="mt-5" style={{ maxWidth: 620 }}>
             {t('home.heroDescription')}
           </Text>
-
-          {/* CTA */}
-          <View style={{ marginTop: 36 }}>
-            <Button
-              size="lg"
-              className="rounded-full px-8 shadow-lg"
-              style={{ backgroundColor: '#2563eb' }}
-              onPress={scrollToCta}
-            >
-              <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '600' }}>
-                {t('home.cta')}
-              </Text>
-            </Button>
-          </View>
-
-          {/* Decorative bottom fade */}
-          <View
-            style={{
-              position: 'absolute', bottom: 0, left: 0, right: 0, height: 1,
-              backgroundColor: '#2563eb22',
-            }}
-            pointerEvents="none"
-          />
-        </View>
-      </View>
-
-      {/* ===== PRODUCT VIDEO ===== */}
-      <View className="bg-background px-6 py-16 md:py-20">
-        <View className="mx-auto w-full" style={{ maxWidth: 960 }}>
-          <Text
-            style={{
-              fontSize: isWide ? 32 : 24,
-              fontWeight: '700',
-              color: '#1a1d26',
-              textAlign: 'center',
-              letterSpacing: -0.5,
-            }}
-          >
-            {t('home.videoTitle')}
-          </Text>
-          <View
-            style={{
-              alignSelf: 'center',
-              width: 60,
-              height: 3,
-              backgroundColor: '#2563eb',
-              borderRadius: 2,
-              marginTop: 16,
-            }}
-          />
-          <Text
-            style={{
-              fontSize: isWide ? 16 : 14,
-              color: '#64748b',
-              textAlign: 'center',
-              marginTop: 16,
-            }}
-          >
-            {t('home.videoSubtitle')}
-          </Text>
-          <View
-            ref={videoRef}
-            style={{
-              marginTop: 32,
-              aspectRatio: 16 / 9,
-              borderRadius: 12,
-              overflow: 'hidden',
-              backgroundColor: '#000',
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: 0.15,
-              shadowRadius: 30,
-              elevation: 8,
-            }}
-          />
-        </View>
-      </View>
-
-      {/* ===== FEATURES SECTION ===== */}
-      <View className="bg-background px-6 py-16 md:py-24">
-        <View className="mx-auto w-full" style={{ maxWidth: 1000 }}>
-          <Text
-            style={{
-              fontSize: isWide ? 32 : 24,
-              fontWeight: '700',
-              color: '#1a1d26',
-              textAlign: 'center',
-              letterSpacing: -0.5,
-            }}
-          >
-            {t('home.featuresTitle')}
-          </Text>
-
-          {/* Accent line */}
-          <View style={{ alignSelf: 'center', width: 60, height: 3, backgroundColor: '#2563eb', borderRadius: 2, marginTop: 16 }} />
-
-          {/* Feature cards grid */}
-          <View
-            style={{
-              marginTop: 48,
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              gap: isWide ? 20 : 16,
-              justifyContent: 'center',
-            }}
-          >
-            {FEATURES.map((feat) => (
-              <View
-                key={feat.key}
-                style={{
-                  width: isWide ? '30%' : '100%',
-                  minWidth: isWide ? 280 : undefined,
-                  maxWidth: isWide ? 340 : undefined,
-                  backgroundColor: '#ffffff',
-                  borderRadius: 12,
-                  padding: isWide ? 28 : 20,
-                  borderLeftWidth: 4,
-                  borderLeftColor: feat.color,
-                  ...(Platform.OS === 'web' ? {
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
-                  } as never : { elevation: 2 }),
-                }}
-              >
-                <View className="flex-row items-center gap-3">
-                  <Text style={{ fontSize: 24 }}>{feat.icon}</Text>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#1a1d26' }}>
-                    {t(`home.feat${feat.key}`)}
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 13, color: '#6b7280', lineHeight: 20, marginTop: 10 }}>
-                  {t(`home.feat${feat.key}Desc`)}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      </View>
-
-      {/* ===== WEATHER SECTION ===== */}
-      <View
-        style={{
-          paddingHorizontal: 24,
-          paddingVertical: isWide ? 96 : 64,
-          backgroundColor: '#0c1222',
-          ...(Platform.OS === 'web' ? {
-            backgroundImage: 'linear-gradient(135deg, #0c1222 0%, #0f1d30 50%, #0c1222 100%)',
-          } as never : {}),
-        }}
-      >
-        {/* Glow accent */}
-        <View
-          style={{
-            position: 'absolute', top: '30%', left: '50%', width: 400, height: 400,
-            marginLeft: -200, borderRadius: 200, opacity: 0.06,
-            backgroundColor: '#0ea5e9',
-            ...(Platform.OS === 'web' ? { filter: 'blur(80px)' } as never : {}),
-          }}
-          pointerEvents="none"
-        />
-
-        <View className="mx-auto w-full" style={{ maxWidth: 1000 }}>
-          {/* Badge */}
-          <View style={{ alignSelf: 'center', backgroundColor: '#0ea5e920', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6, marginBottom: 20 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: '#38bdf8', letterSpacing: 1 }}>
-              {t('home.wxBadge')}
-            </Text>
-          </View>
-
-          <Text
-            style={{
-              fontSize: isWide ? 32 : 24,
-              fontWeight: '700',
-              color: '#ffffff',
-              textAlign: 'center',
-              letterSpacing: -0.5,
-            }}
-          >
-            {t('home.wxTitle')}
-          </Text>
-          <View style={{ alignSelf: 'center', width: 60, height: 3, backgroundColor: '#0ea5e9', borderRadius: 2, marginTop: 16 }} />
-
-          <Text
-            style={{
-              fontSize: isWide ? 16 : 14,
-              color: '#94a3b8',
-              textAlign: 'center',
-              lineHeight: isWide ? 26 : 22,
-              marginTop: 24,
-              maxWidth: 680,
-              alignSelf: 'center',
-            }}
-          >
-            {t('home.wxDescription')}
-          </Text>
-
-          {/* Weather items grid */}
-          <View
-            style={{
-              marginTop: 48,
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              gap: isWide ? 16 : 12,
-              justifyContent: 'center',
-            }}
-          >
-            {WX_ITEMS.map((item) => (
-              <View
-                key={item.key}
-                style={{
-                  width: isWide ? '30%' : '46%',
-                  minWidth: isWide ? 180 : 140,
-                  maxWidth: isWide ? 300 : undefined,
-                  backgroundColor: '#ffffff08',
-                  borderRadius: 12,
-                  padding: isWide ? 20 : 16,
-                  borderWidth: 1,
-                  borderColor: '#ffffff10',
-                }}
-              >
-                <Text style={{ fontSize: 24, marginBottom: 8 }}>{item.icon}</Text>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#e2e8f0' }}>
-                  {t(`home.wx${item.key}`)}
-                </Text>
-                <Text style={{ fontSize: 12, color: '#64748b', lineHeight: 18, marginTop: 6 }}>
-                  {t(`home.wx${item.key}Desc`)}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      </View>
-
-      {/* ===== REA NAVIGATION ENGINE SECTION ===== */}
-      <View
-        style={{
-          paddingHorizontal: 24,
-          paddingVertical: isWide ? 96 : 64,
-          backgroundColor: '#0c1222',
-          ...(Platform.OS === 'web' ? {
-            backgroundImage: 'linear-gradient(135deg, #0c1222 0%, #2a1215 50%, #0c1222 100%)',
-          } as never : {}),
-        }}
-      >
-        {/* Glow accent */}
-        <View
-          style={{
-            position: 'absolute', top: '30%', left: '50%', width: 400, height: 400,
-            marginLeft: -200, borderRadius: 200, opacity: 0.06,
-            backgroundColor: '#dc2626',
-            ...(Platform.OS === 'web' ? { filter: 'blur(80px)' } as never : {}),
-          }}
-          pointerEvents="none"
-        />
-
-        <View className="mx-auto w-full" style={{ maxWidth: 1000 }}>
-          {/* Badge */}
-          <View style={{ alignSelf: 'center', backgroundColor: '#dc262620', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6, marginBottom: 20 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: '#f87171', letterSpacing: 1 }}>
-              {t('home.reaBadge')}
-            </Text>
-          </View>
-
-          <Text
-            style={{
-              fontSize: isWide ? 32 : 24,
-              fontWeight: '700',
-              color: '#ffffff',
-              textAlign: 'center',
-              letterSpacing: -0.5,
-            }}
-          >
-            {t('home.reaTitle')}
-          </Text>
-          <View style={{ alignSelf: 'center', width: 60, height: 3, backgroundColor: '#dc2626', borderRadius: 2, marginTop: 16 }} />
-
-          <Text
-            style={{
-              fontSize: isWide ? 16 : 14,
-              color: '#94a3b8',
-              textAlign: 'center',
-              lineHeight: isWide ? 26 : 22,
-              marginTop: 24,
-              maxWidth: 680,
-              alignSelf: 'center',
-            }}
-          >
-            {t('home.reaDescription')}
-          </Text>
-
-          {/* How it works */}
-          <View
-            style={{
-              marginTop: 48,
-              backgroundColor: '#ffffff06',
-              borderRadius: 16,
-              padding: isWide ? 32 : 20,
-              borderWidth: 1,
-              borderColor: '#ffffff08',
-            }}
-          >
-            <Text style={{ fontSize: isWide ? 18 : 16, fontWeight: '700', color: '#e2e8f0', textAlign: 'center', marginBottom: 24 }}>
-              {t('home.aiHowTitle')}
-            </Text>
-            <View style={{ flexDirection: isWide ? 'row' : 'column', gap: isWide ? 32 : 20, justifyContent: 'center' }}>
-              {REA_STEPS.map((step) => (
-                <View key={step.key} style={{ flex: isWide ? 1 : undefined, alignItems: 'center' }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#dc262620', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#f87171' }}>{step.key}</Text>
-                  </View>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#e2e8f0', textAlign: 'center' }}>
-                    {t(`home.reaStep${step.key}Title`)}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: '#64748b', textAlign: 'center', lineHeight: 18, marginTop: 6 }}>
-                    {t(`home.reaStep${step.key}Desc`)}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-      </View>
-
-      {/* ===== AI INSTRUCTOR SECTION ===== */}
-      <View
-        style={{
-          paddingHorizontal: 24,
-          paddingVertical: isWide ? 96 : 64,
-          backgroundColor: '#0c1222',
-          ...(Platform.OS === 'web' ? {
-            backgroundImage: 'linear-gradient(135deg, #0c1222 0%, #1a1040 50%, #0c1222 100%)',
-          } as never : {}),
-        }}
-      >
-        {/* Glow accent */}
-        <View
-          style={{
-            position: 'absolute', top: '30%', left: '50%', width: 400, height: 400,
-            marginLeft: -200, borderRadius: 200, opacity: 0.06,
-            backgroundColor: '#8b5cf6',
-            ...(Platform.OS === 'web' ? { filter: 'blur(80px)' } as never : {}),
-          }}
-          pointerEvents="none"
-        />
-
-        <View className="mx-auto w-full" style={{ maxWidth: 1000 }}>
-          {/* Badge */}
-          <View style={{ alignSelf: 'center', backgroundColor: '#8b5cf620', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6, marginBottom: 20 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: '#a78bfa', letterSpacing: 1 }}>
-              {t('home.aiBadge')}
-            </Text>
-          </View>
-
-          <Text
-            style={{
-              fontSize: isWide ? 32 : 24,
-              fontWeight: '700',
-              color: '#ffffff',
-              textAlign: 'center',
-              letterSpacing: -0.5,
-            }}
-          >
-            {t('home.aiTitle')}
-          </Text>
-          <View style={{ alignSelf: 'center', width: 60, height: 3, backgroundColor: '#8b5cf6', borderRadius: 2, marginTop: 16 }} />
-
-          <Text
-            style={{
-              fontSize: isWide ? 16 : 14,
-              color: '#94a3b8',
-              textAlign: 'center',
-              lineHeight: isWide ? 26 : 22,
-              marginTop: 24,
-              maxWidth: 680,
-              alignSelf: 'center',
-            }}
-          >
-            {t('home.aiDescription')}
-          </Text>
-
-          {/* AI checks grid */}
-          <View
-            style={{
-              marginTop: 48,
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              gap: isWide ? 16 : 12,
-              justifyContent: 'center',
-            }}
-          >
-            {AI_CHECKS.map((check) => (
-              <View
-                key={check.key}
-                style={{
-                  width: isWide ? '30%' : '46%',
-                  minWidth: isWide ? 180 : 140,
-                  maxWidth: isWide ? 300 : undefined,
-                  backgroundColor: '#ffffff08',
-                  borderRadius: 12,
-                  padding: isWide ? 20 : 16,
-                  borderWidth: 1,
-                  borderColor: '#ffffff10',
-                }}
-              >
-                <Text style={{ fontSize: 24, marginBottom: 8 }}>{check.icon}</Text>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#e2e8f0' }}>
-                  {t(`home.aiCheck${check.key}`)}
-                </Text>
-                <Text style={{ fontSize: 12, color: '#64748b', lineHeight: 18, marginTop: 6 }}>
-                  {t(`home.aiCheck${check.key}Desc`)}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          {/* How it works */}
-          <View
-            style={{
-              marginTop: 48,
-              backgroundColor: '#ffffff06',
-              borderRadius: 16,
-              padding: isWide ? 32 : 20,
-              borderWidth: 1,
-              borderColor: '#ffffff08',
-            }}
-          >
-            <Text style={{ fontSize: isWide ? 18 : 16, fontWeight: '700', color: '#e2e8f0', textAlign: 'center', marginBottom: 24 }}>
-              {t('home.aiHowTitle')}
-            </Text>
-            <View style={{ flexDirection: isWide ? 'row' : 'column', gap: isWide ? 32 : 20, justifyContent: 'center' }}>
-              {(['1', '2', '3'] as const).map((step) => (
-                <View key={step} style={{ flex: isWide ? 1 : undefined, alignItems: 'center' }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#8b5cf620', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#a78bfa' }}>{step}</Text>
-                  </View>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#e2e8f0', textAlign: 'center' }}>
-                    {t(`home.aiStep${step}Title`)}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: '#64748b', textAlign: 'center', lineHeight: 18, marginTop: 6 }}>
-                    {t(`home.aiStep${step}Desc`)}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-      </View>
-
-      {/* ===== ALL-IN-ONE EXPORT SECTION ===== */}
-      <View className="bg-background px-6 py-16 md:py-24">
-        <View className="mx-auto w-full" style={{ maxWidth: 1000 }}>
-          <View style={{ alignSelf: 'center', backgroundColor: '#16a34a18', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6, marginBottom: 20 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: '#16a34a', letterSpacing: 1 }}>
-              {t('home.exportBadge')}
-            </Text>
-          </View>
-
-          <Text
-            style={{
-              fontSize: isWide ? 32 : 24,
-              fontWeight: '700',
-              color: '#1a1d26',
-              textAlign: 'center',
-              letterSpacing: -0.5,
-            }}
-          >
-            {t('home.exportTitle')}
-          </Text>
-          <View style={{ alignSelf: 'center', width: 60, height: 3, backgroundColor: '#16a34a', borderRadius: 2, marginTop: 16 }} />
-
-          <Text
-            style={{
-              fontSize: isWide ? 16 : 14,
-              color: '#6b7280',
-              textAlign: 'center',
-              lineHeight: isWide ? 26 : 22,
-              marginTop: 24,
-              maxWidth: 680,
-              alignSelf: 'center',
-            }}
-          >
-            {t('home.exportDescription')}
-          </Text>
-
-          {/* Export items grid */}
-          <View
-            style={{
-              marginTop: 48,
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              gap: isWide ? 16 : 12,
-              justifyContent: 'center',
-            }}
-          >
-            {EXPORT_ITEMS.map((item) => (
-              <View
-                key={item.key}
-                style={{
-                  width: isWide ? '30%' : '46%',
-                  minWidth: isWide ? 180 : 140,
-                  maxWidth: isWide ? 300 : undefined,
-                  backgroundColor: '#ffffff',
-                  borderRadius: 12,
-                  padding: isWide ? 20 : 16,
-                  borderLeftWidth: 3,
-                  borderLeftColor: '#16a34a',
-                  ...(Platform.OS === 'web' ? {
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
-                  } as never : { elevation: 2 }),
-                }}
-              >
-                <View className="flex-row items-center gap-2 mb-1.5">
-                  <Text style={{ fontSize: 20 }}>{item.icon}</Text>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#1a1d26' }}>
-                    {t(`home.exportItem${item.key}`)}
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 12, color: '#6b7280', lineHeight: 18 }}>
-                  {t(`home.exportItem${item.key}Desc`)}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Single PDF callout */}
-          <View
-            style={{
-              marginTop: 32,
-              backgroundColor: '#16a34a08',
-              borderRadius: 12,
-              padding: isWide ? 24 : 16,
-              borderWidth: 1,
-              borderColor: '#16a34a20',
-              flexDirection: isWide ? 'row' : 'column',
-              alignItems: 'center',
-              gap: 16,
-            }}
-          >
-            <Text style={{ fontSize: 40 }}>📄</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: isWide ? 16 : 15, fontWeight: '700', color: '#1a1d26' }}>
-                {t('home.exportSinglePdf')}
-              </Text>
-              <Text style={{ fontSize: 13, color: '#6b7280', lineHeight: 20, marginTop: 6 }}>
-                {t('home.exportSinglePdfDesc')}
-              </Text>
-            </View>
-          </View>
-        </View>
-      </View>
-
-      {/* ===== ICAO METHODOLOGY SECTION ===== */}
-      <View
-        style={{
-          paddingHorizontal: 24,
-          paddingVertical: isWide ? 96 : 64,
-          backgroundColor: '#f0f4f8',
-          ...(Platform.OS === 'web' ? {
-            backgroundImage: 'linear-gradient(180deg, #f0f4f8 0%, #e8ecf2 100%)',
-          } as never : {}),
-        }}
-      >
-        <View className="mx-auto w-full" style={{ maxWidth: 1000 }}>
-          <Text
-            style={{
-              fontSize: isWide ? 32 : 24,
-              fontWeight: '700',
-              color: '#1a1d26',
-              textAlign: 'center',
-              letterSpacing: -0.5,
-            }}
-          >
-            {t('home.methodTitle')}
-          </Text>
-          <View style={{ alignSelf: 'center', width: 60, height: 3, backgroundColor: '#2563eb', borderRadius: 2, marginTop: 16 }} />
-
-          <View style={{ marginTop: 48, gap: isWide ? 24 : 20 }}>
-            {METHODS.map((m) => (
-              <View
-                key={m.key}
-                style={{
-                  backgroundColor: '#ffffff',
-                  borderRadius: 12,
-                  padding: isWide ? 32 : 20,
-                  ...(Platform.OS === 'web' ? {
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
-                  } as never : { elevation: 2 }),
-                }}
-              >
-                <View className="flex-row items-center gap-3">
-                  <View
-                    style={{
-                      width: 40, height: 40, borderRadius: 10,
-                      backgroundColor: '#2563eb12',
-                      alignItems: 'center', justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ fontSize: 20 }}>{m.icon}</Text>
-                  </View>
-                  <Text style={{ fontSize: 18, fontWeight: '700', color: '#1a1d26' }}>
-                    {t(`home.method${m.key}Title`)}
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 14, color: '#4b5563', lineHeight: 24, marginTop: 14 }}>
-                  {t(`home.method${m.key}Desc`)}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      </View>
-
-      {/* ===== LOGIN CTA SECTION ===== */}
-      <View
-        style={{
-          backgroundColor: '#0c1222',
-          ...(Platform.OS === 'web' ? {
-            backgroundImage: 'linear-gradient(135deg, #0c1222 0%, #162036 50%, #1a2744 100%)',
-          } as never : {}),
-        }}
-      >
-        <View
-          ref={ctaRef}
-          className="items-center px-6 py-16 md:py-24"
-        >
-          <Text
-            style={{
-              fontSize: isWide ? 32 : 24,
-              fontWeight: '700',
-              color: '#ffffff',
-              textAlign: 'center',
-              letterSpacing: -0.5,
-            }}
-          >
-            {t('home.readyTitle')}
-          </Text>
-          <Text
-            style={{
-              fontSize: 15,
-              color: '#94a3b8',
-              textAlign: 'center',
-              marginTop: 12,
-              maxWidth: 480,
-              lineHeight: 24,
-            }}
-          >
-            {t('home.readyDesc')}
-          </Text>
-
-          <View className="mt-10 items-center">
+          <View className="mt-8">
             <LoginButtons
               providers={providers}
               loading={loading}
@@ -937,24 +314,245 @@ export default function LoginScreen(): JSX.Element {
               t={t}
             />
           </View>
+        </View>
 
-          <Text
+        <View
+          className={isWide ? 'border-l-2 border-l-rule' : 'border-t-2 border-rule'}
+          style={isWide ? { flexBasis: '48%', flexGrow: 1, minWidth: 0 } : undefined}
+        >
+          {/* The dark ground takes the column's spare height and holds the
+              player centred at 16:9, so the cell can match the copy column
+              without stretching the video or the stats. */}
+          <View
+            className="items-start justify-center px-5 py-5"
             style={{
-              fontSize: 11,
-              color: '#475569',
-              textAlign: 'center',
-              marginTop: 32,
-              maxWidth: 320,
-              lineHeight: 18,
+              flex: isWide ? 1 : undefined,
+              minHeight: isWide ? 320 : 240,
+              backgroundColor: '#0b1020',
             }}
           >
-            {t('login.terms')}
+            <Text
+              className="font-sans text-[11px] font-bold uppercase"
+              style={{ letterSpacing: 1.5, color: '#8f9bb8' }}
+            >
+              {t('home.videoTitle')}
+            </Text>
+            <View
+              ref={videoRef}
+              collapsable={false}
+              className="my-4"
+              style={{ width: '100%', aspectRatio: 16 / 9, backgroundColor: '#16203a' }}
+            />
+            <Text
+              className="font-sans text-[15px] font-extrabold"
+              style={{ letterSpacing: -0.15, color: '#f0f2f6', maxWidth: 320 }}
+            >
+              {t('home.videoSubtitle')}
+            </Text>
+          </View>
+
+          {/* Three proof figures. Dividers sit BETWEEN cells only — a border on
+              every cell would leave a stray rule inside the column's padding.
+              1px at 20% keeps them subordinate to the 2px structural rules. */}
+          <View className="flex-row px-5" style={{ borderTopWidth: 1, borderTopColor: '#16203a33' }}>
+            {HERO_STATS.map((stat, i) => (
+              <View
+                key={stat.key}
+                className="py-4"
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  paddingLeft: i === 0 ? 0 : 16,
+                  paddingRight: 12,
+                  ...(i === 0
+                    ? {}
+                    : { borderLeftWidth: 1, borderLeftColor: '#16203a33' }),
+                }}
+              >
+                <Text
+                  className="font-sans text-[24px] font-extrabold text-foreground"
+                  style={{ letterSpacing: -0.24 }}
+                  numberOfLines={1}
+                >
+                  {stat.value}
+                </Text>
+                <Text variant="label" className="mt-1 text-[10px]" numberOfLines={2}>
+                  {t(stat.labelKey)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </View>
+
+      {/* ===== FEATURES ===== */}
+      <View className="border-b-2 border-rule">
+        <SectionIntro title={t('home.featuresTitle')} pad={pad} isWide={isWide} />
+        <CellGrid
+          columns={isWide ? 3 : 1}
+          items={FEATURES.map((key, i) => ({
+            num: twoDigit(i),
+            title: t('home.feat' + key),
+            desc: t('home.feat' + key + 'Desc'),
+          }))}
+        />
+      </View>
+
+      {/* ===== WEATHER ===== */}
+      <View className="border-b-2 border-rule">
+        <SectionIntro
+          badge={t('home.wxBadge')}
+          title={t('home.wxTitle')}
+          description={t('home.wxDescription')}
+          pad={pad}
+          isWide={isWide}
+        />
+        <CellGrid
+          columns={isWide ? 4 : 2}
+          items={WX_ITEMS.map((key, i) => ({
+            num: twoDigit(i),
+            title: t('home.wx' + key),
+            desc: t('home.wx' + key + 'Desc'),
+          }))}
+        />
+      </View>
+
+      {/* ===== REA ===== */}
+      <View className="border-b-2 border-rule">
+        <SectionIntro
+          badge={t('home.reaBadge')}
+          title={t('home.reaTitle')}
+          description={t('home.reaDescription')}
+          pad={pad}
+          isWide={isWide}
+        />
+        <View className={'pb-8 ' + pad}>
+          <Text variant="label">{t('home.aiHowTitle')}</Text>
+        </View>
+        <CellGrid
+          columns={3}
+          items={REA_STEPS.map((step, i) => ({
+            num: twoDigit(i),
+            title: t('home.reaStep' + step + 'Title'),
+            desc: t('home.reaStep' + step + 'Desc'),
+          }))}
+        />
+      </View>
+
+      {/* ===== AI VALIDATION ===== */}
+      <View className="border-b-2 border-rule">
+        <SectionIntro
+          badge={t('home.aiBadge')}
+          title={t('home.aiTitle')}
+          description={t('home.aiDescription')}
+          pad={pad}
+          isWide={isWide}
+        />
+        <CellGrid
+          columns={isWide ? 3 : 2}
+          items={AI_CHECKS.map((key, i) => ({
+            num: twoDigit(i),
+            title: t('home.aiCheck' + key),
+            desc: t('home.aiCheck' + key + 'Desc'),
+          }))}
+        />
+        <View className={'py-8 ' + pad}>
+          <Text variant="label">{t('home.aiHowTitle')}</Text>
+        </View>
+        <CellGrid
+          columns={3}
+          items={AI_STEPS.map((step, i) => ({
+            num: twoDigit(i),
+            title: t('home.aiStep' + step + 'Title'),
+            desc: t('home.aiStep' + step + 'Desc'),
+          }))}
+        />
+      </View>
+
+      {/* ===== EXPORT ===== */}
+      <View className="border-b-2 border-rule">
+        <SectionIntro
+          badge={t('home.exportBadge')}
+          title={t('home.exportTitle')}
+          description={t('home.exportDescription')}
+          pad={pad}
+          isWide={isWide}
+        />
+        <CellGrid
+          columns={isWide ? 3 : 2}
+          items={EXPORT_ITEMS.map((key, i) => ({
+            num: twoDigit(i),
+            title: t('home.exportItem' + key),
+            desc: t('home.exportItem' + key + 'Desc'),
+          }))}
+        />
+        <View className={'border-t-2 border-rule py-8 ' + pad}>
+          <Text variant="h3" style={{ maxWidth: 560 }}>
+            {t('home.exportSinglePdf')}
+          </Text>
+          <Text variant="muted" className="mt-3" style={{ maxWidth: 560 }}>
+            {t('home.exportSinglePdfDesc')}
           </Text>
         </View>
       </View>
 
-      {/* Footer */}
-      <View style={{ backgroundColor: '#080d18', paddingVertical: 24, paddingHorizontal: 24, alignItems: 'center', gap: 12 }}>
+      {/* ===== METHODS ===== */}
+      <View className="border-b-2 border-rule">
+        <SectionIntro title={t('home.methodTitle')} pad={pad} isWide={isWide} />
+        <CellGrid
+          columns={3}
+          items={METHODS.map((key, i) => ({
+            num: twoDigit(i),
+            title: t('home.method' + key + 'Title'),
+            desc: t('home.method' + key + 'Desc'),
+          }))}
+        />
+      </View>
+
+      {/* ===== CLOSE — the one place the accent runs as a field ===== */}
+      <View ref={ctaRef} collapsable={false} className={'bg-primary py-14 ' + pad}>
+        <Text
+          className="font-sans text-[11px] font-bold uppercase text-primary-foreground"
+          style={{ letterSpacing: 1.8 }}
+        >
+          AGPL-3.0 · FS-SUITE.COM
+        </Text>
+        <Text
+          className={[
+            'mt-4 font-sans font-extrabold text-primary-foreground',
+            isWide ? 'text-[48px] leading-[0.98]' : 'text-[32px] leading-[1.04]',
+          ].join(' ')}
+          style={{ letterSpacing: -1, maxWidth: 760 }}
+        >
+          {t('home.readyTitle')}
+        </Text>
+        <Text
+          className="mt-5 font-sans text-[17px] leading-[1.5] text-primary-foreground"
+          style={{ maxWidth: 560, opacity: 0.9 }}
+        >
+          {t('home.readyDesc')}
+        </Text>
+        <View className="mt-8">
+          <LoginButtons
+            providers={providers}
+            loading={loading}
+            onGoogle={() => { void handleGoogleSignIn(); }}
+            onDev={() => { void handleDevSignIn(); }}
+            onAccent
+            t={t}
+          />
+        </View>
+        <Text
+          className="mt-6 font-sans text-[12px] leading-[1.5] text-primary-foreground"
+          style={{ maxWidth: 460, opacity: 0.8 }}
+        >
+          {t('login.terms')}
+        </Text>
+      </View>
+
+      {/* ===== FOOTER ===== */}
+      <View className={'flex-row items-center justify-between border-t-2 border-rule py-6 ' + pad}>
+        <Text variant="label">AGPL-3.0</Text>
         <Pressable
           onPress={() => { void Linking.openURL('https://github.com/alexandre3gomes/fs-suite'); }}
           accessibilityRole="link"
@@ -962,13 +560,10 @@ export default function LoginScreen(): JSX.Element {
         >
           <Image
             source={{ uri: 'https://img.shields.io/github/stars/alexandre3gomes/fs-suite?style=social' }}
-            style={{ width: 140, height: 20 }}
+            style={{ width: 96, height: 20 }}
             resizeMode="contain"
           />
         </Pressable>
-        <Text style={{ fontSize: 12, color: '#475569' }}>
-          FS Suite © {new Date().getFullYear()}
-        </Text>
       </View>
     </ScrollView>
   );
