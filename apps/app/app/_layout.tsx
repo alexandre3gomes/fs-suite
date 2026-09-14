@@ -3,6 +3,7 @@ import '@/i18n';
 
 import * as Sentry from '@sentry/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useFonts } from 'expo-font';
 import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import i18n from 'i18next';
@@ -12,6 +13,7 @@ import { Text, View } from 'react-native';
 
 import { NotificationHost } from '../src/components/NotificationHost';
 import { restoreLanguage } from '../src/i18n';
+import { appFonts } from '../src/lib/appFonts';
 import { initAnalytics, trackScreenView, setSessionContext } from '../src/services/analytics';
 import { refreshAccessToken } from '../src/services/auth.service';
 import { useAuthStore } from '../src/stores/auth.store';
@@ -90,6 +92,9 @@ function ScreenTracker(): null {
 function RootLayout(): JSX.Element | null {
   const [ready, setReady] = useState(false);
   const initialized = useRef(false);
+  // Archivo carries the design's negative tracking; web gets it from the
+  // stylesheet in global.css, native needs it registered here.
+  const [fontsLoaded] = useFonts(appFonts);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -105,7 +110,7 @@ function RootLayout(): JSX.Element | null {
       });
   }, []);
 
-  if (!ready) return null;
+  if (!ready || !fontsLoaded) return null;
 
   return (
     <AppErrorBoundary>
