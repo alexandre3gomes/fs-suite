@@ -16,7 +16,9 @@
     "noResults": "Nenhum resultado",
     "clear": "Limpar",
     "close": "Fechar",
-    "ok": "OK"
+    "ok": "OK",
+    "noticeHeading": "Aviso",
+    "confirmHeading": "Confirmação"
   },
   "login": {
     "signInButton": "Entrar com Google",
@@ -44,7 +46,8 @@
       "you": "você",
       "makeAdmin": "Tornar admin",
       "revokeAdmin": "Revogar admin",
-      "confirmDelete": "Confirmar"
+      "confirmDelete": "Confirmar",
+      "kicker": "{{count}} usuários · {{admins}} administradores"
     },
     "feedback": {
       "title": "Feedback dos usuários",
@@ -66,8 +69,11 @@
       "replyError": "Não foi possível enviar a resposta.",
       "statusError": "Não foi possível atualizar o status.",
       "markResolved": "Marcar como resolvido",
-      "reopen": "Reabrir"
-    }
+      "reopen": "Reabrir",
+      "kicker": "{{count}} registros · {{open}} abertos",
+      "attachmentCount": "{{count}} anexos"
+    },
+    "restricted": "Restrito"
   },
   "feedback": {
     "title": "Enviar feedback",
@@ -260,6 +266,7 @@
     "layerAirspace": "Espaço aéreo mundial (OpenAIP)",
     "layerRea": "REA",
     "layerWac": "WAC",
+    "layerPtVfr": "VFR PT",
     "layerEnrcLow": "ENRC Low",
     "layerEnrcHigh": "ENRC High",
     "layerAirspaceDecea": "FIR/TMA/CTR",
@@ -581,7 +588,14 @@
     "aiApiKeyPlaceholder": "sk-... ou sua chave de API",
     "aiConnected": "Conectado",
     "aiDeleteKey": "Remover chave",
-    "aiGetKey": "Obter chave de API do {{provider}}"
+    "aiGetKey": "Obter chave de API do {{provider}}",
+    "kicker": "Conta e preferências",
+    "paneAccount": "Conta",
+    "paneUnits": "Unidades",
+    "paneIntegrations": "Integrações",
+    "panePrivacy": "Privacidade",
+    "fieldName": "Nome",
+    "fieldEmail": "E-mail"
   },
   "home": {
     "heroTagline": "Planejamento de voo profissional para simuladores",
@@ -678,7 +692,10 @@
     "reaStep3Title": "Rota por Dijkstra",
     "reaStep3Desc": "O algoritmo encontra a rota mais curta entre os aeródromos, testando múltiplos portões de chegada e priorizando corredores obrigatórios.",
     "readyTitle": "Pronto para planejar seu próximo voo?",
-    "readyDesc": "Crie sua conta gratuitamente e comece a planejar rotas como um piloto real."
+    "readyDesc": "Crie sua conta gratuitamente e comece a planejar rotas como um piloto real.",
+    "statChecks": "ITENS DE BRIEFING",
+    "statFuelRule": "RBAC COMBUSTÍVEL",
+    "statCharts": "FONTE DAS CARTAS"
   },
   "aircraftProfiles": {
     "title": "Perfis de Aeronave",
@@ -689,6 +706,144 @@
     "shared": "Compartilhado",
     "deleteConfirmTitle": "Excluir perfil?",
     "deleteConfirmMessage": "\"{{name}}\" será excluído permanentemente.",
-    "deleteConfirmLabel": "Excluir"
+    "deleteConfirmLabel": "Excluir",
+    "kicker": "{{count}} perfis · {{shared}} compartilhados",
+    "specCruise": "Cruzeiro",
+    "specMtow": "MTOW",
+    "specBurn": "Consumo"
+  },
+  "nav": {
+    "operations": "Operações",
+    "opsBoard": "Painel de operações",
+    "flightPlans": "Planos de voo",
+    "aircraft": "Aeronaves",
+    "profile": "Perfil",
+    "admin": "Admin",
+    "signedIn": "Conectado como",
+    "account": "Conta"
+  },
+  "ops": {
+    "nextFlight": "Próximo voo",
+    "departure": "Decolagem",
+    "aircraft": "Aeronave",
+    "noAircraft": "Nenhuma aeronave selecionada",
+    "rules": "Regras de voo",
+    "readiness": "Prontidão",
+    "fixInPlan": "Corrigir no plano",
+    "recentPlans": "Planos recentes",
+    "allPlans": "Todos os planos",
+    "weatherStations": "Meteorologia · estações da rota",
+    "wxDerived": "Inferido de {{station}}, a {{distance}} NM — não observado no aeródromo",
+    "wxSource": "Categorias de voo do aviationweather.gov. METAR bruto no briefing do plano.",
+    "emptyTitle": "Nenhum voo planejado.",
+    "emptyBody": "Crie um plano e este painel passa a mostrar as verificações de prontidão, os números da rota e a meteorologia das estações.",
+    "metricDistance": "Distância",
+    "metricDistanceSub": "milhas náuticas · {{waypoints}} waypoints",
+    "metricEte": "Tempo de voo",
+    "metricEteSub": "cruzeiro {{speed}} kt · {{altitude}} ft",
+    "metricFuel": "Combustível necessário",
+    "metricFuelSub": "{{onBoard}} a bordo",
+    "metricFuelNoData": "Combustível a bordo não informado",
+    "metricEndurance": "Autonomia",
+    "metricEnduranceSub": "a {{burn}} por hora",
+    "metricEnduranceNoData": "Consumo horário não informado"
+  },
+  "readiness": {
+    "state": {
+      "legal": "Legal",
+      "short": "Insuficiente",
+      "within": "Dentro",
+      "over": "Excedido",
+      "filed": "Informada",
+      "missing": "Ausente",
+      "plotted": "Traçada",
+      "partial": "Incompleta",
+      "notPlanned": "Não planejado",
+      "noData": "Sem dados"
+    },
+    "category": {
+      "VFR": "VFR",
+      "MVFR": "MVFR",
+      "IFR": "IFR",
+      "LIFR": "LIFR",
+      "unknown": "Sem dados"
+    },
+    "weather": {
+      "label": "Meteorologia",
+      "stations": "{{summary}}",
+      "derivedOne": "{{summary}} — {{icao}} inferido de {{station}}, a {{distance}} NM",
+      "derivedMany": "{{summary}} — {{count}} estações inferidas de aeródromos próximos",
+      "noData": "Sem informe para as estações da rota"
+    },
+    "fuel": {
+      "label": "Combustível",
+      "ok": "{{onBoard}} a bordo / {{required}} necessários",
+      "short": "{{onBoard}} a bordo, {{required}} necessários",
+      "notPlanned": "Dados de combustível não informados"
+    },
+    "weight": {
+      "label": "Peso",
+      "ok": "{{takeoff}} de {{mtow}} de MTOW",
+      "over": "{{takeoff}} excede o MTOW de {{mtow}}",
+      "notPlanned": "Peso e balanceamento não informados"
+    },
+    "alternate": {
+      "label": "Alternativa",
+      "filed": "{{icao}} · {{distance}} NM do destino",
+      "none": "Nenhuma informada — destino em VFR",
+      "requiredByWeather": "Obrigatória — {{icao}} em {{category}}"
+    },
+    "route": {
+      "label": "Rota",
+      "ok": "{{waypoints}} waypoints · {{altitude}} ft",
+      "partial": "Rota informada, mas sem distância",
+      "notPlanned": "Rota não traçada"
+    }
+  },
+  "plans": {
+    "kicker": "{{count}} planos · {{drafts}} rascunhos",
+    "filterAll": "Todos",
+    "filterVfr": "VFR",
+    "filterIfr": "IFR",
+    "noneInFilter": "Nenhum plano corresponde a este filtro.",
+    "colRoute": "Rota",
+    "colDist": "Distância",
+    "colEte": "Tempo de voo",
+    "colStatus": "Situação"
+  },
+  "steps": {
+    "route": "Rota",
+    "aircraft": "Aeronave",
+    "airspace": "Espaço aéreo",
+    "fuel": "Combustível e peso",
+    "briefing": "Briefing"
+  },
+  "planStatus": {
+    "DRAFT": "Rascunho",
+    "COMPLETED": "Concluído",
+    "ARCHIVED": "Arquivado"
+  },
+  "flightRules": {
+    "VFR": "VFR",
+    "IFR": "IFR",
+    "VFR_IFR": "VFR→IFR",
+    "IFR_VFR": "IFR→VFR"
+  },
+  "viability": {
+    "label": "VIABILIDADE",
+    "more": "MAIS {{count}}",
+    "status": {
+      "viable": "Viável",
+      "viable-with-warnings": "Viável · com ressalvas",
+      "incomplete": "Incompleto",
+      "not-viable": "Inviável",
+      "unverifiable": "Não verificável"
+    },
+    "severity": {
+      "blocking": "Impeditivo",
+      "actionable": "Exige ação",
+      "warning": "Ressalva",
+      "unverifiable": "Não verificável"
+    }
   }
 }
