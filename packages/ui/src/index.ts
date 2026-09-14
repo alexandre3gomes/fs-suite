@@ -21,7 +21,7 @@ export type { SpinnerProps } from './components/spinner/Spinner';
 export { Avatar } from './components/avatar/Avatar';
 export type { AvatarProps } from './components/avatar/Avatar';
 
-export { Logo, logoSource } from './components/logo/Logo';
+export { Logo, logoSource, logoMarkSource } from './components/logo/Logo';
 export type { LogoProps } from './components/logo/Logo';
 
 export { Select } from './components/select/Select';
@@ -41,3 +41,6 @@ export { cn } from './lib/utils';
 
 // Tokens
 export * from './tokens';
+
+export { Rule } from './components/rule/Rule';
+export type { RuleProps } from './components/rule/Rule';

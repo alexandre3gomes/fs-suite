@@ -9,35 +9,39 @@ export interface BadgeProps extends ViewProps {
   children?: React.ReactNode;
 }
 
+/** Modernist tag: square, tinted from the ramp, uppercase and tracked. */
 const variantContainerClass: Record<BadgeVariant, string> = {
-  default: 'bg-muted',
-  success: 'bg-success/20',
-  destructive: 'bg-destructive/20',
-  outline: 'border border-border',
-  vfr: 'bg-success/20',
-  ifr: 'bg-primary/20',
+  default: 'bg-secondary',
+  success: 'bg-success/15',
+  destructive: 'bg-destructive/15',
+  outline: 'border-2 border-rule',
+  vfr: 'bg-success/15',
+  ifr: 'bg-primary/15',
 };
 
 const variantTextClass: Record<BadgeVariant, string> = {
   default: 'text-foreground',
   success: 'text-success',
   destructive: 'text-destructive',
-  outline: 'text-muted-foreground',
+  outline: 'text-foreground',
   vfr: 'text-success',
-  ifr: 'text-primary',
+  ifr: 'text-accent',
 };
 
 export function Badge({ variant = 'default', className = '', children, ...props }: BadgeProps) {
   return (
     <View
       className={[
-        'flex-row items-center rounded-full px-2 py-0.5',
+        'flex-row items-center rounded-none px-2 py-1',
         variantContainerClass[variant],
         className,
       ].join(' ')}
       {...props}
     >
-      <Text className={['text-xs font-medium', variantTextClass[variant]].join(' ')}>
+      <Text
+        className={['font-sans text-[11px] font-bold uppercase', variantTextClass[variant]].join(' ')}
+        style={{ letterSpacing: 1.2 }}
+      >
         {children}
       </Text>
     </View>

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Platform, View, type ViewProps } from 'react-native';
+import { View, type ViewProps } from 'react-native';
 
 import { cn } from '../../lib/utils';
 
@@ -7,16 +7,16 @@ export interface CardProps extends ViewProps {
   className?: string;
 }
 
+/**
+ * Modernist card: a 2px-ruled cell, zero radius, no shadow, nothing floats.
+ * Alignment and the strength of the rule do the organising.
+ */
 const Card = React.forwardRef<React.ElementRef<typeof View>, CardProps>(
   ({ className, ...props }, ref) => {
     return (
       <View
         ref={ref}
-        className={cn(
-          'rounded-card border border-border bg-card shadow-sm',
-          Platform.select({ web: 'transition-shadow hover:shadow-md' }),
-          className,
-        )}
+        className={cn('rounded-none border-2 border-rule bg-card', className)}
         {...props}
       />
     );
@@ -28,7 +28,11 @@ const CardHeader = React.forwardRef<
   React.ElementRef<typeof View>,
   ViewProps & { className?: string }
 >(({ className, ...props }, ref) => (
-  <View ref={ref} className={cn('px-6 py-4', className)} {...props} />
+  <View
+    ref={ref}
+    className={cn('border-b-2 border-rule px-4 py-3', className)}
+    {...props}
+  />
 ));
 CardHeader.displayName = 'CardHeader';
 
@@ -36,7 +40,7 @@ const CardContent = React.forwardRef<
   React.ElementRef<typeof View>,
   ViewProps & { className?: string }
 >(({ className, ...props }, ref) => (
-  <View ref={ref} className={cn('px-6 py-4', className)} {...props} />
+  <View ref={ref} className={cn('px-4 py-4', className)} {...props} />
 ));
 CardContent.displayName = 'CardContent';
 
@@ -46,7 +50,7 @@ const CardFooter = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <View
     ref={ref}
-    className={cn('border-t border-border px-6 py-4', className)}
+    className={cn('border-t-2 border-rule px-4 py-3', className)}
     {...props}
   />
 ));
