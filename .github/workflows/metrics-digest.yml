@@ -49,7 +49,12 @@ jobs:
       - name: Fetch API host stats
         # SSH directly (not appleboy/ssh-action) so we can capture stdout
         # into a file for the body builder. Output goes to host.txt:
-        # one line "USED_PCT TOTAL_GB" plus image count.
+        # "DISK_PCT DISK_SIZE IMAGES RAM_AVAIL_MB RAM_TOTAL_MB SWAP_USED_MB LOAD1"
+        #
+        # RAM is reported as *available*, not "used". The kernel spends every
+        # free page on disk cache, so "used" reads near 100% on a healthy host
+        # — which is what the OVH panel shows and why it looks alarming.
+        # MemAvailable is what a process can actually get.
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -62,7 +67,11 @@ jobs:
           ssh "$DEPLOY_USER@$DEPLOY_HOST" "
             DISK=\$(df -h --output=pcent,size / | tail -1 | tr -s ' ' | sed 's/^ //')
             IMAGES=\$(sudo docker images --filter 'dangling=false' --format '{{.Repository}}' | wc -l)
-            echo \"\$DISK \$IMAGES\"
+            RAM_AVAIL=\$(awk '/MemAvailable/ {printf \"%.0f\", \$2/1024}' /proc/meminfo)
+            RAM_TOTAL=\$(awk '/MemTotal/ {printf \"%.0f\", \$2/1024}' /proc/meminfo)
+            SWAP_USED=\$(free -m | awk '/Swap:/ {print \$3}')
+            LOAD1=\$(cut -d' ' -f1 /proc/loadavg)
+            echo \"\$DISK \$IMAGES \$RAM_AVAIL \$RAM_TOTAL \$SWAP_USED \$LOAD1\"
           " > host.txt
           echo "host.txt:"
           cat host.txt
@@ -92,10 +101,17 @@ jobs:
           REDIS_CAP_MB=$(awk -v c="$REDIS_CAP_BYTES" 'BEGIN{printf "%.0f", c/1048576}')
           REDIS_PCT=$(awk -v b="$REDIS_BYTES" -v c="$REDIS_CAP_BYTES" 'BEGIN{printf "%.1f", (b/c)*100}')
 
-          # host.txt layout: "USE_PCT SIZE_GB IMAGES"
+          # host.txt: "DISK_PCT DISK_SIZE IMAGES RAM_AVAIL RAM_TOTAL SWAP LOAD1"
           HOST_PCT=$(awk '{print $1}' host.txt | tr -dc '0-9')
           HOST_SIZE=$(awk '{print $2}' host.txt)
           HOST_IMAGES=$(awk '{print $3}' host.txt)
+          RAM_AVAIL=$(awk '{print $4}' host.txt)
+          RAM_TOTAL=$(awk '{print $5}' host.txt)
+          SWAP_USED=$(awk '{print $6}' host.txt)
+          LOAD1=$(awk '{print $7}' host.txt)
+          RAM_PCT=$(awk -v a="$RAM_AVAIL" -v t="$RAM_TOTAL" 'BEGIN{ if (t>0) printf "%.0f", a*100/t; else print "?" }')
+          # Swap in use with 3 GB available would mean something is wrong.
+          SWAP_NOTE=$(awk -v s="$SWAP_USED" 'BEGIN{ print (s+0 > 0) ? " · swap em uso: " s " MB" : "" }')
 
           # HTML email body. Light theme; inline CSS only (clients strip <style>).
           row() { # label value
@@ -110,6 +126,8 @@ jobs:
             <h1 style="font-size:20px;color:#1a2433;margin:0 0 20px;">Métricas diárias · ${DATE}</h1>
             <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
               $(row "Host disk" "${HOST_PCT}% de ${HOST_SIZE} · ${HOST_IMAGES} imagens")
+              $(row "Host RAM" "${RAM_AVAIL} MB disponíveis de ${RAM_TOTAL} MB (${RAM_PCT}% livre)${SWAP_NOTE}")
+              $(row "Host load" "${LOAD1} (1 min, 2 vCPU)")
               $(row "Database" "${DB_MB} MB / ${CAP_MB} MB (${DB_PCT}%)")
               $(row "Redis" "${REDIS_MB} MB / ${REDIS_CAP_MB} MB (${REDIS_PCT}%) · ${REDIS_KEYS} keys")
               $(row "Usuários" "${USERS_TOTAL} total · ${USERS_NEW} novos 7d · ${USERS_ACTIVE} ativos 7d")
