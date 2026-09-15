@@ -43,24 +43,17 @@ loki.source.docker "containers" {
 }
 
 loki.process "containers" {
-	// pino emits one JSON object per line. Lifting level and msg out means
-	// Loki can filter by severity without a regex over the whole payload.
+	// Lift pino's level and msg into extracted fields. Grafana Cloud derives
+	// detected_level from the payload on its own, so nothing here maps the
+	// numeric levels to words — an earlier version did that with a template
+	// and it was the wrong kind of clever: pino emits `"level":30` as a JSON
+	// number, the template compared it against a string, and a stage that
+	// errors takes the whole line with it.
 	stage.json {
 		expressions = {
 			level = "level",
 			msg   = "msg",
 		}
-	}
-
-	// pino uses numeric levels; map them to words so {detected_level="error"}
-	// works in Grafana's log explorer.
-	stage.template {
-		source   = "level_name"
-		template = "{{ if eq .level \"50\" }}error{{ else if eq .level \"40\" }}warn{{ else if eq .level \"30\" }}info{{ else if eq .level \"20\" }}debug{{ else }}unknown{{ end }}"
-	}
-
-	stage.labels {
-		values = {detected_level = "level_name"}
 	}
 
 	forward_to = [loki.write.grafana_cloud_loki.receiver]

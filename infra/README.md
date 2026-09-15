@@ -131,6 +131,21 @@ curl -s localhost:12345/metrics | grep -E 'loki_source_docker_target_entries_tot
 
 Entries climbing with dropped counters at zero means logs are arriving.
 
+Query them in Grafana with `{job="docker"}`. Two things to know before
+concluding they are missing, both of which cost time once:
+
+- `loki.source.docker` reads from the container's start, not its history, so a
+  restart resets what is visible. Widen the time range before suspecting the
+  pipeline.
+- The health endpoint is barely logged — 2 lines out of 148 — so hammering
+  `/v1/health` generates nothing to read. Hit a real endpoint like
+  `/v1/flight-plans` to produce traffic.
+
+`job` has two values: `docker` for the containers and
+`integrations/node_exporter` for the systemd journal. `detected_level` is
+derived by Grafana Cloud from the payload, so `{job="docker",
+detected_level="error"}` works without any level mapping in the pipeline.
+
 **On reading memory:** the OVH panel graphs `MemTotal - MemFree`, which counts
 disk cache as usage and therefore sits near 100% on a healthy host. Grafana and
 the digest both report `MemAvailable`, which is what a process can actually
