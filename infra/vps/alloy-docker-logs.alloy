@@ -1,0 +1,67 @@
+// Ship the API and nginx container logs to Grafana Cloud Loki.
+//
+// The Grafana-generated config collects node_exporter metrics and the systemd
+// journal. The application's logs are in neither: NestJS logs through pino to
+// stdout, which Docker captures with the json-file driver, so nothing reaches
+// Loki. Since json-file also rotates (20 MB x 5, see docker-compose.yml) and
+// lives inside the container, a deploy discards whatever was there — which is
+// the opposite of what logs are for.
+//
+// This appends to Grafana's own config rather than replacing it, and forwards
+// into the loki.write receiver it already declares, so the credential stays in
+// one place.
+//
+// Requires the alloy user in the docker group:
+//   sudo usermod -aG docker alloy && sudo systemctl restart alloy
+
+discovery.docker "containers" {
+	host = "unix:///var/run/docker.sock"
+}
+
+// Keep the container name as a label and drop Docker's leading slash, so
+// queries read {container="fs-suite-api-1"} rather than "/fs-suite-api-1".
+discovery.relabel "containers" {
+	targets = discovery.docker.containers.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_log_stream"]
+		target_label  = "stream"
+	}
+}
+
+loki.source.docker "containers" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.relabel.containers.output
+	labels     = {job = "docker", host = constants.hostname}
+	forward_to = [loki.process.containers.receiver]
+}
+
+loki.process "containers" {
+	// pino emits one JSON object per line. Lifting level and msg out means
+	// Loki can filter by severity without a regex over the whole payload.
+	stage.json {
+		expressions = {
+			level = "level",
+			msg   = "msg",
+		}
+	}
+
+	// pino uses numeric levels; map them to words so {detected_level="error"}
+	// works in Grafana's log explorer.
+	stage.template {
+		source   = "level_name"
+		template = "{{ if eq .level \"50\" }}error{{ else if eq .level \"40\" }}warn{{ else if eq .level \"30\" }}info{{ else if eq .level \"20\" }}debug{{ else }}unknown{{ end }}"
+	}
+
+	stage.labels {
+		values = {detected_level = "level_name"}
+	}
+
+	forward_to = [loki.write.grafana_cloud_loki.receiver]
+}

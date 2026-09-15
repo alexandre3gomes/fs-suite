@@ -97,6 +97,45 @@ These are **send-only** and coexist with the iCloud Custom Domain **MX** records
 that receive mail for `@fs-suite.com` — Resend uses the `send.` subdomain, so the
 apex MX (iCloud) is untouched.
 
+## Observability
+
+| Layer | Tool | Notes |
+| --- | --- | --- |
+| Frontend errors | Sentry | `@sentry/react-native`, prod only |
+| API errors + tracing | Sentry | `tracesSampleRate` 0.2, so 20% of requests carry a transaction |
+| Host metrics | Grafana Cloud (free) | Alloy agent, `node_exporter` + journal. ~256 MB RSS, 1.8% CPU |
+| Container logs | Grafana Cloud Loki | `infra/vps/alloy-docker-logs.alloy` — appended to Grafana's generated config |
+| Uptime | UptimeRobot | 2 monitors, 5 min |
+| Daily summary | `metrics-digest.yml` | disk, RAM available, swap, load, plus business counters |
+
+Grafana's installer writes `/etc/alloy/config.alloy` and collects node metrics
+and the systemd journal. It does **not** pick up container logs: NestJS logs
+through pino to stdout, Docker captures that with the json-file driver, and
+none of it reaches the journal. `alloy-docker-logs.alloy` closes that, and is
+loaded by pointing `CONFIG_FILE` at the directory rather than the single file —
+Alloy merges every `*.alloy` in it, so Grafana's generated config can be
+regenerated without losing this.
+
+Two things it needs, both one-time:
+
+```bash
+sudo usermod -aG docker alloy      # read /var/run/docker.sock
+sudo sed -i 's|^CONFIG_FILE=.*|CONFIG_FILE="/etc/alloy/"|' /etc/default/alloy
+```
+
+Verify shipping from the agent's own metrics rather than guessing:
+
+```bash
+curl -s localhost:12345/metrics | grep -E 'loki_source_docker_target_entries_total|loki_write_dropped'
+```
+
+Entries climbing with dropped counters at zero means logs are arriving.
+
+**On reading memory:** the OVH panel graphs `MemTotal - MemFree`, which counts
+disk cache as usage and therefore sits near 100% on a healthy host. Grafana and
+the digest both report `MemAvailable`, which is what a process can actually
+get. Measured on this host: 21.8% used, 3 GB available.
+
 ## Host setup
 
 ```bash
