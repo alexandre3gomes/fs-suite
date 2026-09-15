@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,40 +10,51 @@
 
 @layer base {
   :root {
-    --background: 220 27.3% 97.8%;
-    --foreground: 225 18.8% 12.5%;
+    /* FS Suite — Modernist, cool blue.
+       Hue locked to ~223 across ink, greys and accent so every neutral reads
+       as a tone of the brand blue rather than a warm grey against a cold
+       accent. Radius is 0 and structure is carried by 2px rules (--rule). */
 
-    --card: 0 0% 100%;
-    --card-foreground: 225 18.8% 12.5%;
+    --background: 220 25% 95.3%;        /* #f0f2f6 */
+    --foreground: 223 45% 15.7%;        /* #16203a */
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 225 18.8% 12.5%;
+    --card: 220 33% 97.6%;              /* #f7f8fb */
+    --card-foreground: 223 45% 15.7%;
 
-    --primary: 221.2 83.2% 53.3%;
+    --popover: 220 33% 97.6%;
+    --popover-foreground: 223 45% 15.7%;
+
+    --primary: 223 78.4% 47.5%;         /* #1a4fd8 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 27.3% 95.7%;
-    --secondary-foreground: 225 18.8% 12.5%;
+    --secondary: 223 25% 92.2%;         /* #e6e9f0 */
+    --secondary-foreground: 223 45% 15.7%;
 
-    --muted: 220 18.4% 90.4%;
-    --muted-foreground: 220 8.9% 46.1%;
+    --muted: 223 25% 92.2%;
+    --muted-foreground: 223 13% 42%;    /* #5d6579 */
 
-    --accent: 200.4 98% 39.4%;
+    --accent: 223.7 78% 32.4%;          /* #123593 — deep step, secondary emphasis */
     --accent-foreground: 0 0% 100%;
 
+    /* Functional signals keep their own hue. A failed viability check must
+       not look like a primary action. */
     --destructive: 0 72.2% 50.6%;
     --destructive-foreground: 0 0% 100%;
 
     --success: 142.1 76.2% 36.3%;
     --success-foreground: 0 0% 100%;
 
-    --border: 220 16.4% 89.2%;
-    --input: 220 16.4% 89.2%;
-    --ring: 221.2 83.2% 53.3%;
+    --border: 223 24% 89.2%;            /* #dde1ea — 1px row separation */
+    --input: 223 24% 89.2%;
+    --ring: 223 78.4% 47.5%;
 
-    --surface: 0 0% 100%;
-    --surface-muted: 220 27.3% 95.7%;
+    --surface: 220 33% 97.6%;
+    --surface-muted: 223 25% 92.2%;
 
-    --radius: 0.5rem;
+    /* Structural rules: 2px, ink-strength. These do the organising. */
+    --rule: 223 45% 15.7%;
+    --rule-soft: 223 20% 78%;
+
+    --radius: 0rem;
   }
 }

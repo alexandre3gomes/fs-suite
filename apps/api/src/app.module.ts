@@ -18,6 +18,7 @@ import { FlightPlansModule } from './flight-plans/flight-plans.module';
 import { HealthModule } from './health/health.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { PtVfrModule } from './pt-vfr/pt-vfr.module';
 import { R2StorageModule } from './r2/r2-storage.module';
 import { ReaModule } from './rea/rea.module';
 import { RedisModule } from './redis/redis.module';
@@ -60,6 +61,7 @@ import { WeatherModule } from './weather/weather.module';
     ScheduleModule.forRoot(),
     PrismaModule,
     R2StorageModule,
+    PtVfrModule,
     ReaModule,
     RedisModule,
     ActivityModule,

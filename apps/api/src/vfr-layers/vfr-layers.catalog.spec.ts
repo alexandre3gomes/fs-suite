@@ -34,6 +34,23 @@ describe('VFR layer catalog', () => {
     expect(listVfrLayers('US')).toHaveLength(0);
   });
 
+  it('exposes the Portugal eVFR tunnels + VRP layers', () => {
+    const pt = listVfrLayers('PT');
+    const types = pt.map((l) => l.layerType);
+    expect(types).toContain(VfrLayerType.EU_VFR_TRANSIT_ROUTE);
+    expect(types).toContain(VfrLayerType.EU_VRP);
+
+    const tunnels = pt.find((l) => l.layerType === VfrLayerType.EU_VFR_TRANSIT_ROUTE);
+    expect(tunnels?.isOfficial).toBe(true);
+    expect(tunnels?.mandatory).toBe(true);
+    expect(tunnels?.access?.endpoint).toBe('/v1/pt-vfr/routes');
+    // Effective date comes from the curated dataset and must be a valid ISO date
+    expect(tunnels?.effectiveDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    const vrp = pt.find((l) => l.layerType === VfrLayerType.EU_VRP);
+    expect(vrp?.access?.endpoint).toBe('/v1/pt-vfr/points');
+  });
+
   it('model accepts future US vector layers with the same shape (no Brazil coupling)', () => {
     // Acceptance: registering US_AIRSPACE / US_REPORTING_POINTS must validate
     // against the same schema, no Brazil-specific logic involved.

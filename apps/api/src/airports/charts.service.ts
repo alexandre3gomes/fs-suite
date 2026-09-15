@@ -63,6 +63,7 @@ const REGIONS: RegionConfig[] = [
     fetch: fetchPortugalCharts,
     links: (_icao) => [
       { label: 'NAV Portugal', url: `https://ais.nav.pt/online-eaip-en/` },
+      { label: 'NAV Portugal eVFR', url: `https://ais.nav.pt/emvfr-downloads/` },
     ],
   },
   {
@@ -375,11 +376,26 @@ function humanizeEnairePdf(filename: string, icao: string): string {
 
 // --------------- Portugal — NAV Portugal ---------------
 
+const NAV_PT_BASE = 'https://ais.nav.pt/wp-content/uploads/AIS_Files';
+
 async function fetchPortugalCharts(icao: string, svc: ChartsService): Promise<AerodromeChart[]> {
   try {
-    const pageUrl = `https://ais.nav.pt/wp-content/uploads/AIS_Files/eAIP_Current/eAIP_Online/eAIP/html/eAIP/LP-AD-2.${icao}-en-GB.html`;
-    const baseUrl = `https://ais.nav.pt/wp-content/uploads/AIS_Files/eAIP_Current/eAIP_Online/eAIP/html/eAIP/`;
-    return await scrapeEaipPage(pageUrl, baseUrl, 'NAV Portugal', icao, svc);
+    // Main eAIP first (international/major aerodromes: LPPT, LPPR, LPFR, islands)
+    const eaipDir = `${NAV_PT_BASE}/eAIP_Current/eAIP_Online/eAIP/html/eAIP/`;
+    const eaip = await scrapeEaipPage(`${eaipDir}LP-AD-2.${icao}-en-GB.html`, eaipDir, 'NAV Portugal', icao, svc);
+    if (eaip.length > 0) return eaip;
+
+    // Fallback: eVFR (Manual VFR) — smaller VFR aerodromes (AD 2), heliports
+    // (AD 3) and ultralight strips (AD 4). Pages exist for exactly one of the
+    // three sections per code, so probe in order until one yields charts.
+    const evfrDir = `${NAV_PT_BASE}/eVFR_Current/eVFR_Online/eAIP/html/eAIP/`;
+    for (const section of ['2', '3', '4']) {
+      const charts = await scrapeEaipPage(
+        `${evfrDir}LP-AD-${section}.${icao}-pt-PT.html`, evfrDir, 'NAV Portugal eVFR', icao, svc,
+      );
+      if (charts.length > 0) return charts;
+    }
+    return [];
   } catch (err) {
     svc.log.warn(`NAV Portugal scrape failed for ${icao}: ${err}`);
     return [];

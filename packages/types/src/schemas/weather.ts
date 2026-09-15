@@ -72,6 +72,19 @@ export const ParsedTafSchema = z.object({
 
 export type ParsedTaf = z.infer<typeof ParsedTafSchema>;
 
+// --- Flight category (map + readiness) ---
+
+export const FlightCategoryResultSchema = z.object({
+  icao: z.string(),
+  flightCategory: z.string().nullable(),
+  /** True when the category was inferred from a nearby station, not this one. */
+  derived: z.boolean(),
+  referenceStation: z.string().optional(),
+  referenceDistanceNm: z.number().optional(),
+});
+
+export type FlightCategoryResult = z.infer<typeof FlightCategoryResultSchema>;
+
 // --- SIGMET ---
 
 export const SigmetHazardTypeSchema = z.enum([

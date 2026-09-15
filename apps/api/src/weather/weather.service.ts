@@ -1,5 +1,6 @@
 import type {
   CrosswindAnalysis,
+  FlightCategoryResult,
   MetarCloud,
   ParsedMetar,
   ParsedTaf,
@@ -30,14 +31,7 @@ import {
 } from './safety-checker';
 
 export type { SafetyAssessment } from './safety-checker';
-
-export interface FlightCategoryResult {
-  icao: string;
-  flightCategory: string | null;
-  derived: boolean;
-  referenceStation?: string;
-  referenceDistanceNm?: number;
-}
+export type { FlightCategoryResult };
 
 export interface RouteSafetyResponse {
   items: { id: string; severity: string; message: string; action?: string; source?: string }[];

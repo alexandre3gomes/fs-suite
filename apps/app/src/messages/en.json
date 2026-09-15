@@ -16,7 +16,9 @@
     "noResults": "No results",
     "clear": "Clear",
     "close": "Close",
-    "ok": "OK"
+    "ok": "OK",
+    "noticeHeading": "Notice",
+    "confirmHeading": "Confirm"
   },
   "login": {
     "signInButton": "Sign in with Google",
@@ -44,7 +46,8 @@
       "you": "you",
       "makeAdmin": "Make admin",
       "revokeAdmin": "Revoke admin",
-      "confirmDelete": "Confirm"
+      "confirmDelete": "Confirm",
+      "kicker": "{{count}} users · {{admins}} admins"
     },
     "feedback": {
       "title": "User feedback",
@@ -66,8 +69,11 @@
       "replyError": "Could not send the reply.",
       "statusError": "Could not update the status.",
       "markResolved": "Mark as resolved",
-      "reopen": "Reopen"
-    }
+      "reopen": "Reopen",
+      "kicker": "{{count}} items · {{open}} open",
+      "attachmentCount": "{{count}} attachments"
+    },
+    "restricted": "Restricted"
   },
   "feedback": {
     "title": "Send feedback",
@@ -260,6 +266,7 @@
     "layerAirspace": "Worldwide airspace (OpenAIP)",
     "layerRea": "REA",
     "layerWac": "WAC",
+    "layerPtVfr": "PT VFR",
     "layerEnrcLow": "ENRC Low",
     "layerEnrcHigh": "ENRC High",
     "layerAirspaceDecea": "FIR/TMA/CTR",
@@ -581,7 +588,14 @@
     "aiApiKeyPlaceholder": "sk-... or your API key",
     "aiConnected": "Connected",
     "aiDeleteKey": "Remove key",
-    "aiGetKey": "Get {{provider}} API key"
+    "aiGetKey": "Get {{provider}} API key",
+    "kicker": "Account & preferences",
+    "paneAccount": "Account",
+    "paneUnits": "Units",
+    "paneIntegrations": "Integrations",
+    "panePrivacy": "Privacy",
+    "fieldName": "Name",
+    "fieldEmail": "Email"
   },
   "home": {
     "heroTagline": "Professional flight planning for simulators",
@@ -678,7 +692,10 @@
     "reaStep3Title": "Dijkstra routing",
     "reaStep3Desc": "The algorithm finds the shortest route between aerodromes, testing multiple arrival gates and prioritizing mandatory corridors.",
     "readyTitle": "Ready to plan your next flight?",
-    "readyDesc": "Create your account for free and start planning routes like a real pilot."
+    "readyDesc": "Create your account for free and start planning routes like a real pilot.",
+    "statChecks": "BRIEFING CHECKS",
+    "statFuelRule": "RBAC FUEL RULE",
+    "statCharts": "CHART SOURCE"
   },
   "aircraftProfiles": {
     "title": "Aircraft Profiles",
@@ -689,6 +706,144 @@
     "shared": "Shared",
     "deleteConfirmTitle": "Delete profile?",
     "deleteConfirmMessage": "\"{{name}}\" will be permanently deleted.",
-    "deleteConfirmLabel": "Delete"
+    "deleteConfirmLabel": "Delete",
+    "kicker": "{{count}} profiles · {{shared}} shared",
+    "specCruise": "Cruise",
+    "specMtow": "MTOW",
+    "specBurn": "Burn"
+  },
+  "nav": {
+    "operations": "Operations",
+    "opsBoard": "Ops board",
+    "flightPlans": "Flight plans",
+    "aircraft": "Aircraft",
+    "profile": "Profile",
+    "admin": "Admin",
+    "signedIn": "Signed in",
+    "account": "Account"
+  },
+  "ops": {
+    "nextFlight": "Next flight",
+    "departure": "Departure",
+    "aircraft": "Aircraft",
+    "noAircraft": "No aircraft selected",
+    "rules": "Flight rules",
+    "readiness": "Readiness",
+    "fixInPlan": "Fix in plan",
+    "recentPlans": "Recent plans",
+    "allPlans": "All plans",
+    "weatherStations": "Weather · route stations",
+    "wxDerived": "Inferred from {{station}}, {{distance}} NM away — not observed on the field",
+    "wxSource": "Flight categories from aviationweather.gov. Raw METAR in the plan briefing.",
+    "emptyTitle": "No flight planned yet.",
+    "emptyBody": "Create a plan and this board fills with its readiness checks, route figures and station weather.",
+    "metricDistance": "Distance",
+    "metricDistanceSub": "nautical miles · {{waypoints}} waypoints",
+    "metricEte": "Time en route",
+    "metricEteSub": "{{speed}} kt cruise · {{altitude}} ft",
+    "metricFuel": "Fuel required",
+    "metricFuelSub": "{{onBoard}} on board",
+    "metricFuelNoData": "Fuel on board not set",
+    "metricEndurance": "Endurance",
+    "metricEnduranceSub": "at {{burn}} per hour",
+    "metricEnduranceNoData": "Burn rate not set"
+  },
+  "readiness": {
+    "state": {
+      "legal": "Legal",
+      "short": "Short",
+      "within": "Within",
+      "over": "Over",
+      "filed": "Filed",
+      "missing": "Missing",
+      "plotted": "Plotted",
+      "partial": "Partial",
+      "notPlanned": "Not planned",
+      "noData": "No data"
+    },
+    "category": {
+      "VFR": "VFR",
+      "MVFR": "MVFR",
+      "IFR": "IFR",
+      "LIFR": "LIFR",
+      "unknown": "No data"
+    },
+    "weather": {
+      "label": "Weather",
+      "stations": "{{summary}}",
+      "derivedOne": "{{summary}} — {{icao}} inferred from {{station}}, {{distance}} NM away",
+      "derivedMany": "{{summary}} — {{count}} stations inferred from nearby aerodromes",
+      "noData": "No report for the route stations"
+    },
+    "fuel": {
+      "label": "Fuel",
+      "ok": "{{onBoard}} on board / {{required}} required",
+      "short": "{{onBoard}} on board, {{required}} required",
+      "notPlanned": "Fuel figures not entered"
+    },
+    "weight": {
+      "label": "Weight",
+      "ok": "{{takeoff}} of {{mtow}} MTOW",
+      "over": "{{takeoff}} exceeds {{mtow}} MTOW",
+      "notPlanned": "Weight and balance not entered"
+    },
+    "alternate": {
+      "label": "Alternate",
+      "filed": "{{icao}} · {{distance}} NM from destination",
+      "none": "None filed — destination is VFR",
+      "requiredByWeather": "Required — {{icao}} is {{category}}"
+    },
+    "route": {
+      "label": "Route",
+      "ok": "{{waypoints}} waypoints · {{altitude}} ft",
+      "partial": "Route entered but distance is missing",
+      "notPlanned": "No route plotted"
+    }
+  },
+  "plans": {
+    "kicker": "{{count}} plans · {{drafts}} drafts",
+    "filterAll": "All",
+    "filterVfr": "VFR",
+    "filterIfr": "IFR",
+    "noneInFilter": "No plans match this filter.",
+    "colRoute": "Route",
+    "colDist": "Distance",
+    "colEte": "ETE",
+    "colStatus": "Status"
+  },
+  "steps": {
+    "route": "Route",
+    "aircraft": "Aircraft",
+    "airspace": "Airspace",
+    "fuel": "Fuel & W&B",
+    "briefing": "Briefing"
+  },
+  "planStatus": {
+    "DRAFT": "Draft",
+    "COMPLETED": "Completed",
+    "ARCHIVED": "Archived"
+  },
+  "flightRules": {
+    "VFR": "VFR",
+    "IFR": "IFR",
+    "VFR_IFR": "VFR→IFR",
+    "IFR_VFR": "IFR→VFR"
+  },
+  "viability": {
+    "label": "VIABILITY",
+    "more": "+{{count}} MORE",
+    "status": {
+      "viable": "Viable",
+      "viable-with-warnings": "Viable · warnings",
+      "incomplete": "Incomplete",
+      "not-viable": "Not viable",
+      "unverifiable": "Unverifiable"
+    },
+    "severity": {
+      "blocking": "Blocking",
+      "actionable": "Action needed",
+      "warning": "Warning",
+      "unverifiable": "Unverifiable"
+    }
   }
 }
