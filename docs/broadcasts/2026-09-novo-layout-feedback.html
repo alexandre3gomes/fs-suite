@@ -1,0 +1,259 @@
+<!doctype html>
+<!--
+  FS Suite — Broadcast de novidades (Resend)
+  Assunto sugerido:  O FS Suite está com cara nova — e eu quero saber o que você acha
+  Preheader:         Redesenhamos a plataforma inteira. Está no ar por uma semana em teste: se não funcionar para você, volta atrás.
+  Observação: o link de cancelamento usa o merge tag {{{RESEND_UNSUBSCRIBE_URL}}}
+  do Resend, que é preenchido automaticamente ao enviar como Broadcast.
+  Screenshots: precisam estar em produção ANTES do envio — ficam em
+  apps/app/public/email/ e só chegam a https://fs-suite.com/email/ depois do
+  deploy do frontend. Sem isso o Cloudflare Pages serve o fallback da SPA e as
+  imagens renderizam quebradas (foi o que aconteceu no broadcast de 2026-06).
+    - redesign-landing.png       (página inicial)
+    - redesign-ops-board.png     (painel de operações)
+    - redesign-plan-editor.jpg   (editor de plano em cinco passos)
+-->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light only" />
+  <title>O FS Suite está com cara nova</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6fa;color:#1f2a37;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+  <!-- Preheader (oculto) -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">
+    Redesenhamos a plataforma inteira. Está no ar por uma semana em teste: se não funcionar para você, volta atrás.
+  </div>
+
+  <div style="max-width:560px;margin:0 auto;padding:32px 24px;">
+
+    <!-- Cabeçalho / marca -->
+    <div style="margin-bottom:20px;">
+      <a href="https://fs-suite.com" target="_blank" style="text-decoration:none;">
+        <img src="https://fs-suite.com/email/fs-suite-logo.png" alt="FS Suite" width="84" style="display:block;height:auto;border:0;" />
+      </a>
+    </div>
+
+    <div style="font-size:12px;letter-spacing:2px;color:#2b6cb0;text-transform:uppercase;margin-bottom:8px;">Novo layout · em teste</div>
+    <h1 style="font-size:22px;line-height:1.3;margin:0 0 20px;color:#1a2433;">
+      O FS Suite está com cara nova — e eu quero saber o que você acha
+    </h1>
+
+    <!-- Card principal -->
+    <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:24px;font-size:15px;line-height:1.6;">
+
+      <p style="margin:0 0 14px;">Olá, {{{contact.first_name|Comandante}}}! 👋</p>
+
+      <!-- Destaque: é reversível -->
+      <div style="background:#eff6ff;border-left:3px solid #2b6cb0;border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:18px;font-size:14px;color:#1e40af;">
+        <strong>Isto é um teste de uma semana.</strong> O layout antigo não foi apagado —
+        se o novo atrapalhar o seu planejamento, eu volto atrás. É para isso que
+        estou pedindo o seu feedback antes de tornar definitivo.
+      </div>
+
+      <p style="margin:0 0 14px;">
+        A plataforma foi redesenhada de ponta a ponta. Nada mudou no que ela faz:
+        os mesmos cálculos de combustível e peso, os mesmos corredores REA, as mesmas
+        cartas do DECEA, os mesmos planos que você já salvou. O que mudou é
+        <strong>como a informação se apresenta</strong>.
+      </p>
+
+      <p style="margin:0 0 20px;">
+        A intenção foi deixar o FS Suite parecido com um console de operações de voo,
+        e menos com um site — informação densa, alinhada, sem enfeite, com o número
+        que importa em destaque.
+      </p>
+
+      <!-- O que mudou -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-top:1px solid #e2e8f0;">
+        <tr>
+          <td style="padding:18px 0 4px;vertical-align:top;width:34px;font-size:20px;">🧭</td>
+          <td style="padding:18px 0 4px;vertical-align:top;">
+            <div style="font-weight:600;color:#1a2433;margin-bottom:2px;">Navegação sempre visível</div>
+            <div style="color:#475569;font-size:14px;">
+              O botão "voltar" deu lugar a uma barra lateral fixa com todos os destinos.
+              Você sempre vê onde está e chega a qualquer área em um clique.
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:14px 0 4px;vertical-align:top;width:34px;font-size:20px;">📋</td>
+          <td style="padding:14px 0 4px;vertical-align:top;">
+            <div style="font-weight:600;color:#1a2433;margin-bottom:2px;">Painel de operações</div>
+            <div style="color:#475569;font-size:14px;">
+              A tela inicial deixou de ser um menu. Agora abre no seu próximo voo, com
+              meteorologia, combustível, peso, alternado e rota conferidos de uma vez —
+              e diz o que está impedindo a decolagem, se houver.
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:14px 0 4px;vertical-align:top;width:34px;font-size:20px;">🗺️</td>
+          <td style="padding:14px 0 4px;vertical-align:top;">
+            <div style="font-weight:600;color:#1a2433;margin-bottom:2px;">Editor em cinco passos</div>
+            <div style="color:#475569;font-size:14px;">
+              As onze seções do formulário foram agrupadas em rota, aeronave, espaço aéreo,
+              combustível e briefing. A viabilidade do voo aparece fixa sob o mapa, e
+              atualiza enquanto você planeja.
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:14px 0 4px;vertical-align:top;width:34px;font-size:20px;">🔤</td>
+          <td style="padding:14px 0 4px;vertical-align:top;">
+            <div style="font-weight:600;color:#1a2433;margin-bottom:2px;">Tipografia e contraste</div>
+            <div style="color:#475569;font-size:14px;">
+              Nova fonte, números maiores e mais legíveis. O vermelho passou a significar
+              só uma coisa: impedimento. Nada mais usa vermelho.
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Veja na prática -->
+      <div style="margin-top:22px;padding-top:18px;border-top:1px solid #e2e8f0;">
+        <div style="font-weight:600;color:#1a2433;margin-bottom:12px;">Veja na prática</div>
+
+        <p style="margin:0 0 6px;color:#64748b;font-size:13px;">O painel de operações abre no seu próximo voo, com a prontidão conferida:</p>
+        <img src="https://fs-suite.com/email/redesign-ops-board.png" alt="Painel de operações mostrando o próximo voo SBMT para SBJD, cinco verificações de prontidão — meteorologia, combustível, peso, alternado e rota — e as métricas de distância, tempo de voo, combustível necessário e autonomia" width="480" style="display:block;width:100%;max-width:480px;height:auto;border:1px solid #e2e8f0;border-radius:10px;margin:0 0 18px;" />
+
+        <p style="margin:0 0 6px;color:#64748b;font-size:13px;">O editor em cinco passos, com a viabilidade fixa sob o mapa:</p>
+        <img src="https://fs-suite.com/email/redesign-plan-editor.jpg" alt="Editor de plano de voo com a faixa de cinco passos no topo, formulário à esquerda e mapa com a rota traçada à direita" width="480" style="display:block;width:100%;max-width:480px;height:auto;border:1px solid #e2e8f0;border-radius:10px;margin:0 0 18px;" />
+
+        <p style="margin:0 0 6px;color:#64748b;font-size:13px;">E a página inicial, para quem ainda não conhece:</p>
+        <img src="https://fs-suite.com/email/redesign-landing.png" alt="Página inicial do FS Suite com o título Planejamento de voo profissional para simuladores, o vídeo de demonstração e a lista de recursos" width="480" style="display:block;width:100%;max-width:480px;height:auto;border:1px solid #e2e8f0;border-radius:10px;" />
+      </div>
+
+      <!-- O pedido -->
+      <div style="margin-top:26px;padding:18px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;">
+        <div style="font-weight:600;color:#92400e;margin-bottom:6px;font-size:15px;">O que eu preciso de você</div>
+        <div style="color:#78350f;font-size:14px;line-height:1.6;">
+          Use o FS Suite normalmente esta semana e me diga se algo ficou <em>pior</em>.
+          Não precisa ser elogio nem crítica elaborada — "não encontro mais o X" ou
+          "a tela Y ficou confusa" já é exatamente o que me serve.
+          <br /><br />
+          <strong>Dois caminhos para falar comigo:</strong>
+          <br />
+          <strong>1. Discord</strong> — é o canal mais direto, e onde eu respondo
+          mais rápido. Dá para mostrar a tela, discutir com outros pilotos e eu
+          pergunto de volta se não entender.
+          <br />
+          <strong>2. Feedback no app</strong> — o ícone de comentário no canto
+          inferior da barra lateral. Abre sem sair da página e aceita anexo.
+          <br /><br />
+          <strong>Se eu não receber reclamações até o fim da semana, o layout novo fica.</strong>
+          Se receber, eu conserto ou volto atrás.
+        </div>
+      </div>
+
+      <!-- CTA -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 4px;">
+        <tr>
+          <td bgcolor="#2b6cb0" style="border-radius:8px;">
+            <a href="https://fs-suite.com" target="_blank"
+               style="display:inline-block;padding:12px 24px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
+              Ver o novo layout →
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Divisor -->
+      <div style="margin:28px 0;border-top:1px solid #e2e8f0;"></div>
+
+      <!-- Discord -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+        <tr>
+          <td style="vertical-align:top;padding-right:14px;width:36px;font-size:24px;">💬</td>
+          <td style="vertical-align:top;">
+            <div style="font-weight:600;color:#1a2433;margin-bottom:4px;">Discord — o canal mais direto</div>
+            <div style="color:#475569;font-size:14px;line-height:1.6;">
+              É onde eu respondo mais rápido, e onde dá para discutir o redesenho
+              com outros pilotos — ou defender o layout antigo, se for o caso.
+              Vou acompanhar o canal de perto durante esta semana de teste.
+            </div>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
+              <tr>
+                <td style="background:#5865f2;border-radius:8px;">
+                  <a href="https://discord.gg/YPPPPCR4c" target="_blank"
+                     style="display:inline-block;padding:10px 20px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
+                    Entrar no servidor →
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Divisor -->
+      <div style="margin:28px 0;border-top:1px solid #e2e8f0;"></div>
+
+      <!-- YouTube -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+        <tr>
+          <td style="vertical-align:top;padding-right:14px;width:36px;font-size:24px;">▶️</td>
+          <td style="vertical-align:top;">
+            <div style="font-weight:600;color:#1a2433;margin-bottom:4px;">E se você também gosta de estudar o voo</div>
+            <div style="color:#475569;font-size:14px;line-height:1.6;">
+              O FS Suite não nasceu de uma ideia de produto — nasceu de simulação de voo.
+              Quanto mais eu levava o hobby a sério, mais queria planejar como se planeja
+              de verdade: regras ICAO, corredores REA, combustível pela RBAC. As ferramentas
+              que eu encontrava não faziam isso, então comecei a construir a minha.
+              <br /><br />
+              O canal no YouTube veio do mesmo lugar: é onde eu compartilho o que vou
+              aprendendo pelo caminho — planejamento, procedimentos, os erros que cometi
+              e o que li para corrigir.
+              <br /><br />
+              <strong>Dois vídeos por semana</strong>, segunda e sexta às 22:00Z (19:00 BRT).
+              E <strong>uma live por semana</strong>, sem dia fixo, com algum voo que eu
+              esteja fazendo — dá para acompanhar o planejamento e a execução do começo ao fim.
+            </div>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
+              <tr>
+                <td style="background:#ff0000;border-radius:8px;">
+                  <a href="https://www.youtube.com/@alexandre3gomes" target="_blank"
+                     style="display:inline-block;padding:10px 20px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
+                    Ver o canal →
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <p style="margin:24px 0 0;color:#475569;">Bons voos! ✈️</p>
+    </div>
+
+    <!-- Assinatura -->
+    <div style="margin-top:24px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+        <td style="vertical-align:middle;padding-right:14px;">
+          <a href="https://fs-suite.com" target="_blank" style="text-decoration:none;">
+            <img src="https://fs-suite.com/email/fs-suite-logo.png" alt="FS Suite" width="72" style="display:block;height:auto;border:0;" />
+          </a>
+        </td>
+        <td style="vertical-align:middle;">
+          <div style="color:#1a2433;font-size:14px;font-weight:600;">Alexandre Silva</div>
+          <div style="color:#64748b;font-size:12px;">Founder &amp; Lead Engineer · FS Suite</div>
+        </td>
+      </tr></table>
+    </div>
+
+    <!-- Rodapé / LGPD -->
+    <div style="margin-top:24px;text-align:center;color:#94a3b8;font-size:12px;line-height:1.6;">
+      <p style="margin:0 0 6px;">
+        Você recebe este email porque tem uma conta no FS Suite e optou por receber novidades.
+      </p>
+      <p style="margin:0;">
+        <a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color:#94a3b8;text-decoration:underline;">Cancelar inscrição</a>
+        &nbsp;·&nbsp; FS Suite
+      </p>
+    </div>
+
+  </div>
+</body>
+</html>
